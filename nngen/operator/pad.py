@@ -1,0 +1,43 @@
+from __future__ import absolute_import
+from __future__ import print_function
+from __future__ import division
+
+from nngen.operator.pool import _pool
+
+
+class pad(_pool):
+
+    def __sub_str__(self):
+        if hasattr(self, 'pad_col_left') and self.padding == 'SAME':
+            padding = ("'%s'-(%d, %d, %d, %d)" %
+                       (self.padding,
+                        self.pad_col_left_value, self.pad_col_right_value,
+                        self.pad_row_top_value, self.pad_row_bottom_value))
+        else:
+            padding = self.padding
+
+        par = ' par:%d' % self.par if self.par > 1 else ''
+
+        value_ram_size = (' value_ram_size:%d' % self.value_ram_size
+                          if self.value_ram_size is not None else '')
+        out_ram_size = (' out_ram_size:%d' % self.out_ram_size
+                        if self.out_ram_size is not None else '')
+
+        return (' padding:%s%s%s%s' %
+                (padding, par, value_ram_size, out_ram_size))
+
+    def __init__(self, value, padding,
+                 dtype=None, name=None, par=1,
+                 value_ram_size=None, out_ram_size=None):
+
+        ksize = (1, 1, 1, 1)
+        strides = (1, 1, 1, 1)
+        _pool.__init__(self, value, ksize, strides,
+                       padding, dtype, name, par,
+                       value_ram_size, out_ram_size)
+
+    def get_pad_value(self, strm):
+        return strm.Int(0)
+
+    def pool_op(self, strm, index, *vars):
+        return vars[0]

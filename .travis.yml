@@ -1,0 +1,17 @@
+language: python
+
+sudo: false
+
+python:
+  - 3.6
+
+addons:
+  apt:
+    packages:
+    - iverilog
+
+install:
+  - pip install jinja2 pytest pytest-pythonpath veriloggen pyverilog ipgen numpy
+
+script:
+  - python -m pytest tests examples

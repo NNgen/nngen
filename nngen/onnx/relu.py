@@ -1,0 +1,48 @@
+from __future__ import absolute_import
+from __future__ import print_function
+from __future__ import division
+
+import nngen.operator as operator
+
+from . import util
+from . import basic
+from . import batchnormalization
+from . import conv
+from . import gemm
+
+
+def _relu(act_func, visitor, node):
+
+    node_name = util.get_name(node)
+
+    src_name = node.input[0]
+    src_node = util.search_node_from_model(visitor.model, src_name)
+
+    if (not visitor.disable_fusion and
+        src_node.op_type == 'BatchNormalization' and
+            len(visitor.consumers[src_name]) == 1):
+
+        src_op = batchnormalization.BatchNormalization(visitor, src_node,
+                                                       act_func=act_func)
+        visitor.operators[node_name] = src_op
+        return src_op
+
+    if (not visitor.disable_fusion and
+            src_node.op_type == 'Conv' and len(visitor.consumers[src_name]) == 1):
+
+        src_op = conv.Conv(visitor, src_node, act_func=act_func)
+        visitor.operators[node_name] = src_op
+        return src_op
+
+    if (not visitor.disable_fusion and
+            src_node.op_type == 'Gemm' and len(visitor.consumers[src_name]) == 1):
+
+        src_op = gemm.Gemm(visitor, src_node, act_func=act_func)
+        visitor.operators[node_name] = src_op
+        return src_op
+
+    return basic._elementwise(act_func, visitor, node)
+
+
+def Relu(visitor, node):
+    return _relu(operator.relu, visitor, node)
