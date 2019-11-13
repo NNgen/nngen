@@ -1,7 +1,7 @@
 NNgen
 ==============================
 
-Neural Network Accelerator Generator
+A Fully-Customizable Hardware Synthesis Compiler for Deep Neural Network
 
 Copyright 2017, Shinya Takamaeda-Yamazaki and Contributors
 
@@ -15,13 +15,17 @@ Apache License 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
 What's NNgen?
 ==============================
 
-Under construction.
+NNgen is an open-sourced compiler to synthesize a model-specific hardware accelerator for deep neural networks. NNgen generates a Verilog HDL source code and an IP-core package of a DNN accelerator from an input model definition.
+
+Generated hardware is all-inclusive, which includes processing engine, on-chip memory, on-chip network, DMA controller, and control circuits. So the generated hardware does not require any additional controls from external circuit or CPU after the processing is started.
+
+The backend of NNgen employes Veriloggen, an open-sourced mixed-paradigm high-level synthesis compiler in Python. So you can customize NNgen for new DNN algorithms and applications.
 
 
 Contribute to NNgen
 ==============================
 
-NNgen project always welcomes questions, bug reports, feature proposals, and pull requests on [GitHub](https://github.com/PyHDI/nngen).
+NNgen project always welcomes questions, bug reports, feature proposals, and pull requests on [GitHub](https://github.com/NNgen/nngen).
 
 Community manager
 --------------------
@@ -41,7 +45,7 @@ Reviewers are individuals who actively contributed to the project and are willin
 for questions, bug reports, and feature proposals
 --------------------
 
-Please leave your comment on the [issue tracker](https://github.com/PyHDI/nngen/issues) on GitHub.
+Please leave your comment on the [issue tracker](https://github.com/NNgen/nngen/issues) on GitHub.
 
 for pull requests
 --------------------
@@ -61,37 +65,49 @@ Requirements
 --------------------
 
 - Python3: 3.6 or later
-
 - Icarus Verilog: 10.1 or later
 
-- TeX Live: 2015 or later
-
-- dvipng: 1.15 or later
-
 ```
-sudo apt install iverilog texlive-science texlive-fonts-recommended texlive-fonts-extra dvipng
+sudo apt install python3 python3-pip iverilog
 ```
 
 - Pyverilog: 1.1.4 or later
 - Veriloggen: 1.7.3 or later
 - Jinja2: 2.10 or later
 - NumPy: 1.14 or later
+- ONNX: 1.6.0 or later
+
+```
+pip3 install veriloggen pyverilog jinja2 numpy onnx
+```
+
+Additional requirements for documentation
+--------------------
+
+- TeX Live: 2015 or later
+- dvipng: 1.15 or later
+
+```
+sudo apt install texlive-science texlive-fonts-recommended texlive-fonts-extra dvipng
+```
+
 - Sphinx: 2.10 or later
 - sphinx_rtd_theme : 0.4.3 or later
 
 ```
-pip3 install veriloggen pyverilog jinja2 numpy sphinx sphinx_rtd_theme
+pip3 install sphinx sphinx_rtd_theme
 ```
     
-Install
+Another installation way
 --------------------
     
-As the current NNgen and Veriloggen are under the aggresive development, installation of them into your system platform is NOT recommended. Instead, please download (or git clone) the latest version of NNgen, Veriloggen and other libraries from GitHub. 
+The current NNgen and Veriloggen are under the aggresive development.
+Instead of the standard installation, you can download (or git clone) and install the latest version of NNgen, Veriloggen, and other libraries from GitHub.
 
 ### Download the latest NNgen, Veriloggen and other libraries from GitHub
 
 ```
-git clone https://github.com/kmsysgi/nngen.git
+git clone https://github.com/NNgen/nngen.git
 git clone https://github.com/PyHDI/veriloggen.git
 git clone https://github.com/PyHDI/Pyverilog.git
 ```
