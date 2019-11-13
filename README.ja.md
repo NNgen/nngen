@@ -1,7 +1,7 @@
 NNgen
 ==============================
 
-Neural Network Accelerator Generator
+A Fully-Customizable Hardware Synthesis Compiler for Deep Neural Network
 
 Copyright 2017, Shinya Takamaeda-Yamazaki and Contributors
 
@@ -15,13 +15,17 @@ Apache License 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
 NNgenとは?
 ==============================
 
-準備中です。
+NNgenはディープニューラルネットワークのモデル特化ハードウェアアクセラレータを合成するオープンソースのコンパイラです。NNgenは入力モデル定義からDNNアクセラレータのVerilog HDLのソースコードとIPコアのパッケージを生成します。
+
+生成されたハードウェアは、プロセッシングエンジン、オンチップメモリ、オンチップネットワーク、DMAコントローラ、制御回路といったすべてが含まれています。そのため、生成されたハードウェアは、処理を開始した後は、外部の回路やCPUなどからの追加の制御をまったく必要としません。
+
+NNgenのバックエンドには、複数の記述パラダイムが利用できるオープンソースの高位合成コンパイラVeriloggenを用いています。そのため、新しいアルゴリズムやアプリケーションに応じて、NNgenの構成をカスタマイズすることができます。
 
 
 NNgenにコントリビュートするには
 ==============================
 
-NNgenプロジェクトは質問、バグ報告、新しい機能提案、[GitHub](https://github.com/PyHDI/nngen)上でのプルリクエストを常に歓迎します。
+NNgenプロジェクトは質問、バグ報告、新しい機能提案、[GitHub](https://github.com/NNgen/nngen)上でのプルリクエストを常に歓迎します。
 
 コミュニティ管理者 
 --------------------
@@ -41,7 +45,7 @@ NNgenプロジェクトは質問、バグ報告、新しい機能提案、[GitHu
 質問、バグ報告、新しい機能提案について
 --------------------
 
-GitHubの[issue tracker](https://github.com/PyHDI/nngen/issues)にコメントを残してください。
+GitHubの[issue tracker](https://github.com/NNgen/nngen/issues)にコメントを残してください。
 
 プルリクエストについて
 --------------------
@@ -53,44 +57,55 @@ NNgenは統合テストにpytestフレームワークを使います。 プル�
 プルリクエスト対象のコードがすべてのテストをパスし、明白な問題がなければ、それはコミッタによってdevelopブランチにマージされます。
 
 
-インストール方法
+インストール
 ==============================
 
-依存関係
+要件
 --------------------
 
 - Python3: 3.6 or later
-
 - Icarus Verilog: 10.1 or later
 
-- TeX Live: 2015 or later
-
-- dvipng: 1.15 or later
-
 ```
-sudo apt install iverilog texlive-science texlive-fonts-recommended texlive-fonts-extra dvipng
+sudo apt install python3 python3-pip iverilog
 ```
 
 - Pyverilog: 1.1.4 or later
 - Veriloggen: 1.7.3 or later
 - Jinja2: 2.10 or later
 - NumPy: 1.14 or later
+- ONNX: 1.6.0 or later
+
+```
+pip3 install veriloggen pyverilog jinja2 numpy onnx
+```
+
+ドキュメント生成のための要件
+--------------------
+
+- TeX Live: 2015 or later
+- dvipng: 1.15 or later
+
+```
+sudo apt install texlive-science texlive-fonts-recommended texlive-fonts-extra dvipng
+```
+
 - Sphinx: 2.10 or later
 - sphinx_rtd_theme : 0.4.3 or later
 
 ```
-pip3 install veriloggen pyverilog jinja2 numpy sphinx sphinx_rtd_theme
+pip3 install sphinx sphinx_rtd_theme
 ```
-    
-インストール
+
+別のインストール方法
 --------------------
     
-現在のNNgenとVeriloggenは活発に開発が進んでいるので、これらをシステムプラットフォームにインストールすることはお勧めできません。 代わりに、GitHubから最新バージョンのNNgen、Veriloggen、その他のライブラリをダウンロード（またはgit clone）してください。
+現在のNNgenとVeriloggenは活発に開発が進んでいるので、最新の機能を利用する場合には、GitHubから最新バージョンのNNgen、Veriloggen、その他のライブラリをダウンロード（またはgit clone）し、適宜パスを通して利用することもできます。
 
 ### GitHubから最新のNNgen、Veriloggen、その他のライブラリをダウンロード
 
 ```
-git clone https://github.com/kmsysgi/nngen.git
+git clone https://github.com/NNgen/nngen.git
 git clone https://github.com/PyHDI/veriloggen.git
 git clone https://github.com/PyHDI/Pyverilog.git
 ```
@@ -119,4 +134,4 @@ Getting Started
 - PythonでVerilog HDLソースコードを構築するためのライブラリ
 
 [Pyverilog](https://github.com/PyHDI/Pyverilog)
-- Pythonベースのハードウェア設計処理ツールキット（Verilog HDL用）
+- PythonベースのVerilog HDLハードウェア設計処理ツールキット
