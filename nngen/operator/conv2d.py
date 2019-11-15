@@ -521,7 +521,8 @@ class conv2d(bt._Operator):
         self.vshamt_out_ram_size = vshamt_out_ram_size
         self.out_ram_size = out_ram_size
         self.disable_keep_input = disable_keep_input
-        conv2d.attribute(self, par_ich, par_och, par_col, par_row,
+        conv2d.attribute(self, None, None, None,
+                         par_ich, par_och, par_col, par_row,
                          concur_och,
                          stationary,
                          input_ram_size, filter_ram_size,
@@ -530,7 +531,8 @@ class conv2d(bt._Operator):
                          out_ram_size,
                          disable_keep_input)
 
-    def attribute(self, par_ich=None, par_och=None, par_col=None, par_row=None,
+    def attribute(self, cshamt_mul=None, cshamt_sum=None, cshamt_out=None,
+                  par_ich=None, par_och=None, par_col=None, par_row=None,
                   concur_och=None,
                   stationary=None,
                   input_ram_size=None, filter_ram_size=None,
@@ -538,6 +540,15 @@ class conv2d(bt._Operator):
                   vshamt_mul_ram_size=None, vshamt_sum_ram_size=None, vshamt_out_ram_size=None,
                   out_ram_size=None,
                   disable_keep_input=None):
+
+        if cshamt_mul is not None:
+            self.cshamt_mul = cshamt_mul
+
+        if cshamt_sum is not None:
+            self.cshamt_sum = cshamt_sum
+
+        if cshamt_out is not None:
+            self.cshamt_out = cshamt_out
 
         if par_ich is not None:
             if par_ich < 1:
@@ -1230,7 +1241,7 @@ class conv2d(bt._Operator):
 
                         # add, scale, bias, vshamt_sum, vshamt_out
                         mul_vars_group = [mul_vars[i:i + num_weights]
-                                             for i in range(0, len(mul_vars), num_weights)]
+                                          for i in range(0, len(mul_vars), num_weights)]
                         reshape_mul_vars = []
                         for vs in zip(*mul_vars_group):
                             for v in vs:
