@@ -111,7 +111,7 @@ def run(a_shape=(7, 15), b_shape=(7, 15),
     #    raise ValueError("too large output error: %f > 0.1" % max_c_err)
 
     # to memory image
-    param_data = ng.make_param_array(variables, constants)
+    param_data = ng.export_ndarray([c])
     param_bytes = len(param_data)
 
     variable_addr = int(math.ceil(max(a.addr + a.memory_size,
