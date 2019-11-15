@@ -234,7 +234,8 @@ class matmul(conv2d.conv2d):
                                disable_keep_left,
                                input_shape, filter_shape, out_shape)
 
-    def attribute(self, par_left_col=None, par_out_col=None, par_left_row=None,
+    def attribute(self, cshamt_mul=None, cshamt_sum=None, cshamt_out=None,
+                  par_left_col=None, par_out_col=None, par_left_row=None,
                   concur_out_col=None,
                   stationary=None,
                   left_ram_size=None, right_ram_size=None,
@@ -266,7 +267,8 @@ class matmul(conv2d.conv2d):
         if par_left_row is None:
             par_left_row = par_col
 
-        conv2d.conv2d.attribute(self, par_left_col, par_out_col, par_left_row, None,
+        conv2d.conv2d.attribute(self, cshamt_mul, cshamt_sum, cshamt_out,
+                                par_left_col, par_out_col, par_left_row, None,
                                 concur_out_col, stationary,
                                 left_ram_size, right_ram_size,
                                 bias_ram_size, scale_ram_size,
