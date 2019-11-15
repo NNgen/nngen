@@ -53,13 +53,13 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     # obtianed by a training on DNN framework
     w0_value = np.random.normal(size=w0.length).reshape(w0.shape)
     w0_value = np.clip(w0_value, -5.0, 5.0)
-    w0_value = w0_value * (2 ** (weight_dtype.width - 1) - 1) / 5.0
+    w0_value = w0_value * (2.0 ** (weight_dtype.width - 1) - 1) / 5.0
     w0_value = np.round(w0_value).astype(np.int64)
     w0.set_value(w0_value)
 
     w1_value = np.random.normal(size=w1.length).reshape(w1.shape)
     w1_value = np.clip(w1_value, -5.0, 5.0)
-    w1_value = w1_value * (2 ** (weight_dtype.width - 1) - 1) / 5.0
+    w1_value = w1_value * (2.0 ** (weight_dtype.width - 1) - 1) / 5.0
     w1_value = np.round(w1_value).astype(np.int64)
     w1.set_value(w1_value)
 

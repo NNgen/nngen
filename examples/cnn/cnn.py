@@ -88,13 +88,13 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     # obtianed by a training on DNN framework
     w0_value = np.random.normal(size=w0.length).reshape(w0.shape)
     w0_value = np.clip(w0_value, -5.0, 5.0)
-    w0_value = w0_value * (2 ** (weight_dtype.width - 1) - 1) / 5.0
+    w0_value = w0_value * (2.0 ** (weight_dtype.width - 1) - 1) / 5.0
     w0_value = np.round(w0_value).astype(np.int64)
     w0.set_value(w0_value)
 
     b0_value = np.random.normal(size=b0.length).reshape(b0.shape)
     b0_value = np.clip(b0_value, -5.0, 5.0)
-    b0_value = b0_value * (2 ** (weight_dtype.width - 1) - 1) / 5.0 / 100.0
+    b0_value = b0_value * (2.0 ** (weight_dtype.width - 1) - 1) / 5.0 / 100.0
     b0_value = np.round(b0_value).astype(np.int64)
     b0.set_value(b0_value)
 
@@ -103,13 +103,13 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
     w1_value = np.random.normal(size=w1.length).reshape(w1.shape)
     w1_value = np.clip(w1_value, -5.0, 5.0)
-    w1_value = w1_value * (2 ** (weight_dtype.width - 1) - 1) / 5.0
+    w1_value = w1_value * (2.0 ** (weight_dtype.width - 1) - 1) / 5.0
     w1_value = np.round(w1_value).astype(np.int64)
     w1.set_value(w1_value)
 
     b1_value = np.random.normal(size=b1.length).reshape(b1.shape)
     b1_value = np.clip(b1_value, -5.0, 5.0)
-    b1_value = b1_value * (2 ** (weight_dtype.width - 1) - 1) / 5.0 / 100.0
+    b1_value = b1_value * (2.0 ** (weight_dtype.width - 1) - 1) / 5.0 / 100.0
     b1_value = np.round(b1_value).astype(np.int64)
     b1.set_value(b1_value)
 
@@ -118,13 +118,13 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
     w2_value = np.random.normal(size=w2.length).reshape(w2.shape)
     w2_value = np.clip(w2_value, -5.0, 5.0)
-    w2_value = w2_value * (2 ** (weight_dtype.width - 1) - 1) / 5.0
+    w2_value = w2_value * (2.0 ** (weight_dtype.width - 1) - 1) / 5.0
     w2_value = np.round(w2_value).astype(np.int64)
     w2.set_value(w2_value)
 
     b2_value = np.random.normal(size=b2.length).reshape(b2.shape)
     b2_value = np.clip(b2_value, -5.0, 5.0)
-    b2_value = b2_value * (2 ** (weight_dtype.width - 1) - 1) / 5.0 / 100.0
+    b2_value = b2_value * (2.0 ** (weight_dtype.width - 1) - 1) / 5.0 / 100.0
     b2_value = np.round(b2_value).astype(np.int64)
     b2.set_value(b2_value)
 
@@ -133,13 +133,13 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
     w3_value = np.random.normal(size=w3.length).reshape(w3.shape)
     w3_value = np.clip(w3_value, -5.0, 5.0)
-    w3_value = w3_value * (2 ** (weight_dtype.width - 1) - 1) / 5.0
+    w3_value = w3_value * (2.0 ** (weight_dtype.width - 1) - 1) / 5.0
     w3_value = np.round(w3_value).astype(np.int64)
     w3.set_value(w3_value)
 
     b3_value = np.random.normal(size=b3.length).reshape(b3.shape)
     b3_value = np.clip(b3_value, -5.0, 5.0)
-    b3_value = b3_value * (2 ** (weight_dtype.width - 1) - 1) / 5.0 / 100.0
+    b3_value = b3_value * (2.0 ** (weight_dtype.width - 1) - 1) / 5.0 / 100.0
     b3_value = np.round(b3_value).astype(np.int64)
     b3.set_value(b3_value)
 

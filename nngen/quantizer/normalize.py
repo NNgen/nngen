@@ -70,7 +70,7 @@ def find_optimal_shamt_normalize(node, scale, bias,
         for _ in range(num_trials):
             input = np.random.normal(size=input_length).reshape(input_shape)
             input = np.clip(input, -input_threshold, input_threshold)
-            input = input * (1.0 * (2 ** (input_bits - 1) - 1)) / input_threshold
+            input = input * (2.0 ** (input_bits - 1) - 1) / input_threshold
             input = np.round(input).astype(np.int64)
 
             acc_overflow += try_shamt_normalize(node, input, scale, bias, shamt)
@@ -184,12 +184,12 @@ def find_optimal_shamt_scaled_add(node, a_scale, b_scale,
         for _ in range(num_trials):
             a_input = np.random.normal(size=a_input_length).reshape(a_input_shape)
             a_input = np.clip(a_input, -input_threshold, input_threshold)
-            a_input = a_input * (1.0 * (2 ** (a_input_bits - 1) - 1)) / input_threshold
+            a_input = a_input * (2.0 ** (a_input_bits - 1) - 1) / input_threshold
             a_input = np.round(a_input).astype(np.int64)
 
             b_input = np.random.normal(size=b_input_length).reshape(b_input_shape)
             b_input = np.clip(b_input, -input_threshold, input_threshold)
-            b_input = b_input * (1.0 * (2 ** (b_input_bits - 1) - 1)) / input_threshold
+            b_input = b_input * (2.0 ** (b_input_bits - 1) - 1) / input_threshold
             b_input = np.round(b_input).astype(np.int64)
 
             acc_overflow += try_shamt_scaled_add(node, a_input, a_scale,
@@ -307,7 +307,7 @@ def find_optimal_shamt_scaled_concat(node, scales,
             for arg, input_bits in zip(node.args, input_bits_list):
                 input = np.random.normal(size=arg.length).reshape(arg.shape)
                 input = np.clip(input, -input_threshold, input_threshold)
-                input = input * (1.0 * (2 ** (input_bits - 1) - 1)) / input_threshold
+                input = input * (2.0 ** (input_bits - 1) - 1) / input_threshold
                 input = np.round(input).astype(np.int64)
                 inputs.append(input)
 

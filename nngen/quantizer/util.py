@@ -20,8 +20,8 @@ def _quantize_linear(orig_weight, num_bits=8):
     min_value = np.min(orig_weight)
     abs_max = max(abs(max_value), abs(min_value))
 
-    pos_num_quantized_bins = (2 ** num_bits) // 2 - 1
-    scale_factor = (pos_num_quantized_bins / abs_max).astype(np.float32)
+    pos_num_quantized_bins = 2 ** (num_bits - 1) - 1
+    scale_factor = 1.0 * pos_num_quantized_bins / abs_max
     quantized_weight = np.round(orig_weight * scale_factor).astype(np.int64)
 
     return quantized_weight, scale_factor
