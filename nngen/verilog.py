@@ -144,6 +144,9 @@ def load_default_config(config=None):
 def _to_veriloggen_module(objs, name, config=None,
                           silent=False, where_from=None, output=None):
 
+    if not isinstance(objs, (list, tuple)):
+        objs = [objs]
+
     (objs, num_storages,
      num_input_storages, num_output_storages) = analyze(config, objs)
     m, clk, rst, maxi, saxi = make_module(config, name, objs,

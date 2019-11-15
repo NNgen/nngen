@@ -28,14 +28,15 @@ import veriloggen.types.axi as axi
 
 def run(act_dtype=ng.int32, weight_dtype=ng.int32,
         bias_dtype=ng.int32, scale_dtype=ng.int32,
-        out_dtype=ng.int32,
         with_batchnorm=True, disable_fusion=False,
         conv2d_par_ich=1, conv2d_par_och=1, conv2d_par_col=1, conv2d_par_row=1,
         conv2d_concur_och=None, conv2d_stationary='filter',
         pool_par=1, elem_par=1,
-        chunk_size=64,
-        axi_datawidth=32, silent=False,
-        filename=None, simtype='iverilog', outputfile=None):
+        chunk_size=64, axi_datawidth=32, silent=False,
+        filename=None,
+        simtype='iverilog',
+        # simtype='verilator',
+        outputfile=None):
 
     act_shape = (1, 224, 224, 3)
 
@@ -62,7 +63,7 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
                                           default_placeholder_dtype=act_dtype,
                                           default_variable_dtype=weight_dtype,
                                           default_constant_dtype=weight_dtype,
-                                          default_operator_dtype=out_dtype,
+                                          default_operator_dtype=act_dtype,
                                           default_scale_dtype=scale_dtype,
                                           default_bias_dtype=bias_dtype,
                                           disable_fusion=disable_fusion)
@@ -96,8 +97,12 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     act = placeholders['act']
     out = outputs['out']
 
-    targ = ng.to_veriloggen([out], 'onnx_resnet18', silent=silent,
+    targ = ng.to_veriloggen([out], 'resnet18', silent=silent,
                             config={'maxi_datawidth': axi_datawidth})
+    # targ = ng.to_ipxact([out], 'resnet18', silent=silent,
+    #                    config={'maxi_datawidth': axi_datawidth})
+    # rtl = ng.to_verilog([out], 'resnet18', silent=silent,
+    #                    config={'maxi_datawidth': axi_datawidth})
 
     # verification data
     img = np.array(PIL.Image.open('car.png').convert('RGB')).astype(np.float32)
@@ -108,10 +113,11 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
         vact = vact / (16 / act_dtype.width)
     vact = np.round(vact).astype(np.int64)
 
+    # software-based verification
     eval_outs = ng.eval([out], act=vact)
     vout = eval_outs[0]
 
-    # exec on pytorch
+    # execution on pytorch
     model_input = img / np.max(img)
 
     if act.perm is not None:
@@ -141,7 +147,7 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     #    raise ValueError("too large output error: %f > 0.1" % max_out_err)
 
     # to memory image
-    param_data = ng.make_param_array(variables, constants, chunk_size)
+    param_data = ng.export_ndarray([out], chunk_size)
     param_bytes = len(param_data)
 
     variable_addr = int(math.ceil((act.addr + act.memory_size) / chunk_size)) * chunk_size
@@ -225,20 +231,20 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
                             bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
                             y * out.aligned_shape[2] * out.aligned_shape[3] +
                             x * out.aligned_shape[3] + ch,
-                            out.addr, out_dtype.width)
+                            out.addr, act_dtype.width)
                         check = memory.read_word(
                             bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
                             y * out.aligned_shape[2] * out.aligned_shape[3] +
                             x * out.aligned_shape[3] + ch,
-                            check_addr, out_dtype.width)
+                            check_addr, act_dtype.width)
 
                         if vthread.verilog.NotEql(orig, check):
                             print('NG (', bat, y, x, ch,
                                   ') orig: ', orig, ' check: ', check)
                             ok = False
-                        # else:
-                        #    print('OK (', bat, y, x, ch,
-                        #          ') orig: ', orig, ' check: ', check)
+                        else:
+                            print('OK (', bat, y, x, ch,
+                                  ') orig: ', orig, ' check: ', check)
 
         if ok:
             print('# verify: PASSED')
