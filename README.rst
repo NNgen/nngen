@@ -15,8 +15,8 @@ What’s NNgen?
 
 NNgen is an open-sourced compiler to synthesize a model-specific
 hardware accelerator for deep neural networks. NNgen generates a Verilog
-HDL source code and an IP-core package of a DNN accelerator from an
-input model definition.
+HDL source code and an IP-core package (IP-XACT) of a DNN accelerator
+from an input model definition.
 
 Generated hardware is all-inclusive, which includes processing engine,
 on-chip memory, on-chip network, DMA controller, and control circuits.
@@ -93,7 +93,7 @@ Requirements
 
 ::
 
-   sudo apt install python3 python3-pip iverilog
+   sudo apt install iverilog
 
 -  Pyverilog: 1.1.4 or later
 -  Veriloggen: 1.7.3 or later
@@ -105,8 +105,34 @@ Requirements
 
    pip3 install veriloggen pyverilog jinja2 numpy onnx
 
-Additional requirements for documentation
------------------------------------------
+Install
+-------
+
+Now you can install NNgen using setup.py script.
+
+::
+
+   python3 setup.py install
+
+Optional requirements for testing
+---------------------------------
+
+These are required for automatic testing of **tests** and **examples**.
+We recommend to install these testing library to verify experimental
+features.
+
+-  pytest: 3.2 or later
+-  pytest-pythonpath: 0.7 or later
+
+::
+
+   pip3 install pytest pytest-pythonpath
+
+Optional requirements for documentation
+---------------------------------------
+
+If you want generate a document file from the source code, please
+install these dependen softwares.
 
 -  TeX Live: 2015 or later
 -  dvipng: 1.15 or later
@@ -151,12 +177,40 @@ dependent libraries.
    ln -s ../veriloggen/veriloggen
    ln -s ../Pyverilog/pyverilog
 
-Getting Started
+Examples and testing
+====================
+
+There are some exapmles in **examples** and various testing codes in
+**tests**. The testing codes are actually good small examples suggesting
+how to represent a desired function.
+
+To run the testing codes, please type the following commands.
+
+::
+
+   cd tests
+   python3 -m pytest .
+
+Getting started
 ===============
 
-Under construction.
+Let’s begin NNgen by an example.
 
-Related Project
+Represent a DNN model by NNgen operators
+----------------------------------------
+
+::
+
+Specify hardware configurations
+-------------------------------
+
+Convert NNgen operators to hardware objects and Verilog HDL
+-----------------------------------------------------------
+
+Simulate a generated hardware by Veriloggen and Verilog simulator
+-----------------------------------------------------------------
+
+Related project
 ===============
 
 `Veriloggen <https://github.com/PyHDI/veriloggen>`__ - A library for

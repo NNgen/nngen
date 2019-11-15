@@ -170,12 +170,6 @@ Represent a DNN model by NNgen operators
 --------------------
 
 ```
-import nngen as ng
-
-act = ng.placeholder(ng.int16, shape=(1, 32, 32, 3), name='act')
-
-w0 = ng.variable(ng.int16, shape=(64, 3, 3, 3), name='w0')
-conv0 = ng.conv2d(act, w0, strides=(1, 1, 1, 1))
 ```
 
 Specify hardware configurations
