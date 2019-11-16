@@ -701,7 +701,7 @@ class _reduce_op(bt._ReductionOperator):
 
     def eval(self, memo, input_dict, **kwargs):
         kwargs['input_tensor_dtype'] = self.args[0].dtype
-        return bt._ElementwiseOperator.eval(self, memo, input_dict, **kwargs)
+        return bt._ReductionOperator.eval(self, memo, input_dict, **kwargs)
 
 
 class reduce_sum(_reduce_op):
