@@ -98,6 +98,8 @@ We recommend to install these testing library to verify experimental features.
 
 - pytest: 3.2 or later
 - pytest-pythonpath: 0.7 or later
+- PyTorch: 1.3.1 or later
+- torchvision: 0.4.2 or later
 
 ```
 pip3 install pytest pytest-pythonpath

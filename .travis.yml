@@ -3,15 +3,16 @@ language: python
 sudo: false
 
 python:
-  - 3.6
+  - 3.7
 
 addons:
   apt:
     packages:
     - iverilog
+    - verilator
 
 install:
-  - pip install jinja2 pytest pytest-pythonpath veriloggen pyverilog ipgen numpy
+  - pip install pytest pytest-pythonpath jinja2 pyverilog veriloggen numpy onnx torch torchvison
 
 script:
-  - python -m pytest tests examples
+  - python -m pytest --sim=verilator tests

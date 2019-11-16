@@ -1,12 +1,11 @@
 PYTHON=python3
-#PYTHON=python
 
 .PHONY: all
 all: clean
 
 .PHONY: test
 test:
-	$(PYTHON) -m pytest -vv tests examples
+	$(PYTHON) -m pytest -vv tests
 
 .PHONY: clean
 clean:
