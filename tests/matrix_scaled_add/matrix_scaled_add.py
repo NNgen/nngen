@@ -23,21 +23,21 @@ import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 
 
-def run(a_shape=(15, 15), b_shape=(15, 15), c_shape=(15, 15), d_shape=(15, 15), e_shape=(15, 15),
-        a_dtype=ng.int32, b_dtype=ng.int32, c_dtype=ng.int32, d_dtype=ng.int32, e_dtype=ng.int32, f_dtype=ng.int32,
+def run(a_shape=(15, 15), b_shape=(15, 15),
+        a_dtype=ng.int32, b_dtype=ng.int32, c_dtype=ng.int32,
         par=1, axi_datawidth=32, silent=False,
         filename=None, simtype='iverilog', outputfile=None):
 
     # create target hardware
     a = ng.placeholder(a_dtype, shape=a_shape, name='a')
     b = ng.placeholder(b_dtype, shape=b_shape, name='b')
-    c = ng.placeholder(c_dtype, shape=c_shape, name='c')
-    d = ng.placeholder(d_dtype, shape=d_shape, name='d')
-    e = ng.placeholder(e_dtype, shape=e_shape, name='e')
-    f = ng.multiply_multiply_add_rshift_clip(
-        a, b, c, d, e, dtype=f_dtype, sum_dtype=ng.int64, par=par)
+    a_scale = 3
+    b_scale = 4
+    shamt = 2
+    c = ng.scaled_add(a, b, a_scale, b_scale, shamt,
+                      dtype=c_dtype, sum_dtype=ng.int64, par=par)
 
-    targ = ng.to_veriloggen([f], 'matrix_multiply_multiply_add_rshift_clip', silent=silent,
+    targ = ng.to_veriloggen([c], 'matrix_scaled_add', silent=silent,
                             config={'maxi_datawidth': axi_datawidth})
 
     # verification data
@@ -45,20 +45,13 @@ def run(a_shape=(15, 15), b_shape=(15, 15), c_shape=(15, 15), d_shape=(15, 15), 
           * [2 ** (a_dtype.width // 2)])
     vb = ((np.arange(b.length, dtype=np.int64).reshape(b.shape) % [3] + [1])
           * [2 ** (b_dtype.width // 2)])
-    vc = ((np.arange(c.length, dtype=np.int64).reshape(c.shape) % [4] + [1])
-          * [2 ** (c_dtype.width // 2)])
-    vd = ((np.arange(d.length, dtype=np.int64).reshape(d.shape) % [3] + [1])
-          * [2 ** (d_dtype.width // 2)])
-    ve = (np.ones(e.length, dtype=np.int64).reshape(e.shape)
-          * [(a_dtype.width + b_dtype.width) // 4])
 
-    eval_outs = ng.eval([f], a=va, b=vb, c=vc, d=vd, e=ve)
-    vf = eval_outs[0]
+    eval_outs = ng.eval([c], a=va, b=vb)
+    vc = eval_outs[0]
 
     # to memory image
-    size_max = int(math.ceil(max(a.memory_size, b.memory_size,
-                                 c.memory_size, d.memory_size, e.memory_size, e.memory_size) / 4096)) * 4096
-    check_addr = max(a.addr, b.addr, c.addr, d.addr, e.addr, f.addr) + size_max
+    size_max = int(math.ceil(max(a.memory_size, b.memory_size) / 4096)) * 4096
+    check_addr = max(a.addr, b.addr, c.addr) + size_max
     size_check = size_max
     tmp_addr = check_addr + size_check
 
@@ -73,17 +66,8 @@ def run(a_shape=(15, 15), b_shape=(15, 15), c_shape=(15, 15), d_shape=(15, 15), 
                    b_dtype.width, b.addr,
                    max(int(math.ceil(axi_datawidth / b_dtype.width)), par))
     axi.set_memory(mem, vc, memimg_datawidth,
-                   c_dtype.width, c.addr,
+                   c_dtype.width, check_addr,
                    max(int(math.ceil(axi_datawidth / c_dtype.width)), par))
-    axi.set_memory(mem, vd, memimg_datawidth,
-                   d_dtype.width, d.addr,
-                   max(int(math.ceil(axi_datawidth / d_dtype.width)), par))
-    axi.set_memory(mem, ve, memimg_datawidth,
-                   e_dtype.width, e.addr,
-                   max(int(math.ceil(axi_datawidth / e_dtype.width)), par))
-    axi.set_memory(mem, vf, memimg_datawidth,
-                   f_dtype.width, check_addr,
-                   max(int(math.ceil(axi_datawidth / e_dtype.width)), par))
 
     # test controller
     m = Module('test')
@@ -136,12 +120,12 @@ def run(a_shape=(15, 15), b_shape=(15, 15), c_shape=(15, 15), d_shape=(15, 15), 
 
         # verify
         ok = True
-        for i in range(f.shape[0]):
-            for j in range(f.shape[1]):
-                orig = memory.read_word(i * f.aligned_shape[1] + j,
-                                        f.addr, f_dtype.width)
-                check = memory.read_word(i * f.aligned_shape[1] + j,
-                                         check_addr, f_dtype.width)
+        for i in range(c.shape[0]):
+            for j in range(c.shape[1]):
+                orig = memory.read_word(i * c.aligned_shape[1] + j,
+                                        c.addr, c_dtype.width)
+                check = memory.read_word(i * c.aligned_shape[1] + j,
+                                         check_addr, c_dtype.width)
 
                 if vthread.verilog.NotEql(orig, check):
                     print(i, j, orig, check)
