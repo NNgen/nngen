@@ -85,24 +85,8 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
     else:
         vscale = None
 
-    vc = ng.verify.matmul(va, vb,
-                          bias, scale,
-                          False, True,
-                          rshift_mul, rshift_sum, rshift_out,
-                          act_func,
-                          c_dtype, ng.int32, ng.int32,
-                          'matmul',
-                          par_left_col, par_left_row, par_out_col,
-                          concur_out_col, stationary,
-                          left_ram_size, right_ram_size,
-                          bias_ram_size, scale_ram_size,
-                          None, None, None,
-                          out_ram_size,
-                          False,
-                          a_dtype, b_dtype,
-                          bias_dtype, scale_dtype)
-
-    vc = ng.verify.relu(vc)
+    eval_outs = ng.eval([c], a=va, b=vb, bias=vbias, scale=vscale)
+    vc = eval_outs[0]
 
     # to memory image
     size_max = int(math.ceil(max(a.memory_size, b.memory_size,

@@ -11,13 +11,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(
 import nngen as ng
 import veriloggen
 
-import eval_matrix_extern
+import matrix_sign_binary
 
 
-#a_shape = (15, 15)
-#b_shape = (15, 15)
-a_shape = (1, 8)
-b_shape = (1, 8)
+a_shape = (15, 15)
+b_shape = (15, 15)
 a_dtype = ng.int32
 b_dtype = ng.int32
 c_dtype = ng.int32
@@ -30,7 +28,7 @@ def test(request, silent=True):
 
     simtype = request.config.getoption('--sim')
 
-    rslt = eval_matrix_extern.run(a_shape, b_shape,
+    rslt = matrix_sign_binary.run(a_shape, b_shape,
                                   a_dtype, b_dtype, c_dtype,
                                   par, axi_datawidth, silent,
                                   filename=None, simtype=simtype,
@@ -41,7 +39,7 @@ def test(request, silent=True):
 
 
 if __name__ == '__main__':
-    rslt = eval_matrix_extern.run(a_shape, b_shape,
+    rslt = matrix_sign_binary.run(a_shape, b_shape,
                                   a_dtype, b_dtype, c_dtype,
                                   par, axi_datawidth, silent=False,
                                   filename='tmp.v',

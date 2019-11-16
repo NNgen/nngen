@@ -108,63 +108,42 @@ def run(act_shape=(1, 7, 7, 15),
 
     vweight1 = np.arange(weight1.length,
                          dtype=np.int64).reshape(weight1_shape) % [32] - [16]
+    weight1.set_value(vweight1)
 
     if bias1 is not None:
         vbias1 = np.arange(bias1.length,
                            dtype=np.int64).reshape(bias1.shape) % [16]
+        bias1.set_value(vbias1)
     else:
         vbias1 = None
 
     if scale1 is not None:
         vscale1 = np.arange(scale1.length,
                             dtype=np.int64).reshape(scale1.shape) % [8]
+        scale1.set_value(vscale1)
     else:
         vscale1 = None
 
     vweight2 = np.arange(weight2.length,
                          dtype=np.int64).reshape(weight2_shape) % [32] - [16]
+    weight2.set_value(vweight2)
 
     if bias2 is not None:
         vbias2 = np.arange(bias2.length,
                            dtype=np.int64).reshape(bias2.shape) % [16]
+        bias2.set_value(vbias2)
     else:
         vbias2 = None
 
     if scale2 is not None:
         vscale2 = np.arange(scale2.length,
                             dtype=np.int64).reshape(scale2.shape) % [8]
+        scale2.set_value(vscale2)
     else:
         vscale2 = None
 
-    vtmp = ng.verify.conv2d(vact, vweight1, stride1,
-                            vbias1, vscale1,
-                            rshift_mul1, rshift_sum1, rshift_out1,
-                            act_func1, 'SAME',
-                            tmp_dtype, ng.int32, ng.int32,
-                            'conv2d_1',
-                            par_ich1, par_och1, par_col1, par_row1,
-                            concur_och1, stationary1,
-                            input_ram_size1, filter_ram_size1,
-                            bias_ram_size1, scale_ram_size1,
-                            None, None, None,
-                            out_ram_size1,
-                            False,
-                            act_dtype, weight1_dtype)
-
-    vout = ng.verify.conv2d(vtmp, vweight2, stride2,
-                            vbias2, vscale2,
-                            rshift_mul2, rshift_sum2, rshift_out2,
-                            act_func2, 'SAME',
-                            out_dtype, ng.int32, ng.int32,
-                            'conv2d_2',
-                            par_ich2, par_och2, par_col2, par_row2,
-                            concur_och2, stationary2,
-                            input_ram_size2, filter_ram_size2,
-                            bias_ram_size2, scale_ram_size2,
-                            None, None, None,
-                            out_ram_size2,
-                            False,
-                            tmp_dtype, weight2_dtype)
+    eval_outs = ng.eval([out], act=vact)
+    vout = eval_outs[0]
 
     # to memory image
     size_max = int(math.ceil(max(act.memory_size, weight1.memory_size,

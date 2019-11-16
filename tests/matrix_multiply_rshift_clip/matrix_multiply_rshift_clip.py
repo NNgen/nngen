@@ -47,15 +47,8 @@ def run(a_shape=(15, 15), b_shape=(15, 15), c_shape=(15, 15),
     vc = (np.ones(c.length, dtype=np.int64).reshape(c.shape) *
           [(a_dtype.width + b_dtype.width) // 4])
 
-    vx = ng.verify.multiply(va, vb,
-                            dtype=ng.int32,
-                            x_dtype=a_dtype, y_dtype=b_dtype)
-    vx = ng.verify.rshift(vx, vc,
-                          dtype=ng.int32,
-                          x_dtype=ng.int32, y_dtype=c_dtype)
-    vd = ng.verify.clip(vx,
-                        dtype=d_dtype,
-                        x_dtype=ng.int32)
+    eval_outs = ng.eval([d], a=va, b=vb, c=vc)
+    vd = eval_outs[0]
 
     # to memory image
     size_max = int(math.ceil(max(a.memory_size, b.memory_size,

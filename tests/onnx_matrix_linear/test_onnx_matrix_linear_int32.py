@@ -22,7 +22,6 @@ act_dtype = ng.int32
 weight_dtype = ng.int32
 bias_dtype = ng.int32
 scale_dtype = ng.int32
-out_dtype = ng.int32
 with_batchnorm = False
 act_func = 'relu'
 disable_fusion = False
@@ -44,7 +43,6 @@ def test(request, silent=True):
                                   bias_shape, scale_shape,
                                   act_dtype, weight_dtype,
                                   bias_dtype, scale_dtype,
-                                  out_dtype,
                                   with_batchnorm, act_func, disable_fusion,
                                   par_left_col, par_left_row, par_out_col,
                                   concur_out_col, stationary,
@@ -62,7 +60,6 @@ if __name__ == '__main__':
                                   bias_shape, scale_shape,
                                   act_dtype, weight_dtype,
                                   bias_dtype, scale_dtype,
-                                  out_dtype,
                                   with_batchnorm, act_func, disable_fusion,
                                   par_left_col, par_left_row, par_out_col,
                                   concur_out_col, stationary,

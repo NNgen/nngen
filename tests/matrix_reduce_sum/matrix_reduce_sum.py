@@ -39,10 +39,8 @@ def run(a_shape=(15, 15),
     # verification data
     va = np.arange(a.length, dtype=np.int64).reshape(a.shape) % [16]
 
-    vb = ng.verify.reduce_sum(va,
-                              axis, keep_dims,
-                              dtype=b_dtype,
-                              input_tensor_dtype=a_dtype)
+    eval_outs = ng.eval([b], a=va)
+    vb = eval_outs[0]
 
     # to memory image
     size_max = int(math.ceil(max(a.memory_size, b.memory_size) / 4096)) * 4096

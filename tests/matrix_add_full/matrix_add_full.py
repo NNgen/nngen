@@ -41,9 +41,8 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
     va = np.arange(a.length, dtype=np.int64).reshape(a.shape) % [5]
     vb = b.value
 
-    vc = ng.verify.add(va, vb, par=par,
-                       dtype=c_dtype,
-                       x_dtype=a_dtype, y_dtype=b_dtype)
+    eval_outs = ng.eval([c], a=va)
+    vc = eval_outs[0]
 
     # to memory image
     size_max = int(math.ceil(max(a.memory_size, b.memory_size, c.memory_size) / 4096)) * 4096

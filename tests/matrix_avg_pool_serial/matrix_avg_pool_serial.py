@@ -38,11 +38,8 @@ def run(act_shape=(1, 7, 7, 15),
     # verification data
     vact = np.arange(act.length, dtype=np.int64).reshape(act.shape) % [100] - [40]
 
-    vout = ng.verify.avg_pool_serial(vact, ksize,
-                                     stride, 'SAME',
-                                     out_dtype, ng.int32, 'avg_pool',
-                                     par=par, value_ram_size=value_ram_size,
-                                     out_ram_size=out_ram_size)
+    eval_outs = ng.eval([out], act=vact)
+    vout = eval_outs[0]
 
     # to memory image
     size_max = int(math.ceil(max(act.memory_size, out.memory_size) / 4096)) * 4096

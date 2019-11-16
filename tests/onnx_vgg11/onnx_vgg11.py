@@ -28,7 +28,6 @@ import veriloggen.types.axi as axi
 def run(act_shape=(1, 32, 32, 3),
         act_dtype=ng.int32, weight_dtype=ng.int32,
         bias_dtype=ng.int32, scale_dtype=ng.int32,
-        out_dtype=ng.int32,
         with_batchnorm=False, disable_fusion=False,
         conv2d_par_ich=1, conv2d_par_och=1, conv2d_par_col=1, conv2d_par_row=1,
         conv2d_concur_och=None, conv2d_stationary='filter',
@@ -76,7 +75,7 @@ def run(act_shape=(1, 32, 32, 3),
                                           default_placeholder_dtype=act_dtype,
                                           default_variable_dtype=weight_dtype,
                                           default_constant_dtype=weight_dtype,
-                                          default_operator_dtype=out_dtype,
+                                          default_operator_dtype=act_dtype,
                                           default_scale_dtype=scale_dtype,
                                           default_bias_dtype=bias_dtype,
                                           disable_fusion=disable_fusion)
@@ -235,12 +234,12 @@ def run(act_shape=(1, 32, 32, 3),
                             bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
                             y * out.aligned_shape[2] * out.aligned_shape[3] +
                             x * out.aligned_shape[3] + ch,
-                            out.addr, out_dtype.width)
+                            out.addr, act_dtype.width)
                         check = memory.read_word(
                             bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
                             y * out.aligned_shape[2] * out.aligned_shape[3] +
                             x * out.aligned_shape[3] + ch,
-                            check_addr, out_dtype.width)
+                            check_addr, act_dtype.width)
 
                         if vthread.verilog.NotEql(orig, check):
                             print('NG (', bat, y, x, ch,

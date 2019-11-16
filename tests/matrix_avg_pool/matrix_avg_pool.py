@@ -19,7 +19,7 @@ import veriloggen.types.axi as axi
 
 
 def run(act_shape=(1, 7, 7, 15),
-        act_dtype=ng.int32, out_dtype=ng.int32,
+        act_dtype=ng.int32,
         ksize=(1, 2, 2, 1), stride=(1, 2, 2, 1),
         par=1, value_ram_size=None, out_ram_size=None,
         axi_datawidth=32, silent=False,
@@ -29,7 +29,7 @@ def run(act_shape=(1, 7, 7, 15),
     act = ng.placeholder(act_dtype, shape=act_shape, name='act')
     out = ng.avg_pool(act, ksize=ksize,
                       strides=stride,
-                      sum_dtype=ng.int32, dtype=out_dtype, par=par,
+                      sum_dtype=ng.int32, dtype=act_dtype, par=par,
                       value_ram_size=value_ram_size, out_ram_size=out_ram_size)
 
     targ = ng.to_veriloggen([out], 'matrix_avg_pool', silent=silent,
@@ -38,11 +38,8 @@ def run(act_shape=(1, 7, 7, 15),
     # verification data
     vact = np.arange(act.length, dtype=np.int64).reshape(act.shape) % [100] - [40]
 
-    vout = ng.verify.avg_pool(vact, ksize,
-                              stride, 'SAME',
-                              out_dtype, ng.int32, 'avg_pool',
-                              par=par, value_ram_size=value_ram_size,
-                              out_ram_size=out_ram_size)
+    eval_outs = ng.eval([out], act=vact)
+    vout = eval_outs[0]
 
     # to memory image
     size_max = int(math.ceil(max(act.memory_size, out.memory_size) / 4096)) * 4096
@@ -58,8 +55,8 @@ def run(act_shape=(1, 7, 7, 15),
                    act_dtype.width, act.addr,
                    max(int(math.ceil(axi_datawidth / act_dtype.width)), par))
     axi.set_memory(mem, vout, memimg_datawidth,
-                   out_dtype.width, check_addr,
-                   max(int(math.ceil(axi_datawidth / out_dtype.width)), par))
+                   act_dtype.width, check_addr,
+                   max(int(math.ceil(axi_datawidth / act_dtype.width)), par))
 
     # test controller
     m = Module('test')
@@ -119,11 +116,11 @@ def run(act_shape=(1, 7, 7, 15),
                         orig = memory.read_word(bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
                                                 y * out.aligned_shape[2] * out.aligned_shape[3] +
                                                 x * out.aligned_shape[3] + ch,
-                                                out.addr, out_dtype.width)
+                                                out.addr, act_dtype.width)
                         check = memory.read_word(bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
                                                  y * out.aligned_shape[2] * out.aligned_shape[3] +
                                                  x * out.aligned_shape[3] + ch,
-                                                 check_addr, out_dtype.width)
+                                                 check_addr, act_dtype.width)
 
                         if vthread.verilog.NotEql(orig, check):
                             print('NG (', bat, y, x, ch,

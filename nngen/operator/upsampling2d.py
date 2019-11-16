@@ -399,3 +399,28 @@ class upsampling2d(bt._ElementwiseOperator):
 
         # wait for last DMA write
         bt.dma_wait_write(self.maxi, fsm)
+
+    def eval(self, memo, input_dict, **kwargs):
+        if id(self) in memo:
+            return memo[id(self)]
+
+        import nngen.verify as verify
+
+        name = self.__class__.__name__
+        method = getattr(verify, name, None)
+
+        args = [arg.eval(memo, input_dict)
+                for arg in self.args]
+
+        value = args[0]
+        factors = self.factors
+
+        kwargs['factors'] = self.factors
+        kwargs['dtype'] = self.dtype
+        kwargs['name'] = self.name
+        kwargs['par'] = self.par
+
+        ret = method(value, **kwargs)
+        memo[id(self)] = ret
+
+        return ret

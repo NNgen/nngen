@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(
 import nngen as ng
 import veriloggen
 
-import eval_matrix_less
+import matrix_not_equal
 
 
 a_shape = (15, 15)
@@ -28,7 +28,7 @@ def test(request, silent=True):
 
     simtype = request.config.getoption('--sim')
 
-    rslt = eval_matrix_less.run(a_shape, b_shape,
+    rslt = matrix_not_equal.run(a_shape, b_shape,
                                 a_dtype, b_dtype, c_dtype,
                                 par, axi_datawidth, silent,
                                 filename=None, simtype=simtype,
@@ -39,7 +39,7 @@ def test(request, silent=True):
 
 
 if __name__ == '__main__':
-    rslt = eval_matrix_less.run(a_shape, b_shape,
+    rslt = matrix_not_equal.run(a_shape, b_shape,
                                 a_dtype, b_dtype, c_dtype,
                                 par, axi_datawidth, silent=False,
                                 filename='tmp.v',

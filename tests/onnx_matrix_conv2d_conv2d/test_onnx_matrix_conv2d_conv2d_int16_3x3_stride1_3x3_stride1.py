@@ -19,7 +19,6 @@ weight0_shape = (9, 3, 3, 3)
 weight1_shape = (9, 3, 3, 9)
 act_dtype = ng.int16
 weight_dtype = ng.int16
-out_dtype = ng.int16
 stride0 = 1
 stride1 = 1
 padding0 = 0
@@ -47,7 +46,6 @@ def test(request, silent=True):
     rslt = onnx_matrix_conv2d_conv2d.run(act_shape,
                                          weight0_shape, weight1_shape,
                                          act_dtype, weight_dtype,
-                                         out_dtype,
                                          stride0, stride1,
                                          padding0, padding1,
                                          with_batchnorm0, with_batchnorm1,
@@ -68,7 +66,6 @@ if __name__ == '__main__':
     rslt = onnx_matrix_conv2d_conv2d.run(act_shape,
                                          weight0_shape, weight1_shape,
                                          act_dtype, weight_dtype,
-                                         out_dtype,
                                          stride0, stride1,
                                          padding0, padding1,
                                          with_batchnorm0, with_batchnorm1,

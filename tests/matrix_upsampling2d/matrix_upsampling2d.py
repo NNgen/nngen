@@ -39,7 +39,8 @@ def run(act_shape=(1, 7, 7, 15),
     # verification data
     vact = np.arange(act.length, dtype=np.int64).reshape(act.shape)
 
-    vout = ng.verify.upsampling2d(vact, factors=factors, dtype=out_dtype)
+    eval_outs = ng.eval([out], act=vact)
+    vout = eval_outs[0]
 
     # to memory image
     size_max = int(math.ceil(max(act.memory_size, out.memory_size) / 4096)) * 4096

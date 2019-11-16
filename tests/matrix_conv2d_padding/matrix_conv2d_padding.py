@@ -86,21 +86,8 @@ def run(act_shape=(1, 7, 7, 7), weight_shape=(3, 3, 3, 7),
     else:
         vscale = None
 
-    vout = ng.verify.conv2d(vact, vweight, stride,
-                            vbias, vscale,
-                            rshift_mul, rshift_sum, rshift_out,
-                            act_func, padding,
-                            out_dtype, ng.int32, ng.int32,
-                            'conv2d',
-                            par_ich, par_och, par_col, par_row,
-                            concur_och,
-                            stationary,
-                            input_ram_size, filter_ram_size,
-                            bias_ram_size, scale_ram_size,
-                            None, None, None,
-                            out_ram_size,
-                            False,
-                            act_dtype, weight_dtype)
+    eval_outs = ng.eval([out], act=vact, weight=vweight, bias=vbias, scale=vscale)
+    vout = eval_outs[0]
 
     # to memory image
     size_max = int(math.ceil(max(act.memory_size, weight.memory_size,
