@@ -138,7 +138,7 @@ Another installation way
 The current NNgen and Veriloggen are under the aggresive development.
 Instead of the standard installation, you can download (or git clone) and install the latest version of NNgen, Veriloggen, and other libraries from GitHub.
 
-### Download the latest NNgen, Veriloggen and other libraries from GitHub
+### Download the latest NNgen, Veriloggen, and Pyverilog from GitHub
 
 ```
 git clone https://github.com/NNgen/nngen.git
