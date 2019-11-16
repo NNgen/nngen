@@ -71,14 +71,14 @@ Requirements
 sudo apt install iverilog
 ```
 
+- Jinja2: 2.10 or later
 - Pyverilog: 1.1.4 or later
 - Veriloggen: 1.7.3 or later
-- Jinja2: 2.10 or later
 - NumPy: 1.14 or later
 - ONNX: 1.6.0 or later
 
 ```
-pip3 install veriloggen pyverilog jinja2 numpy onnx
+pip3 install jinja2 pyverilog veriloggen numpy onnx
 ```
 
 Install
@@ -102,7 +102,15 @@ We recommend to install these testing library to verify experimental features.
 - torchvision: 0.4.2 or later
 
 ```
-pip3 install pytest pytest-pythonpath
+pip3 install pytest pytest-pythonpath torch torchvision
+```
+
+For fast RTL simulation, we recommend to install Verilator.
+
+- Verilator: 3.916 or later
+
+```
+sudo apt install verilator
 ```
 
 Optional requirements for documentation
@@ -148,6 +156,19 @@ ln -s ../veriloggen/veriloggen
 ln -s ../Pyverilog/pyverilog
 ```
 
+Docker
+--------------------
+
+Dockerfile is available. You can try NNgen on Docker without any installation on your host platform.
+
+```
+cd docker
+sudo docker build -t user/nngen .
+sudo docker run --name nngen -i -t user/nngen /bin/bash
+cd nngen/examples/mlp/
+make
+```
+
 
 Examples and testing
 ==============================
@@ -160,6 +181,12 @@ To run the testing codes, please type the following commands.
 ```
 cd tests
 python3 -m pytest .
+```
+
+If you use Verilator instead of Icarus Verilog for RTL simulation, set "--sim" option.
+
+```
+python3 -m pytest --sim=verilator .
 ```
 
 
