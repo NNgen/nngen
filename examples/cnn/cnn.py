@@ -24,6 +24,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
         filename=None,
         simtype='iverilog',
         # simtype='verilator',
+        # simtype=None,  # no RTL simulation
         outputfile=None):
 
     # layer 0: conv2d, max_pool_serial, relu
@@ -146,11 +147,11 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     s3_value = np.ones(s3.shape, dtype=np.int64)
     s3.set_value(s3_value)
 
-    # to veriloggen object / to Verilog HDL / to IP-XACT
-    targ = ng.to_veriloggen([output_layer], 'cnn', silent=silent,
-                            config={'maxi_datawidth': axi_datawidth})
-    # targ = ng.to_ipxact([output_layer], 'cnn', silent=silent,
-    #                    config={'maxi_datawidth': axi_datawidth})
+    # to veriloggen object / to IP-XACT with veriloggen object / to Verilog HDL code
+    # targ = ng.to_veriloggen([output_layer], 'cnn', silent=silent,
+    #                        config={'maxi_datawidth': axi_datawidth})
+    targ = ng.to_ipxact([output_layer], 'cnn', silent=silent,
+                        config={'maxi_datawidth': axi_datawidth})
     # rtl = ng.to_verilog([output_layer], 'cnn', silent=silent,
     #                    config={'maxi_datawidth': axi_datawidth})
 
@@ -164,6 +165,13 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     eval_outs = ng.eval([output_layer], input_layer=input_layer_value)
     output_layer_value = eval_outs[0]
     # breakpoint()
+
+    # ----------------------------------------
+    # for RTL simulation using Veriloggen
+    # ----------------------------------------
+
+    if simtype is None:
+        sys.exit()
 
     # to memory image
     param_data = ng.export_ndarray([output_layer], chunk_size)

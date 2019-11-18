@@ -30,3 +30,4 @@ clean:
 #	rm -rf *.pyc __pycache__ parsetab.py .cache *.out *.png *.dot tmp.v uut.vcd
 	rm -rf *.pyc __pycache__ parsetab.py .cache *.out *.dot tmp.v uut.vcd 
 	rm -rf *.onnx
+	rm -rf *_v1_0

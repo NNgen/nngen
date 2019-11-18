@@ -36,6 +36,7 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
         filename=None,
         simtype='iverilog',
         # simtype='verilator',
+        # simtype=None,  # no RTL simulation
         outputfile=None):
 
     act_shape = (1, 224, 224, 3)
@@ -97,10 +98,11 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     act = placeholders['act']
     out = outputs['out']
 
-    targ = ng.to_veriloggen([out], 'onnx_vgg11', silent=silent,
-                            config={'maxi_datawidth': axi_datawidth})
-    # targ = ng.to_ipxact([out], 'vgg11', silent=silent,
-    #                    config={'maxi_datawidth': axi_datawidth})
+    # to veriloggen object / to IP-XACT with veriloggen object / to Verilog HDL code
+    # targ = ng.to_veriloggen([out], 'onnx_vgg11', silent=silent,
+    #                        config={'maxi_datawidth': axi_datawidth})
+    targ = ng.to_ipxact([out], 'vgg11', silent=silent,
+                        config={'maxi_datawidth': axi_datawidth})
     # rtl = ng.to_verilog([out], 'vgg11', silent=silent,
     #                    config={'maxi_datawidth': axi_datawidth})
 
@@ -144,6 +146,13 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
 
     # if max_out_err > 0.1:
     #    raise ValueError("too large output error: %f > 0.1" % max_out_err)
+
+    # ----------------------------------------
+    # for RTL simulation using Veriloggen
+    # ----------------------------------------
+
+    if simtype is None:
+        sys.exit()
 
     # to memory image
     param_data = ng.export_ndarray([out], chunk_size)
