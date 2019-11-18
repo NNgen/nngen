@@ -244,8 +244,8 @@ Simulate a generated hardware by Veriloggen and Verilog simulator
 Related project
 ===============
 
-`Veriloggen <https://github.com/PyHDI/veriloggen>`__ - A library for
-constructing a Verilog HDL source code in Python
+`Veriloggen <https://github.com/PyHDI/veriloggen>`__ - A Mixed-Paradigm
+Hardware Construction Framework
 
 `Pyverilog <https://github.com/PyHDI/Pyverilog>`__ - Python-based
 Hardware Design Processing Toolkit for Verilog HDL

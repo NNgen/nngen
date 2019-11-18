@@ -217,7 +217,7 @@ Related project
 ==============================
 
 [Veriloggen](https://github.com/PyHDI/veriloggen)
-- A library for constructing a Verilog HDL source code in Python
+- A Mixed-Paradigm Hardware Construction Framework
 
 [Pyverilog](https://github.com/PyHDI/Pyverilog)
 - Python-based Hardware Design Processing Toolkit for Verilog HDL
