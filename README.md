@@ -489,6 +489,8 @@ print(output_layer_value)
 
 After all the weights are assigned and the hardware attributes are configured, the NNgen dataflow is ready to be converted to an actual hardware description.
 
+You can specify the hardware parameters, such as a data width of the AXI interface and system-wide signal names, via the "config" argument. Please see "nngen/verilog.py" for all the list of configurable hardware parameters.
+
 NNgen generates an all-inclusive dedicated hardware design for an input DNN model, which includes parallel processing elements, on-chip memories, on-chip network between the processing elements and the on-chip memories, a DMA controller between off-chip memories and on-chip memories, and FSM-based control circuits. Therefore, no external control, such as DMA on CPU is required after the generated hardware begins a computation.
 
 NNgen supports 3 types of output: 1) Veriloggen object, which is Python-based high-level hardware abstraction, 2) IP-XACT, which is a common IP-core format, and 3) Verilog HDL RTL as a text file.
@@ -537,6 +539,8 @@ If you generate a hardware as Veriloggen object or IP-XACT, you can simulate the
 Before the hardware runs, the input data and weight values should be located on the shared off-chip memory. In Verilog simulation in the example, there is a np.ndarray object to represent a dump image of the off-chip memory. You can copy the pre-computed values to the memory image by "axi.set_memory" method.
 
 "param_data" is the unified parameter data of all variables and constants. Locations of the located data are configurable, which can be changed from the CPU via the configuration register of the NNgen hardware. In the following example, the head address of unified parameter data (variblae_addr) is calculated by the same rule as the address calculator in the NNgen compiler.
+
+**Note that all the input, weight, and output data should be located along with their alignments.** Especially, using a narrower data width (for any data) than the AXI interconnect interface and applying the parallelization via the hardware attribute will require special cares of data arrangement. In a synthesis log, you can find the **aligned_shape** for each placeholder, variable, operator. When putting corresponding data on an off-chip memory, a padding will be required.
 
 "ctrl" method in the following example is an emulation of a control program on the CPU, which is actually an FSM circuit of the control sequence synthesized by the procedural high-level synthesis compiler of Veriloggen. By "ng.sim.start" method, the program writes '1' to the "start" register of the NNgen hardware. Then the hardware begins the computation, and the CPU waits until the computation finishes by "ng.sim.wait" method.
 
@@ -839,12 +843,12 @@ If you generated an IP-XACT IP-core, please integrate it on the vender IDE, such
 There are actually various alternatives to access the generated hardware from a software.
 The control sequence of the software is very simple:
 
-- Write input data on the off-chip memory by a software.
+- Write input data on the off-chip memory by a software. Note that all placeholders, variables, and operators have the dedicated memory alignments. **Please check the "aligned_shape" of each object in the synthesis log**. If the original shape and aligned_shape are different, a padding must be inserted to the original data. In most cases, you can convert a original data to a padded data easily by "np.pad" method.
 - Load the weight parameter file (saved above by "np.save" method) and write it on the off-chip memory. 
 - Write a global address offset and relative addresses for temporal space, output data, input data, and variable data via the corresponding registers.
 - Write '1' to Start register (address 16)
 - Polling Busy register (address 20) by a while-loop
-- Read the computation results from the output address.
+- Read the computation results from the output address. Note that the output data also has a dedicated aligned shape. **Please check the "aligned_shape" in the synthesis log.**
 
 
 Related project

@@ -557,6 +557,11 @@ After all the weights are assigned and the hardware attributes are
 configured, the NNgen dataflow is ready to be converted to an actual
 hardware description.
 
+You can specify the hardware parameters, such as a data width of the AXI
+interface and system-wide signal names, via the “config” argument.
+Please see “nngen/verilog.py” for all the list of configurable hardware
+parameters.
+
 NNgen generates an all-inclusive dedicated hardware design for an input
 DNN model, which includes parallel processing elements, on-chip
 memories, on-chip network between the processing elements and the
@@ -629,6 +634,14 @@ changed from the CPU via the configuration register of the NNgen
 hardware. In the following example, the head address of unified
 parameter data (variblae_addr) is calculated by the same rule as the
 address calculator in the NNgen compiler.
+
+**Note that all the input, weight, and output data should be located
+along with their alignments.** Especially, using a narrower data width
+(for any data) than the AXI interconnect interface and applying the
+parallelization via the hardware attribute will require special cares of
+data arrangement. In a synthesis log, you can find the **aligned_shape**
+for each placeholder, variable, operator. When putting corresponding
+data on an off-chip memory, a padding will be required.
 
 “ctrl” method in the following example is an emulation of a control
 program on the CPU, which is actually an FSM circuit of the control
@@ -954,7 +967,13 @@ IDE, such as Vivado, according to the IP-core based design flow.
 There are actually various alternatives to access the generated hardware
 from a software. The control sequence of the software is very simple:
 
--  Write input data on the off-chip memory by a software.
+-  Write input data on the off-chip memory by a software. Note that all
+   placeholders, variables, and operators have the dedicated memory
+   alignments. **Please check the “aligned_shape” of each object in the
+   synthesis log**. If the original shape and aligned_shape are
+   different, a padding must be inserted to the original data. In most
+   cases, you can convert a original data to a padded data easily by
+   “np.pad” method.
 -  Load the weight parameter file (saved above by “np.save” method) and
    write it on the off-chip memory.
 -  Write a global address offset and relative addresses for temporal
@@ -962,7 +981,9 @@ from a software. The control sequence of the software is very simple:
    corresponding registers.
 -  Write ‘1’ to Start register (address 16)
 -  Polling Busy register (address 20) by a while-loop
--  Read the computation results from the output address.
+-  Read the computation results from the output address. Note that the
+   output data also has a dedicated aligned shape. **Please check the
+   “aligned_shape” in the synthesis log.**
 
 Related project
 ===============
