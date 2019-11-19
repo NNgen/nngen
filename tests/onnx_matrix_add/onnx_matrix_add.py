@@ -120,7 +120,7 @@ def run(a_shape=(7, 15), b_shape=(7, 15),
     tmp_addr = int(math.ceil((check_addr + c.memory_size) / 4096)) * 4096
 
     memimg_datawidth = 32
-    mem = np.zeros([1024 * 1024 * 8 // memimg_datawidth], dtype=np.int64)
+    mem = np.zeros([1024 * 1024 * 8 // (memimg_datawidth // 8)], dtype=np.int64)
     mem = mem + [100]
 
     # placeholder

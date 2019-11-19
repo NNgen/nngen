@@ -129,7 +129,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     tmp_addr = int(math.ceil((check_addr + output_layer.memory_size) / chunk_size)) * chunk_size
 
     memimg_datawidth = 32
-    mem = np.zeros([1024 * 1024 * 256 // memimg_datawidth], dtype=np.int64)
+    mem = np.zeros([1024 * 1024 * 256 // (memimg_datawidth // 8)], dtype=np.int64)
     mem = mem + [100]
 
     # placeholder

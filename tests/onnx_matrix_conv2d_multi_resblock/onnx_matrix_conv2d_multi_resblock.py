@@ -205,7 +205,7 @@ def run(act_shape=(1, 7, 7, 15), weight_shape=(15, 3, 3, 15),
     tmp_addr = int(math.ceil((check_addr + out.memory_size) / chunk_size)) * chunk_size
 
     memimg_datawidth = 32
-    mem = np.zeros([1024 * 1024 * 8 // memimg_datawidth], dtype=np.int64)
+    mem = np.zeros([1024 * 1024 * 8 // (memimg_datawidth // 8)], dtype=np.int64)
     mem = mem + [100]
 
     # placeholder
