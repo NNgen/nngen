@@ -580,7 +580,8 @@ on an FPGA.
 
 All weight parameters are zipped into a single np.ndarray by
 “ng.export_ndarray” method. This array will be utilized in actual FPGA
-platform later. So please save it as a binary file.
+platform later. So please save it using “np.save” method as a binary
+file.
 
 .. code:: python
 
@@ -657,9 +658,9 @@ padding will be required according to the word alignment. The difference
 between the original shape and the aligned shape is the size of padding.
 In NNgen, padding is required only at an inner-most dimension.
 
-For an unified variable image, such as “param_data” above, is already
-aligned according to the word alignment. So you don’t have to rearrange
-the data alignment.
+Unified variable images, such as “param_data”, are already aligned
+according to the word alignment. So you don’t have to rearrange the data
+alignment.
 
 .. code:: python
 

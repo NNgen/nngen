@@ -497,7 +497,7 @@ NNgen supports 3 types of output: 1) Veriloggen object, which is Python-based hi
 A generated Veriloggen object can be easily verified by a testing mechanism of Veriloggen and a Verilog simulator.
 A generated IP-XACT IP-core can be integrated with other components via AMBA AXI4 interface on an FPGA.
 
-All weight parameters are zipped into a single np.ndarray by "ng.export_ndarray" method. This array will be utilized in actual FPGA platform later. So please save it as a binary file.
+All weight parameters are zipped into a single np.ndarray by "ng.export_ndarray" method. This array will be utilized in actual FPGA platform later. So please save it using "np.save" method as a binary file.
 
 ``` python
 silent = False
@@ -546,8 +546,7 @@ Before the hardware runs, the input data and weight values should be located on 
 
 **Note that all the input, weight, and output data should be located along with their alignments.** Especially, using a narrower data width (for any data) than the AXI interconnect interface and applying the parallelization via the hardware attribute will require special cares of data arrangement. In a synthesis log, you can find the **word_alignment** and **aligned_shape** for each placeholder, variable, operator. When putting corresponding data on an off-chip memory, a padding will be required according to the word alignment. The difference between the original shape and the aligned shape is the size of padding. In NNgen, padding is required only at an inner-most dimension.
 
-For an unified variable image, such as "param_data" above, is already aligned according to the word alignment. So you don't have to rearrange the data alignment.
-
+Unified variable images, such as "param_data", are already aligned according to the word alignment. So you don't have to rearrange the data alignment.
 
 ``` python
 import math
