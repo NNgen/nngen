@@ -635,14 +635,6 @@ hardware. In the following example, the head address of unified
 parameter data (variblae_addr) is calculated by the same rule as the
 address calculator in the NNgen compiler.
 
-**Note that all the input, weight, and output data should be located
-along with their alignments.** Especially, using a narrower data width
-(for any data) than the AXI interconnect interface and applying the
-parallelization via the hardware attribute will require special cares of
-data arrangement. In a synthesis log, you can find the **aligned_shape**
-for each placeholder, variable, operator. When putting corresponding
-data on an off-chip memory, a padding will be required.
-
 “ctrl” method in the following example is an emulation of a control
 program on the CPU, which is actually an FSM circuit of the control
 sequence synthesized by the procedural high-level synthesis compiler of
@@ -650,6 +642,24 @@ Veriloggen. By “ng.sim.start” method, the program writes ‘1’ to the
 “start” register of the NNgen hardware. Then the hardware begins the
 computation, and the CPU waits until the computation finishes by
 “ng.sim.wait” method.
+
+Data alignment, and “word_alignment” and “aligned_shape”
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Note that all the input, weight, and output data should be located
+along with their alignments.** Especially, using a narrower data width
+(for any data) than the AXI interconnect interface and applying the
+parallelization via the hardware attribute will require special cares of
+data arrangement. In a synthesis log, you can find the
+**word_alignment** and **aligned_shape** for each placeholder, variable,
+operator. When putting corresponding data on an off-chip memory, a
+padding will be required according to the word alignment. The difference
+between the original shape and the aligned shape is the size of padding.
+In NNgen, padding is required only at an inner-most dimension.
+
+For an unified variable image, such as “param_data” above, is already
+aligned according to the word alignment. So you don’t have to rearrange
+the data alignment.
 
 .. code:: python
 
@@ -969,11 +979,13 @@ from a software. The control sequence of the software is very simple:
 
 -  Write input data on the off-chip memory by a software. Note that all
    placeholders, variables, and operators have the dedicated memory
-   alignments. **Please check the “aligned_shape” of each object in the
-   synthesis log**. If the original shape and aligned_shape are
-   different, a padding must be inserted to the original data. In most
-   cases, you can convert a original data to a padded data easily by
-   “np.pad” method.
+   alignments. **Please check the “word_alignment” and “aligned_shape”
+   of each object in the synthesis log**. If the word alignment is
+   greater than 1 and the original shape and aligned_shape are
+   different, a padding must be inserted to the original data according
+   to the the difference between the original shape and the aligned
+   shape. In most cases, you can convert a original data to a padded
+   data easily by “np.pad” method.
 -  Load the weight parameter file (saved above by “np.save” method) and
    write it on the off-chip memory.
 -  Write a global address offset and relative addresses for temporal
