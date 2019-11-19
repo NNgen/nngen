@@ -13,6 +13,7 @@ clean:
 	make clean -C ./examples
 	make clean -C ./tests
 	rm -rf *.egg-info build dist *.pyc __pycache__ parsetab.py .cache *.out *.png *.dot tmp.v uut.vcd
+	rm -rf hello_nngen.v hello_nngen.out hello_nngen_v1_0 hello_nngen.npy
 
 .PHONY: release
 release:

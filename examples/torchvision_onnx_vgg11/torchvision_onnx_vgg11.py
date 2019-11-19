@@ -3,7 +3,6 @@ from __future__ import print_function
 
 import os
 import sys
-import functools
 import math
 import numpy as np
 import PIL
@@ -56,6 +55,10 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     torch.onnx.export(model, dummy_input, onnx_filename,
                       input_names=input_names, output_names=output_names)
 
+    # --------------------
+    # (1) Represent a DNN model as a dataflow by NNgen operators
+    # --------------------
+
     # ONNX to NNgen
     dtypes = {}
     (outputs, placeholders, variables,
@@ -69,7 +72,10 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
                                           default_bias_dtype=bias_dtype,
                                           disable_fusion=disable_fusion)
 
-    # default linear quantization
+    # --------------------
+    # (2) Assign quantized weights to the NNgen operators
+    # --------------------
+
     if act_dtype.width > 8:
         value_ranges = {'act': (0, 255)}
     else:
@@ -77,7 +83,10 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
 
     ng.quantize(outputs, value_ranges=value_ranges)
 
-    # set attribute
+    # --------------------
+    # (3) Assign hardware attributes
+    # --------------------
+
     for op in operators.values():
         if isinstance(op, ng.conv2d):
             op.attribute(par_ich=conv2d_par_ich,
@@ -94,17 +103,9 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
         if ng.is_elementwise_operator(op):
             op.attribute(par=elem_par)
 
-    # create target hardware
-    act = placeholders['act']
-    out = outputs['out']
-
-    # to veriloggen object / to IP-XACT with veriloggen object / to Verilog HDL code
-    # targ = ng.to_veriloggen([out], 'onnx_vgg11', silent=silent,
-    #                        config={'maxi_datawidth': axi_datawidth})
-    targ = ng.to_ipxact([out], 'vgg11', silent=silent,
-                        config={'maxi_datawidth': axi_datawidth})
-    # rtl = ng.to_verilog([out], 'vgg11', silent=silent,
-    #                    config={'maxi_datawidth': axi_datawidth})
+    # --------------------
+    # (4) Verify the DNN model behavior by executing the NNgen dataflow as a software
+    # --------------------
 
     # verification data
     img = np.array(PIL.Image.open('car.png').convert('RGB')).astype(np.float32)
@@ -147,9 +148,29 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     # if max_out_err > 0.1:
     #    raise ValueError("too large output error: %f > 0.1" % max_out_err)
 
-    # ----------------------------------------
-    # for RTL simulation using Veriloggen
-    # ----------------------------------------
+    # --------------------
+    # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)
+    # --------------------
+
+    # create target hardware
+    act = placeholders['act']
+    out = outputs['out']
+
+    # to Veriloggen object
+    # targ = ng.to_veriloggen([out], 'vgg11', silent=silent,
+    #                        config={'maxi_datawidth': axi_datawidth})
+
+    # to IP-XACT (the method returns Veriloggen object, as well as to_veriloggen)
+    targ = ng.to_ipxact([out], 'vgg11', silent=silent,
+                        config={'maxi_datawidth': axi_datawidth})
+
+    # to Verilog HDL RTL (the method returns a source code text)
+    # rtl = ng.to_verilog([out], 'vgg11', silent=silent,
+    #                    config={'maxi_datawidth': axi_datawidth})
+
+    # --------------------
+    # (6) Simulate the generated hardware by Veriloggen and Verilog simulator
+    # --------------------
 
     if simtype is None:
         sys.exit()
@@ -236,14 +257,14 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
                 for x in range(out.shape[2]):
                     for ch in range(out.shape[3]):
                         orig = memory.read_word(
-                            bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
-                            y * out.aligned_shape[2] * out.aligned_shape[3] +
-                            x * out.aligned_shape[3] + ch,
+                            bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3]
+                            + y * out.aligned_shape[2] * out.aligned_shape[3]
+                            + x * out.aligned_shape[3] + ch,
                             out.addr, act_dtype.width)
                         check = memory.read_word(
-                            bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
-                            y * out.aligned_shape[2] * out.aligned_shape[3] +
-                            x * out.aligned_shape[3] + ch,
+                            bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3]
+                            + y * out.aligned_shape[2] * out.aligned_shape[3]
+                            + x * out.aligned_shape[3] + ch,
                             check_addr, act_dtype.width)
 
                         if vthread.verilog.NotEql(orig, check):

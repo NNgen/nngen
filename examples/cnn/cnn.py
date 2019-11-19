@@ -3,7 +3,6 @@ from __future__ import print_function
 
 import os
 import sys
-import functools
 import math
 import numpy as np
 
@@ -27,66 +26,100 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
         # simtype=None,  # no RTL simulation
         outputfile=None):
 
-    # layer 0: conv2d, max_pool_serial, relu
-    input_layer = ng.placeholder(act_dtype, shape=(1, 32, 32, 3),
+    # --------------------
+    # (1) Represent a DNN model as a dataflow by NNgen operators
+    # --------------------
+
+    # input
+    input_layer = ng.placeholder(dtype=act_dtype,
+                                 shape=(1, 32, 32, 3),  # N, H, W, C
                                  name='input_layer')
-    w0 = ng.variable(weight_dtype, shape=(64, 3, 3, 3), name='w0')
-    b0 = ng.variable(bias_dtype, shape=(w0.shape[0],), name='b0')
-    s0 = ng.variable(scale_dtype, shape=(w0.shape[0],), name='s0')
+
+    # layer 0: conv2d (with bias and scale (= batchnorm)), relu, max_pool
+    w0 = ng.variable(dtype=weight_dtype,
+                     shape=(64, 3, 3, 3),  # Och, Ky, Kx, Ich
+                     name='w0')
+    b0 = ng.variable(dtype=bias_dtype,
+                     shape=(w0.shape[0],), name='b0')
+    s0 = ng.variable(dtype=scale_dtype,
+                     shape=(w0.shape[0],), name='s0')
+
     a0 = ng.conv2d(input_layer, w0,
                    strides=(1, 1, 1, 1),
-                   bias=b0, scale=s0,
+                   bias=b0,
+                   scale=s0,
                    act_func=ng.relu,
-                   sum_dtype=ng.dtype_int(64))
-    a0p = ng.max_pool_serial(a0, ksize=(1, 2, 2, 1), strides=(1, 2, 2, 1))
+                   sum_dtype=ng.int64)
+
+    a0p = ng.max_pool_serial(a0,
+                             ksize=(1, 2, 2, 1),
+                             strides=(1, 2, 2, 1))
 
     # layer 1: conv2d, relu, reshape
     w1 = ng.variable(weight_dtype,
-                     shape=(64, 3, 3, a0.shape[-1]), name='w1')
-    b1 = ng.variable(bias_dtype, shape=(w1.shape[0],), name='b1')
-    s1 = ng.variable(scale_dtype, shape=(w1.shape[0],), name='s1')
+                     shape=(64, 3, 3, a0.shape[-1]),
+                     name='w1')
+    b1 = ng.variable(bias_dtype,
+                     shape=(w1.shape[0],),
+                     name='b1')
+    s1 = ng.variable(scale_dtype,
+                     shape=(w1.shape[0],),
+                     name='s1')
+
     a1 = ng.conv2d(a0p, w1,
                    strides=(1, 1, 1, 1),
-                   bias=b1, scale=s1,
+                   bias=b1,
+                   scale=s1,
                    act_func=ng.relu,
-                   sum_dtype=ng.dtype_int(64))
+                   sum_dtype=ng.int64)
+
     a1r = ng.reshape(a1, [1, -1])
 
-    # layer 2: full-connection
-    w2 = ng.variable(weight_dtype, shape=(256, a1r.shape[-1]), name='w2')
-    b2 = ng.variable(bias_dtype, shape=(w2.shape[0],), name='b2')
-    s2 = ng.variable(scale_dtype, shape=(w2.shape[0],), name='s2')
+    # layer 2: full-connection, relu
+    w2 = ng.variable(weight_dtype,
+                     shape=(256, a1r.shape[-1]),
+                     name='w2')
+    b2 = ng.variable(bias_dtype,
+                     shape=(w2.shape[0],),
+                     name='b2')
+    s2 = ng.variable(scale_dtype,
+                     shape=(w2.shape[0],),
+                     name='s2')
+
     a2 = ng.matmul(a1r, w2,
-                   bias=b2, scale=s2,
-                   transposed_b=True, act_func=ng.relu,
-                   sum_dtype=ng.dtype_int(64))
+                   bias=b2,
+                   scale=s2,
+                   transposed_b=True,
+                   act_func=ng.relu,
+                   sum_dtype=ng.int64)
 
-    # layer 3: full-connection
-    w3 = ng.variable(weight_dtype, shape=(10, a2.shape[-1]), name='w3')
-    b3 = ng.variable(bias_dtype, shape=(w3.shape[0],), name='b3')
-    s3 = ng.variable(scale_dtype, shape=(w3.shape[0],), name='s3')
+    # layer 3: full-connection, relu
+    w3 = ng.variable(weight_dtype,
+                     shape=(10, a2.shape[-1]),
+                     name='w3')
+    b3 = ng.variable(bias_dtype,
+                     shape=(w3.shape[0],),
+                     name='b3')
+    s3 = ng.variable(scale_dtype,
+                     shape=(w3.shape[0],),
+                     name='s3')
+
+    # output
     output_layer = ng.matmul(a2, w3,
-                             bias=b3, scale=s3,
-                             transposed_b=True, name='output_layer',
-                             sum_dtype=ng.dtype_int(64))
+                             bias=b3,
+                             scale=s3,
+                             transposed_b=True,
+                             name='output_layer',
+                             sum_dtype=ng.int64)
 
-    # set attributes
-    # par_ich: parallelism in input-channel
-    # par_och: parallelism in output-channel
-    # cshamt_out: right shift amount after applying bias/scale
-    a0.attribute(par_ich=par_ich, par_och=par_och,
-                 cshamt_out=weight_dtype.width + 1)
-    a1.attribute(par_ich=par_ich, par_och=par_och,
-                 cshamt_out=weight_dtype.width + 1)
-    a2.attribute(par_ich=par_ich, par_och=par_och,
-                 cshamt_out=weight_dtype.width + 1)
-    output_layer.attribute(par_ich=par_ich, par_och=par_och,
-                           cshamt_out=weight_dtype.width + 1)
+    # --------------------
+    # (2) Assign quantized weights to the NNgen operators
+    # --------------------
 
-    # set weight values
     # In this example, random integer values are assigned.
     # In real cases, you should assign actual integer weight values
     # obtianed by a training on DNN framework
+
     w0_value = np.random.normal(size=w0.length).reshape(w0.shape)
     w0_value = np.clip(w0_value, -5.0, 5.0)
     w0_value = w0_value * (2.0 ** (weight_dtype.width - 1) - 1) / 5.0
@@ -147,15 +180,37 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     s3_value = np.ones(s3.shape, dtype=np.int64)
     s3.set_value(s3_value)
 
-    # to veriloggen object / to IP-XACT with veriloggen object / to Verilog HDL code
-    # targ = ng.to_veriloggen([output_layer], 'cnn', silent=silent,
-    #                        config={'maxi_datawidth': axi_datawidth})
-    targ = ng.to_ipxact([output_layer], 'cnn', silent=silent,
-                        config={'maxi_datawidth': axi_datawidth})
-    # rtl = ng.to_verilog([output_layer], 'cnn', silent=silent,
-    #                    config={'maxi_datawidth': axi_datawidth})
+    # --------------------
+    # (3) Assign hardware attributes
+    # --------------------
 
-    # software-based verification
+    # conv2d, matmul
+    # par_ich: parallelism in input-channel
+    # par_och: parallelism in output-channel
+    # par_col: parallelism in pixel column
+    # par_row: parallelism in pixel row
+    # cshamt_out: right shift amount after applying bias/scale
+
+    a0.attribute(par_ich=par_ich, par_och=par_och,
+                 cshamt_out=weight_dtype.width + 1)
+    a1.attribute(par_ich=par_ich, par_och=par_och,
+                 cshamt_out=weight_dtype.width + 1)
+    a2.attribute(par_ich=par_ich, par_och=par_och,
+                 cshamt_out=weight_dtype.width + 1)
+    output_layer.attribute(par_ich=par_ich, par_och=par_och,
+                           cshamt_out=weight_dtype.width + 1)
+
+    # max_pool
+    # par: parallelism in in/out channel
+    a0p.attribute(par=par_och)
+
+    # --------------------
+    # (4) Verify the DNN model behavior by executing the NNgen dataflow as a software
+    # --------------------
+
+    # In this example, random integer values are assigned.
+    # In real case, you should assign actual integer activation values, such as an image.
+
     input_layer_value = np.random.normal(size=input_layer.length).reshape(input_layer.shape)
     input_layer_value = np.clip(input_layer_value, -5.0, 5.0)
     input_layer_value = input_layer_value * (2.0 ** (input_layer.dtype.width - 1) - 1) / 5.0
@@ -164,11 +219,28 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
     eval_outs = ng.eval([output_layer], input_layer=input_layer_value)
     output_layer_value = eval_outs[0]
+    # print(output_layer_value)
     # breakpoint()
 
-    # ----------------------------------------
-    # for RTL simulation using Veriloggen
-    # ----------------------------------------
+    # --------------------
+    # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)
+    # --------------------
+
+    # to Veriloggen object
+    # targ = ng.to_veriloggen([output_layer], 'cnn', silent=silent,
+    #                        config={'maxi_datawidth': axi_datawidth})
+
+    # to IP-XACT (the method returns Veriloggen object, as well as to_veriloggen)
+    targ = ng.to_ipxact([output_layer], 'cnn', silent=silent,
+                        config={'maxi_datawidth': axi_datawidth})
+
+    # to Verilog HDL RTL (the method returns a source code text)
+    # rtl = ng.to_verilog([output_layer], 'cnn', silent=silent,
+    #                    config={'maxi_datawidth': axi_datawidth})
+
+    # --------------------
+    # (6) Simulate the generated hardware by Veriloggen and Verilog simulator
+    # --------------------
 
     if simtype is None:
         sys.exit()

@@ -3,7 +3,6 @@ from __future__ import print_function
 
 import os
 import sys
-import functools
 import math
 import numpy as np
 
@@ -26,6 +25,11 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
         # simtype=None,  # no RTL simulation
         outputfile=None):
 
+    # --------------------
+    # (1) Represent a DNN model as a dataflow by NNgen operators
+    # --------------------
+
+    # input
     input_layer = ng.placeholder(act_dtype, shape=(1, 784),
                                  name='input_layer')
 
@@ -39,19 +43,14 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     output_layer = ng.matmul(a0, w1, transposed_b=True, name='output_layer',
                              sum_dtype=ng.dtype_int(64))
 
-    # set attributes
-    # par_ich: parallelism in input-channel
-    # par_och: parallelism in output-channel
-    # cshamt_out: right shift amount after applying bias/scale
-    a0.attribute(par_ich=par_ich, par_och=par_och,
-                 cshamt_out=weight_dtype.width + 1)
-    output_layer.attribute(par_ich=par_ich, par_och=par_och,
-                           cshamt_out=weight_dtype.width + 1)
+    # --------------------
+    # (2) Assign quantized weights to the NNgen operators
+    # --------------------
 
-    # set weight values
     # In this example, random integer values are assigned.
     # In real cases, you should assign actual integer weight values
     # obtianed by a training on DNN framework
+
     w0_value = np.random.normal(size=w0.length).reshape(w0.shape)
     w0_value = np.clip(w0_value, -5.0, 5.0)
     w0_value = w0_value * (2.0 ** (weight_dtype.width - 1) - 1) / 5.0
@@ -64,15 +63,29 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     w1_value = np.round(w1_value).astype(np.int64)
     w1.set_value(w1_value)
 
-    # to veriloggen object / to IP-XACT with veriloggen object / to Verilog HDL code
-    # targ = ng.to_veriloggen([output_layer], 'mlp', silent=silent,
-    #                        config={'maxi_datawidth': axi_datawidth})
-    targ = ng.to_ipxact([output_layer], 'mlp', silent=silent,
-                        config={'maxi_datawidth': axi_datawidth})
-    # rtl = ng.to_verilog([output_layer], 'mlp', silent=silent,
-    #                    config={'maxi_datawidth': axi_datawidth})
+    # --------------------
+    # (3) Assign hardware attributes
+    # --------------------
 
-    # software-based verification
+    # conv2d, matmul
+    # par_ich: parallelism in input-channel
+    # par_och: parallelism in output-channel
+    # par_col: parallelism in pixel column
+    # par_row: parallelism in pixel row
+    # cshamt_out: right shift amount after applying bias/scale
+
+    a0.attribute(par_ich=par_ich, par_och=par_och,
+                 cshamt_out=weight_dtype.width + 1)
+    output_layer.attribute(par_ich=par_ich, par_och=par_och,
+                           cshamt_out=weight_dtype.width + 1)
+
+    # --------------------
+    # (4) Verify the DNN model behavior by executing the NNgen dataflow as a software
+    # --------------------
+
+    # In this example, random integer values are assigned.
+    # In real case, you should assign actual integer activation values, such as an image.
+
     input_layer_value = np.random.normal(size=input_layer.length).reshape(input_layer.shape)
     input_layer_value = np.clip(input_layer_value, -5.0, 5.0)
     input_layer_value = input_layer_value * (2.0 ** (input_layer.dtype.width - 1) - 1) / 5.0
@@ -83,9 +96,25 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     output_layer_value = eval_outs[0]
     # breakpoint()
 
-    # ----------------------------------------
-    # for RTL simulation using Veriloggen
-    # ----------------------------------------
+    # --------------------
+    # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)
+    # --------------------
+
+    # to Veriloggen object
+    # targ = ng.to_veriloggen([output_layer], 'mlp', silent=silent,
+    #                        config={'maxi_datawidth': axi_datawidth})
+
+    # to IP-XACT (the method returns Veriloggen object, as well as to_veriloggen)
+    targ = ng.to_ipxact([output_layer], 'mlp', silent=silent,
+                        config={'maxi_datawidth': axi_datawidth})
+
+    # to Verilog HDL RTL (the method returns a source code text)
+    # rtl = ng.to_verilog([output_layer], 'mlp', silent=silent,
+    #                    config={'maxi_datawidth': axi_datawidth})
+
+    # --------------------
+    # (6) Simulate the generated hardware by Veriloggen and Verilog simulator
+    # --------------------
 
     if simtype is None:
         sys.exit()
