@@ -227,27 +227,19 @@ def run(act_shape=(1, 32, 32, 3),
         # verify
         ok = True
         for bat in range(out.shape[0]):
-            for y in range(out.shape[1]):
-                for x in range(out.shape[2]):
-                    for ch in range(out.shape[3]):
-                        orig = memory.read_word(
-                            bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
-                            y * out.aligned_shape[2] * out.aligned_shape[3] +
-                            x * out.aligned_shape[3] + ch,
-                            out.addr, act_dtype.width)
-                        check = memory.read_word(
-                            bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
-                            y * out.aligned_shape[2] * out.aligned_shape[3] +
-                            x * out.aligned_shape[3] + ch,
-                            check_addr, act_dtype.width)
+            for x in range(out.shape[1]):
+                orig = memory.read_word(bat * out.aligned_shape[1] + x,
+                                        out.addr, act_dtype.width)
+                check = memory.read_word(bat * out.aligned_shape[1] + x,
+                                         check_addr, act_dtype.width)
 
-                        if vthread.verilog.NotEql(orig, check):
-                            print('NG (', bat, y, x, ch,
-                                  ') orig: ', orig, ' check: ', check)
-                            ok = False
-                        # else:
-                        #    print('OK (', bat, y, x, ch,
-                        #          ') orig: ', orig, ' check: ', check)
+                if vthread.verilog.NotEql(orig, check):
+                    print('NG (', bat, x,
+                          ') orig: ', orig, ' check: ', check)
+                    ok = False
+                # else:
+                #    print('OK (', bat, x,
+                #          ') orig: ', orig, ' check: ', check)
 
         if ok:
             print('# verify: PASSED')
