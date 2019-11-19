@@ -418,6 +418,17 @@ NNgen provides a simple (but experimental) quantizer that converts floating-poin
 
 You can use quantizer even if you assign "float" parameters to variables by "set_value" method. Note that it is still experimental implementation. If you have an own better quantizer, please use it.
 
+The quantizer assumes that the input of every layer has the Gaussian distribution. You can set min/max ranges of input values by the value_range argument.
+
+```python
+if act_dtype.width > 8:
+    value_ranges = {'act': (0, 255)}
+else:
+    value_ranges = {'act': (0, 2 ** (act_dtype.width - 1) - 1)}
+
+ng.quantize(outputs, value_ranges=value_ranges)
+```
+
 (3) Assign hardware attributes
 --------------------
 
