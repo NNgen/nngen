@@ -107,6 +107,9 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     # (4) Verify the DNN model behavior by executing the NNgen dataflow as a software
     # --------------------
 
+    act = placeholders['act']
+    out = outputs['out']
+
     # verification data
     img = np.array(PIL.Image.open('car.png').convert('RGB')).astype(np.float32)
     img = img.reshape([1] + list(img.shape))
@@ -151,10 +154,6 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     # --------------------
     # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)
     # --------------------
-
-    # create target hardware
-    act = placeholders['act']
-    out = outputs['out']
 
     # to Veriloggen object
     # targ = ng.to_veriloggen([out], 'vgg11', silent=silent,
