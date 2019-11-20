@@ -26,7 +26,7 @@ import veriloggen.types.axi as axi
 
 
 def run(act_shape=(1, 7, 7, 3),
-        act_dtype=ng.int32, out_dtype=ng.int32,
+        act_dtype=ng.int32,
         ksize=2, stride=2, padding=0,
         par=1,
         chunk_size=64,
@@ -57,7 +57,7 @@ def run(act_shape=(1, 7, 7, 3),
                                           default_placeholder_dtype=act_dtype,
                                           default_variable_dtype=ng.int32,
                                           default_constant_dtype=ng.int32,
-                                          default_operator_dtype=out_dtype,
+                                          default_operator_dtype=act_dtype,
                                           default_scale_dtype=ng.int32,
                                           default_bias_dtype=ng.int32,
                                           disable_fusion=False)
@@ -106,7 +106,7 @@ def run(act_shape=(1, 7, 7, 3),
     #    raise ValueError("too large output error: %f > 0.1" % max_out_err)
 
     # to memory image
-    param_data = ng.make_param_array(variables, constants, chunk_size)
+    param_data = ng.export_ndarray([out])
     param_bytes = len(param_data)
 
     variable_addr = int(math.ceil((act.addr + act.memory_size) / chunk_size)) * chunk_size
@@ -114,7 +114,7 @@ def run(act_shape=(1, 7, 7, 3),
     tmp_addr = int(math.ceil((check_addr + out.memory_size) / chunk_size)) * chunk_size
 
     memimg_datawidth = 32
-    mem = np.zeros([1024 * 1024 * 8 // memimg_datawidth], dtype=np.int64)
+    mem = np.zeros([1024 * 1024 * 8 // (memimg_datawidth // 8)], dtype=np.int64)
     mem = mem + [100]
 
     # placeholder
@@ -128,8 +128,8 @@ def run(act_shape=(1, 7, 7, 3),
 
     # verification data
     axi.set_memory(mem, vout, memimg_datawidth,
-                   out_dtype.width, check_addr,
-                   max(int(math.ceil(axi_datawidth / out_dtype.width)), par))
+                   act_dtype.width, check_addr,
+                   max(int(math.ceil(axi_datawidth / act_dtype.width)), par))
 
     # test controller
     m = Module('test')
@@ -190,12 +190,12 @@ def run(act_shape=(1, 7, 7, 3),
                             bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
                             y * out.aligned_shape[2] * out.aligned_shape[3] +
                             x * out.aligned_shape[3] + ch,
-                            out.addr, out_dtype.width)
+                            out.addr, act_dtype.width)
                         check = memory.read_word(
                             bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
                             y * out.aligned_shape[2] * out.aligned_shape[3] +
                             x * out.aligned_shape[3] + ch,
-                            check_addr, out_dtype.width)
+                            check_addr, act_dtype.width)
 
                         if vthread.verilog.NotEql(orig, check):
                             print('NG (', bat, y, x, ch,

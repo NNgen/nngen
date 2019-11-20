@@ -38,11 +38,8 @@ def run(act_shape=(1, 7, 7, 15),
     # verification data
     vact = np.arange(act.length, dtype=np.int64).reshape(act.shape) % [100] - [40]
 
-    vout = ng.verify.avg_pool(vact, ksize,
-                              stride, 'SAME',
-                              out_dtype, ng.int32, 'avg_pool',
-                              par=par, value_ram_size=value_ram_size,
-                              out_ram_size=out_ram_size)
+    eval_outs = ng.eval([out], act=vact)
+    vout = eval_outs[0]
 
     # to memory image
     size_max = int(math.ceil(max(act.memory_size, out.memory_size) / 4096)) * 4096
@@ -51,7 +48,7 @@ def run(act_shape=(1, 7, 7, 15),
     tmp_addr = check_addr + size_check
 
     memimg_datawidth = 32
-    mem = np.zeros([1024 * 1024 * 8 // memimg_datawidth], dtype=np.int64)
+    mem = np.zeros([1024 * 1024 * 8 // (memimg_datawidth // 8)], dtype=np.int64)
     mem = mem + [100]
 
     axi.set_memory(mem, vact, memimg_datawidth,

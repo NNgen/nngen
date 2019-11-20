@@ -389,9 +389,27 @@ class add_n(bt._ElementwiseOperator):
                                          dtype=dtype, shape=shape, name=name, par=par)
 
     def eval(self, memo, input_dict, **kwargs):
+        if id(self) in memo:
+            return memo[id(self)]
+
+        import nngen.verify as verify
+
+        name = self.__class__.__name__
+        method = getattr(verify, name, None)
+
+        args = [arg.eval(memo, input_dict)
+                for arg in self.args]
+
         arg_dtypes = [arg.dtype for arg in self.args]
         kwargs['arg_dtypes'] = arg_dtypes
-        return bt._ElementwiseOperator.eval(self, memo, input_dict, **kwargs)
+        kwargs['dtype'] = self.dtype
+        kwargs['name'] = self.name
+        kwargs['par'] = self.par
+
+        ret = method(args, **kwargs)
+        memo[id(self)] = ret
+
+        return ret
 
 
 class lshift(bt._ElementwiseOperator):
@@ -683,7 +701,7 @@ class _reduce_op(bt._ReductionOperator):
 
     def eval(self, memo, input_dict, **kwargs):
         kwargs['input_tensor_dtype'] = self.args[0].dtype
-        return bt._ElementwiseOperator.eval(self, memo, input_dict, **kwargs)
+        return bt._ReductionOperator.eval(self, memo, input_dict, **kwargs)
 
 
 class reduce_sum(_reduce_op):
@@ -790,7 +808,7 @@ class transpose(bt._Operator):
 
         if perm is None:
             perm = tuple(reversed(range(bt.get_rank(a_shape))))
-        self.perm = perm
+        self.transpose_perm = perm
 
         shape = []
         for p in perm:
@@ -828,7 +846,7 @@ class transpose(bt._Operator):
         arg_shape = arg.get_aligned_shape()
 
         # burst read, scatter write
-        write_order = list(reversed([self.perm.index(i)
+        write_order = list(reversed([self.transpose_perm.index(i)
                                      for i in range(len(shape))]))
         write_pattern = bt.shape_to_pattern(shape, write_order)
 
@@ -895,3 +913,24 @@ class transpose(bt._Operator):
         fsm.If(laddr < read_size - 1).goto(modify_state)
         fsm.If(laddr == read_size - 1).goto(read_state)
         fsm.If(prev_done).goto_next()
+
+    def eval(self, memo, input_dict, **kwargs):
+        if id(self) in memo:
+            return memo[id(self)]
+
+        import nngen.verify as verify
+
+        name = self.__class__.__name__
+        method = getattr(verify, name, None)
+
+        args = [arg.eval(memo, input_dict)
+                for arg in self.args]
+
+        kwargs['perm'] = self.transpose_perm
+        kwargs['dtype'] = self.dtype
+        kwargs['name'] = self.name
+
+        ret = method(*args, **kwargs)
+        memo[id(self)] = ret
+
+        return ret

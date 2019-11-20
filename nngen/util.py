@@ -110,11 +110,47 @@ def to_storage_dict(*args, **kwargs):
     return d
 
 
-def make_param_array(variables, constants, chunk_size=64):
+def export_ndarray(objs, chunk_size=64):
+
+    if not isinstance(objs, (list, tuple)):
+        objs = [objs]
+
+    objs = _collect_numerics(objs)
+
+    variables = []
+    for obj in objs:
+        if isinstance(obj, st.variable):
+            variables.append(obj)
+
+    constants = []
+    for obj in objs:
+        if isinstance(obj, st.constant):
+            constants.append(obj)
+
+    return make_ndarray(variables, constants, chunk_size)
+
+
+def _collect_numerics(objs):
+    new_objs = []
+    for obj in objs:
+        new_objs.extend(obj.collect_numerics())
+
+    ret = sorted(set(new_objs), key=new_objs.index)
+    ret.sort(key=lambda x: x.object_id)
+    return ret
+
+
+def make_ndarray(variables, constants, chunk_size=64):
     min_addr = 2 ** 64
     max_addr = 0
 
-    for name, variable in variables.items():
+    if isinstance(variables, dict):
+        variables = list(variables.values())
+
+    if isinstance(constants, dict):
+        constants = list(constants.values())
+
+    for variable in variables:
         if not isinstance(variable, st.variable):
             raise TypeError("'%s' is not variable.'" % str(variable))
 
@@ -125,7 +161,7 @@ def make_param_array(variables, constants, chunk_size=64):
         size = aligned_size(variable.memory_size, chunk_size)
         max_addr = max(max_addr, variable.addr + size)
 
-    for name, constant in constants.items():
+    for constant in constants:
         if not isinstance(constant, st.constant):
             raise TypeError("'%s' is not _Constant.'" % str(constant))
 
@@ -144,7 +180,7 @@ def make_param_array(variables, constants, chunk_size=64):
     param = np.zeros([max_addr - min_addr], dtype=np.uint8)
     dst_width = 8
 
-    for name, variable in variables.items():
+    for variable in variables:
         if variable.maxi is None:
             continue
         if variable.value is None:
@@ -155,7 +191,7 @@ def make_param_array(variables, constants, chunk_size=64):
         alignment = variable.get_word_alignment()
         axi.set_memory(param, variable.value, dst_width, src_width, dst_offset, alignment)
 
-    for name, constant in constants.items():
+    for constant in constants:
         if constant.maxi is None:
             continue
 

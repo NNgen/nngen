@@ -138,7 +138,7 @@ def find_optimal_rshift(node, filter, bias, scale,
         for _ in range(num_trials):
             input = np.random.normal(size=input_length).reshape(input_shape)
             input = np.clip(input, -input_threshold, input_threshold)
-            input = input * (1.0 * (2 ** (input_bits - 1) - 1)) / input_threshold
+            input = input * (2.0 ** (input_bits - 1) - 1) / input_threshold
             input = np.round(input).astype(np.int64)
 
             acc_overflow += try_rshift(node, input, filter, bias, scale,

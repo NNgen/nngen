@@ -6,7 +6,7 @@ import numpy as np
 import functools
 
 
-def leaky_relu(features, slope, rshift, dtype=None, name=None,
+def leaky_relu(features, slope, rshift, dtype=None, name=None, par=1,
                features_dtype=None):
 
     if rshift is None:

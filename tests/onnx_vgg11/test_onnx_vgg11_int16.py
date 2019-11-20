@@ -19,7 +19,6 @@ act_dtype = ng.int16
 weight_dtype = ng.int16
 bias_dtype = ng.int16
 scale_dtype = ng.int16
-out_dtype = ng.int16
 with_batchnorm = False
 disable_fusion = False
 conv2d_par_ich = 1
@@ -42,7 +41,6 @@ def test(request, silent=True):
     rslt = onnx_vgg11.run(act_shape,
                           act_dtype, weight_dtype,
                           bias_dtype, scale_dtype,
-                          out_dtype,
                           with_batchnorm, disable_fusion,
                           conv2d_par_ich, conv2d_par_och, conv2d_par_col, conv2d_par_row,
                           conv2d_concur_och, conv2d_stationary,
@@ -60,7 +58,6 @@ if __name__ == '__main__':
     rslt = onnx_vgg11.run(act_shape,
                           act_dtype, weight_dtype,
                           bias_dtype, scale_dtype,
-                          out_dtype,
                           with_batchnorm, disable_fusion,
                           conv2d_par_ich, conv2d_par_och, conv2d_par_col, conv2d_par_row,
                           conv2d_concur_och, conv2d_stationary,

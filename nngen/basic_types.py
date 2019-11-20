@@ -136,7 +136,15 @@ class _Numeric(_Node):
         return self.get_length()
 
     @property
+    def size(self):
+        return self.get_length()
+
+    @property
     def aligned_length(self):
+        return self.get_aligned_length()
+
+    @property
+    def aligned_size(self):
         return self.get_aligned_length()
 
     @property

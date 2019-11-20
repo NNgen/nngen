@@ -1,5 +1,5 @@
 """
-   NNgen: Neural Network Accelerator Generator
+   NNgen: A Fully-Customizable Hardware Synthesis Compiler for Deep Neural Network
 
    Copyright 2017, Shinya Takamaeda-Yamazaki and Contributors
 

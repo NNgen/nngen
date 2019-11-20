@@ -10,13 +10,36 @@ import nngen.basic_types as bt
 class leaky_relu_base(bt._ElementwiseOperator):
     input_chainable = True
     output_chainable = True
+    slope = None
+    rshift = None
 
     def __init__(self, features, dtype=None, name=None, par=1):
         shape = None
         bt._ElementwiseOperator.__init__(self, features,
                                          dtype=dtype, shape=shape, name=name, par=par)
-        self.slope = None
-        self.rshift = None
+
+    def eval(self, memo, input_dict, **kwargs):
+        if id(self) in memo:
+            return memo[id(self)]
+
+        import nngen.verify as verify
+
+        name = 'leaky_relu'
+        method = getattr(verify, name, None)
+
+        args = [arg.eval(memo, input_dict)
+                for arg in self.args]
+
+        kwargs['slope'] = self.slope
+        kwargs['rshift'] = self.rshift
+        kwargs['dtype'] = self.dtype
+        kwargs['name'] = self.name
+        kwargs['par'] = self.par
+
+        ret = method(*args, **kwargs)
+        memo[id(self)] = ret
+
+        return ret
 
 
 leaky_relu_cache = {}

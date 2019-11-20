@@ -62,7 +62,6 @@ class MatrixConv2dConcat(nn.Module):
 
 def run(act_shape=(1, 7, 7, 15), weight_shape=(15, 3, 3, 15),
         act_dtype=ng.int32, weight_dtype=ng.int32,
-        out_dtype=ng.int32,
         stride=1, padding=1,
         with_batchnorm=False, act_func='relu', disable_fusion=False,
         par_ich=1, par_och=1, par_col=1, par_row=1,
@@ -99,7 +98,7 @@ def run(act_shape=(1, 7, 7, 15), weight_shape=(15, 3, 3, 15),
                                           default_placeholder_dtype=act_dtype,
                                           default_variable_dtype=weight_dtype,
                                           default_constant_dtype=weight_dtype,
-                                          default_operator_dtype=out_dtype,
+                                          default_operator_dtype=act_dtype,
                                           default_scale_dtype=ng.int32,
                                           default_bias_dtype=ng.int32,
                                           disable_fusion=disable_fusion)
@@ -165,7 +164,7 @@ def run(act_shape=(1, 7, 7, 15), weight_shape=(15, 3, 3, 15),
     #    raise ValueError("too large output error: %f > 0.1" % max_out_err)
 
     # to memory image
-    param_data = ng.make_param_array(variables, constants, chunk_size)
+    param_data = ng.export_ndarray([out], chunk_size)
     param_bytes = len(param_data)
 
     variable_addr = int(math.ceil((act.addr + act.memory_size) / chunk_size)) * chunk_size
@@ -173,7 +172,7 @@ def run(act_shape=(1, 7, 7, 15), weight_shape=(15, 3, 3, 15),
     tmp_addr = int(math.ceil((check_addr + out.memory_size) / chunk_size)) * chunk_size
 
     memimg_datawidth = 32
-    mem = np.zeros([1024 * 1024 * 8 // memimg_datawidth], dtype=np.int64)
+    mem = np.zeros([1024 * 1024 * 8 // (memimg_datawidth // 8)], dtype=np.int64)
     mem = mem + [100]
 
     # placeholder
@@ -187,8 +186,8 @@ def run(act_shape=(1, 7, 7, 15), weight_shape=(15, 3, 3, 15),
 
     # verification data
     axi.set_memory(mem, vout, memimg_datawidth,
-                   out_dtype.width, check_addr,
-                   max(int(math.ceil(axi_datawidth / out_dtype.width)), par_och))
+                   act_dtype.width, check_addr,
+                   max(int(math.ceil(axi_datawidth / act_dtype.width)), par_och))
 
     # test controller
     m = Module('test')
@@ -249,12 +248,12 @@ def run(act_shape=(1, 7, 7, 15), weight_shape=(15, 3, 3, 15),
                             bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
                             y * out.aligned_shape[2] * out.aligned_shape[3] +
                             x * out.aligned_shape[3] + ch,
-                            out.addr, out_dtype.width)
+                            out.addr, act_dtype.width)
                         check = memory.read_word(
                             bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
                             y * out.aligned_shape[2] * out.aligned_shape[3] +
                             x * out.aligned_shape[3] + ch,
-                            check_addr, out_dtype.width)
+                            check_addr, act_dtype.width)
 
                         if vthread.verilog.NotEql(orig, check):
                             print('NG (', bat, y, x, ch,

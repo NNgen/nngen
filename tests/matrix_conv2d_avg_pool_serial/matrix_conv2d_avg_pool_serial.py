@@ -86,25 +86,8 @@ def run(act_shape=(1, 7, 7, 15), weight_shape=(7, 3, 3, 15),
     else:
         vscale = None
 
-    vtmp = ng.verify.conv2d(vact, vweight, conv2d_stride,
-                            vbias, vscale,
-                            rshift_mul, rshift_sum, rshift_out,
-                            act_func, 'SAME',
-                            out_dtype, ng.int32, ng.int32,
-                            'conv2d',
-                            par_ich, par_och, par_col, par_row,
-                            concur_och, stationary,
-                            input_ram_size, filter_ram_size,
-                            bias_ram_size, scale_ram_size,
-                            None, None, None,
-                            out_ram_size,
-                            False,
-                            act_dtype, weight_dtype)
-
-    vout = ng.verify.avg_pool_serial(vtmp, ksize,
-                                     pool_stride, 'SAME',
-                                     out_dtype, ng.int32, 'avg_pool',
-                                     par=par)
+    eval_outs = ng.eval([out], act=vact, weight=vweight, bias=vbias, scale=vscale)
+    vout = eval_outs[0]
 
     # to memory image
     size_max = int(math.ceil(max(act.memory_size, weight.memory_size,
@@ -119,7 +102,7 @@ def run(act_shape=(1, 7, 7, 15), weight_shape=(7, 3, 3, 15),
     tmp_addr = check_addr + size_check
 
     memimg_datawidth = 32
-    mem = np.zeros([1024 * 1024 * 8 // memimg_datawidth], dtype=np.int64)
+    mem = np.zeros([1024 * 1024 * 8 // (memimg_datawidth // 8)], dtype=np.int64)
     mem = mem + [100]
 
     axi.set_memory(mem, vact, memimg_datawidth,

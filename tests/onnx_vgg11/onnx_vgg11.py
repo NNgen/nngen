@@ -28,7 +28,6 @@ import veriloggen.types.axi as axi
 def run(act_shape=(1, 32, 32, 3),
         act_dtype=ng.int32, weight_dtype=ng.int32,
         bias_dtype=ng.int32, scale_dtype=ng.int32,
-        out_dtype=ng.int32,
         with_batchnorm=False, disable_fusion=False,
         conv2d_par_ich=1, conv2d_par_och=1, conv2d_par_col=1, conv2d_par_row=1,
         conv2d_concur_och=None, conv2d_stationary='filter',
@@ -76,7 +75,7 @@ def run(act_shape=(1, 32, 32, 3),
                                           default_placeholder_dtype=act_dtype,
                                           default_variable_dtype=weight_dtype,
                                           default_constant_dtype=weight_dtype,
-                                          default_operator_dtype=out_dtype,
+                                          default_operator_dtype=act_dtype,
                                           default_scale_dtype=scale_dtype,
                                           default_bias_dtype=bias_dtype,
                                           disable_fusion=disable_fusion)
@@ -151,7 +150,7 @@ def run(act_shape=(1, 32, 32, 3),
     #    raise ValueError("too large output error: %f > 0.1" % max_out_err)
 
     # to memory image
-    param_data = ng.make_param_array(variables, constants, chunk_size)
+    param_data = ng.export_ndarray([out], chunk_size)
     param_bytes = len(param_data)
 
     variable_addr = int(math.ceil((act.addr + act.memory_size) / chunk_size)) * chunk_size
@@ -159,7 +158,7 @@ def run(act_shape=(1, 32, 32, 3),
     tmp_addr = int(math.ceil((check_addr + out.memory_size) / chunk_size)) * chunk_size
 
     memimg_datawidth = 32
-    mem = np.zeros([1024 * 1024 * 256 // memimg_datawidth], dtype=np.int64)
+    mem = np.zeros([1024 * 1024 * 256 // (memimg_datawidth // 8)], dtype=np.int64)
     mem = mem + [100]
 
     # placeholder
@@ -228,27 +227,19 @@ def run(act_shape=(1, 32, 32, 3),
         # verify
         ok = True
         for bat in range(out.shape[0]):
-            for y in range(out.shape[1]):
-                for x in range(out.shape[2]):
-                    for ch in range(out.shape[3]):
-                        orig = memory.read_word(
-                            bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
-                            y * out.aligned_shape[2] * out.aligned_shape[3] +
-                            x * out.aligned_shape[3] + ch,
-                            out.addr, out_dtype.width)
-                        check = memory.read_word(
-                            bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
-                            y * out.aligned_shape[2] * out.aligned_shape[3] +
-                            x * out.aligned_shape[3] + ch,
-                            check_addr, out_dtype.width)
+            for x in range(out.shape[1]):
+                orig = memory.read_word(bat * out.aligned_shape[1] + x,
+                                        out.addr, act_dtype.width)
+                check = memory.read_word(bat * out.aligned_shape[1] + x,
+                                         check_addr, act_dtype.width)
 
-                        if vthread.verilog.NotEql(orig, check):
-                            print('NG (', bat, y, x, ch,
-                                  ') orig: ', orig, ' check: ', check)
-                            ok = False
-                        # else:
-                        #    print('OK (', bat, y, x, ch,
-                        #          ') orig: ', orig, ' check: ', check)
+                if vthread.verilog.NotEql(orig, check):
+                    print('NG (', bat, x,
+                          ') orig: ', orig, ' check: ', check)
+                    ok = False
+                # else:
+                #    print('OK (', bat, x,
+                #          ') orig: ', orig, ' check: ', check)
 
         if ok:
             print('# verify: PASSED')

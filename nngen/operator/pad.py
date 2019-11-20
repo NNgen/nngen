@@ -41,3 +41,27 @@ class pad(_pool):
 
     def pool_op(self, strm, index, *vars):
         return vars[0]
+
+    def eval(self, memo, input_dict, **kwargs):
+        if id(self) in memo:
+            return memo[id(self)]
+
+        import nngen.verify as verify
+
+        name = self.__class__.__name__
+        method = getattr(verify, name, None)
+
+        args = [arg.eval(memo, input_dict)
+                for arg in self.args]
+
+        value = args[0]
+
+        kwargs['padding'] = self.padding
+        kwargs['dtype'] = self.dtype
+        kwargs['name'] = self.name
+        kwargs['par'] = self.par
+
+        ret = method(value, **kwargs)
+        memo[id(self)] = ret
+
+        return ret

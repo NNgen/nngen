@@ -18,7 +18,6 @@ act_shape = (1, 7, 7, 3)
 weight_shape = (9, 3, 3, 3)
 act_dtype = ng.int32
 weight_dtype = ng.int32
-out_dtype = ng.int32
 stride = 1
 padding = 1
 with_batchnorm = False
@@ -41,7 +40,6 @@ def test(request, silent=True):
 
     rslt = onnx_matrix_conv2d.run(act_shape, weight_shape,
                                   act_dtype, weight_dtype,
-                                  out_dtype,
                                   stride, padding,
                                   with_batchnorm, act_func, disable_fusion,
                                   par_ich, par_och, par_col, par_row,
@@ -58,7 +56,6 @@ def test(request, silent=True):
 if __name__ == '__main__':
     rslt = onnx_matrix_conv2d.run(act_shape, weight_shape,
                                   act_dtype, weight_dtype,
-                                  out_dtype,
                                   stride, padding,
                                   with_batchnorm, act_func, disable_fusion,
                                   par_ich, par_och, par_col, par_row,

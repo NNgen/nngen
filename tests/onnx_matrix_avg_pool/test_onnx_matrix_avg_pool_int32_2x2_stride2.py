@@ -16,7 +16,6 @@ import onnx_matrix_avg_pool
 
 act_shape = (1, 7, 7, 3)
 act_dtype = ng.int32
-out_dtype = ng.int32
 ksize = 2
 stride = 2
 padding = 0
@@ -30,7 +29,7 @@ def test(request, silent=True):
 
     simtype = request.config.getoption('--sim')
 
-    rslt = onnx_matrix_avg_pool.run(act_shape, act_dtype, out_dtype,
+    rslt = onnx_matrix_avg_pool.run(act_shape, act_dtype,
                                     ksize, stride, padding,
                                     par,
                                     chunk_size,
@@ -43,7 +42,7 @@ def test(request, silent=True):
 
 
 if __name__ == '__main__':
-    rslt = onnx_matrix_avg_pool.run(act_shape, act_dtype, out_dtype,
+    rslt = onnx_matrix_avg_pool.run(act_shape, act_dtype,
                                     ksize, stride, padding,
                                     par,
                                     chunk_size,

@@ -36,11 +36,13 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
     e = ng.add(b, a, dtype=c_dtype, par=par)
 
     # SW returns ng.add(x, y)
-    f = ng.extern([d, e], shape=a_shape, opcode=0x1)
+    f = ng.extern([d, e], shape=a_shape, opcode=0x1,
+                  func=lambda x, y: x + y)
     g = ng.sub(f, a)
 
     # SW returns d as-is
-    h = ng.extern([g], shape=a_shape, opcode=0x2)
+    h = ng.extern([g], shape=a_shape, opcode=0x2,
+                  func=lambda x: x)
     c = ng.sub(h, b)
 
     targ = ng.to_veriloggen([c], 'matrix_extern', silent=silent,
@@ -50,20 +52,8 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
     va = np.arange(a.length, dtype=np.int64).reshape(a.shape) % [16]
     vb = np.arange(b.length, dtype=np.int64).reshape(b.shape) % [32] + [16]
 
-    vd = ng.verify.add(va, vb, dtype=c_dtype, par=par,
-                       x_dtype=a_dtype, y_dtype=b_dtype)
-    ve = ng.verify.add(vb, va, dtype=c_dtype, par=par,
-                       x_dtype=b_dtype, y_dtype=a_dtype)
-
-    vf = ng.verify.extern([vd, ve], shape=a_shape, opcode=0x1,
-                          func=lambda x, y: x + y)
-    vg = ng.verify.sub(vf, va,
-                       x_dtype=c_dtype, y_dtype=c_dtype)
-
-    vh = ng.verify.extern([vg], shape=a_shape, opcode=0x2,
-                          func=lambda x: x)
-    vc = ng.verify.sub(vh, vb,
-                       x_dtype=c_dtype, y_dtype=c_dtype)
+    eval_outs = ng.eval([c], a=va, b=vb)
+    vc = eval_outs[0]
 
     # to memory image
     size_max = int(math.ceil(max(a.memory_size, b.memory_size, c.memory_size) / 4096)) * 4096
@@ -72,7 +62,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
     tmp_addr = check_addr + size_check
 
     memimg_datawidth = 32
-    mem = np.zeros([1024 * 1024 * 8 // memimg_datawidth], dtype=np.int64)
+    mem = np.zeros([1024 * 1024 * 8 // (memimg_datawidth // 8)], dtype=np.int64)
     mem = mem + [100]
 
     axi.set_memory(mem, va, memimg_datawidth,
