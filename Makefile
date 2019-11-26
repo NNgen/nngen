@@ -18,6 +18,6 @@ clean:
 	rm -rf *.onnx
 	rm -rf hello_nngen.v hello_nngen.out hello_nngen_v1_0 hello_nngen.npy
 
-.PHONY: release
-release:
-	pandoc README.md -t rst > README.rst
+#.PHONY: release
+#release:
+#	pandoc README.md -t rst > README.rst
