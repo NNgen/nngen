@@ -1,8 +1,12 @@
 include README.md
-include README.rst
 include LICENSE.txt
 include pytest.ini
 include .travis.yml
 include Makefile
+include docker/Dockerfile
+include hello_nngen.py
+include nngen/Makefile
+include nngen/VERSION
 recursive-include tests *
 recursive-include examples *
+recursive-include docs *

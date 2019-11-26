@@ -300,7 +300,7 @@ def make_module(config, name, objs, num_storages, num_input_storages, num_output
     sys_rst = m.Reg('RST')
     v = rst_logic
     for i in range(2):
-        v = vg.Or(v, sys_rst_seq.Prev(rst_logic, i+1))
+        v = vg.Or(v, sys_rst_seq.Prev(rst_logic, i + 1))
     sys_rst_seq(
         sys_rst(v)
     )
@@ -1558,7 +1558,7 @@ def index_to_bytes(index, wordsize=4):
 def dump_config(config, where_from=None, output=None):
     s = []
     s.append('NNgen: Neural Network Accelerator Generator (version %s)' %
-             version.VERSION)
+             version.__version__)
 
     if where_from == 'to_verilog':
         s.append('[Verilog HDL]')

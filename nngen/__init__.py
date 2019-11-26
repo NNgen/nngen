@@ -20,6 +20,8 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
+from .version import __version__
+
 from .storage import *
 from .dtype_list import *
 from .operator import *
