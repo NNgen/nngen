@@ -34,13 +34,13 @@ def quantize_linear_by_scale_factor(value, width, scale_factor):
     return v
 
 
-def quantize_linear_scale(scale_value, width, allowed_rate=0.05):
+def quantize_linear_scale(scale_value, width, allowed_rate=0.01):
     scale_scale_factor = find_optimal_scale_scale_factor(scale_value, width, allowed_rate)
     q_scale_value = np.round(scale_value * scale_scale_factor).astype(np.int64)
     return q_scale_value, scale_scale_factor
 
 
-def find_optimal_scale_scale_factor(scale_value, width, allowed_rate=0.05):
+def find_optimal_scale_scale_factor(scale_value, width, allowed_rate=0.01):
     scale_scale_factor = 1.0
 
     while True:
