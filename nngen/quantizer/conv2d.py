@@ -115,7 +115,7 @@ def conv2d(visitor, node):
 
 def find_optimal_rshift(node, filter, bias, scale,
                         value_ranges={}, num_trials=5,
-                        allowed_rate=0.05, input_threshold=3.0,
+                        allowed_rate=0.01, input_threshold=3.0,
                         init_rshift_mul=0, init_rshift_sum=0, init_rshift_out=0):
 
     rshift_mul = init_rshift_mul
