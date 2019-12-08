@@ -45,9 +45,10 @@ def normalize(visitor, node):
 
 def find_optimal_shamt_normalize(node, scale, bias,
                                  value_ranges={}, num_trials=5,
-                                 allowed_rate=0.05, input_threshold=3.0):
+                                 allowed_rate=0.05, input_threshold=3.0,
+                                 init_shamt=0):
 
-    shamt = 0
+    shamt = init_shamt
 
     input_shape = node.args[0].shape
     input_length = node.args[0].length
@@ -146,9 +147,10 @@ def scaled_add(visitor, node):
 
 def find_optimal_shamt_scaled_add(node, a_scale, b_scale,
                                   value_ranges={}, num_trials=5,
-                                  allowed_rate=0.05, input_threshold=3.0):
+                                  allowed_rate=0.05, input_threshold=3.0,
+                                  init_shamt=0):
 
-    shamt = 0
+    shamt = init_shamt
 
     a_input_shape = node.args[0].shape
     a_input_length = node.args[0].length
