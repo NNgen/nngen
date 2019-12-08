@@ -6,6 +6,7 @@ import sys
 import math
 import numpy as np
 import PIL
+import json
 
 import torch
 import torchvision
@@ -46,10 +47,6 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     # pytorch model
     model = torchvision.models.resnet18(pretrained=True)
 
-    # --------------------
-    # (1) Represent a DNN model as a dataflow by NNgen operators
-    # --------------------
-
     # Pytorch to ONNX
     onnx_filename = 'resnet18_imagenet.onnx'
     dummy_input = torch.randn(*act_shape).transpose(1, 3)
@@ -58,6 +55,10 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     model.eval()
     torch.onnx.export(model, dummy_input, onnx_filename,
                       input_names=input_names, output_names=output_names)
+
+    # --------------------
+    # (1) Represent a DNN model as a dataflow by NNgen operators
+    # --------------------
 
     # ONNX to NNgen
     dtypes = {}
@@ -76,10 +77,12 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     # (2) Assign quantized weights to the NNgen operators
     # --------------------
 
-    if act_dtype.width > 8:
-        value_ranges = {'act': (0, 255)}
+    if act_dtype.width >= 8:
+        act_max = 127
     else:
-        value_ranges = {'act': (0, 2 ** (act_dtype.width - 1) - 1)}
+        act_max = 2 ** (act_dtype.width - 1) - 1
+
+    value_ranges = {'act': (-act_max, act_max)}
 
     ng.quantize(outputs, value_ranges=value_ranges)
 
@@ -111,12 +114,16 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     out = outputs['out']
 
     # verification data
+    imagenet_mean = np.array([0.485, 0.456, 0.406]).astype(np.float32)
+    imagenet_std = np.array([0.229, 0.224, 0.225]).astype(np.float32)
+
     img = np.array(PIL.Image.open('car.png').convert('RGB')).astype(np.float32)
     img = img.reshape([1] + list(img.shape))
 
-    vact = img
-    if act_dtype.width < 16:
-        vact = vact / (16 / act_dtype.width)
+    img = img / np.max(np.abs(img))
+    img = (img - imagenet_mean) / imagenet_std
+
+    vact = img / np.max(np.abs(img)) * act_max
     vact = np.round(vact).astype(np.int64)
 
     # software-based verification
@@ -124,7 +131,7 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     vout = eval_outs[0]
 
     # execution on pytorch
-    model_input = img / np.max(img)
+    model_input = img
 
     if act.perm is not None:
         model_input = np.transpose(model_input, act.reversed_perm)
@@ -133,16 +140,19 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     model_out = model(torch.from_numpy(model_input)).detach().numpy()
     if act.perm is not None and len(model_out.shape) == len(act.shape):
         model_out = np.transpose(model_out, act.perm)
-    scaled_model_out = model_out * out.scale_factor
+    scaled_model_out = model_out * out.scale_factor * act_max
 
-    mout = scaled_model_out.astype(np.int64)
-    for bat in range(vout.shape[0]):
-        vout_max = np.max(vout[bat])
-        vout_max_index = list(vout[bat]).index(vout_max)
-        mout_max = np.max(mout[bat])
-        mout_max_index = list(mout[bat]).index(mout_max)
-        print("# vout[%d]: max = %d, index = %d" % (bat, vout_max, vout_max_index))
-        print("# mout[%d]: max = %d, index = %d" % (bat, mout_max, mout_max_index))
+    class_index = json.load(open('imagenet_class_index.json', 'r'))
+    labels = {int(key): value for (key, value) in class_index.items()}
+
+    mout = scaled_model_out
+    for bat in range(mout.shape[0]):
+        for index, value in list(sorted(enumerate(mout[bat]),
+                                        key=lambda x: x[1], reverse=True))[:10]:
+            print("# mout: %s (%d) = %f" % (str(labels[index]), index, value))
+        for index, value in list(sorted(enumerate(vout[bat]),
+                                        key=lambda x: x[1], reverse=True))[:10]:
+            print("# vout: %s (%d) = %d" % (str(labels[index]), index, value))
 
     # out_diff = vout - scaled_model_out
     # out_err = out_diff / (scaled_model_out + 0.00000001)
