@@ -75,7 +75,7 @@ class _QuantizeVisitor(object):
 
 
 def quantize(outputs,
-             value_ranges=None, num_trials=5):
+             value_ranges=None, num_trials=1):
     """
     Quantize pre-trained weights and determine right-shift amounts
 
