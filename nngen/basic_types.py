@@ -2222,7 +2222,7 @@ class _Reshape(_Operator):
             return memo[id(self)]
 
         arg = self.args[0].eval(memo, input_dict)
-        return np.reshape(arg, self.shape)
+        return np.reshape(arg, [-1] + list(self.shape[1:]))
 
 
 class _LazyReshape(_Reshape):
