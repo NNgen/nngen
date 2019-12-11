@@ -73,7 +73,7 @@ def conv2d(visitor, node):
         (rshift_sum is None or isinstance(rshift_sum, int)) and
             (rshift_out is None or isinstance(rshift_out, int))):
 
-        q_filter_value_bits = int(np.max(np.abs(q_filter_value))).bit_length()
+        q_filter_value_bits = int(np.mean(np.abs(q_filter_value))).bit_length()
         q_rshift_mul, q_rshift_sum, q_rshift_out = find_optimal_rshift(
             visitor, node, q_filter_value, q_bias_value, q_scale_value,
             init_rshift_mul=0,
