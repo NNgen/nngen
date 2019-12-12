@@ -123,13 +123,6 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     img = img / np.max(np.abs(img))
     img = (img - imagenet_mean) / imagenet_std
 
-    vact = img / np.max(np.abs(img)) * act_max
-    vact = np.round(vact).astype(np.int64)
-
-    # software-based verification
-    eval_outs = ng.eval([out], act=vact)
-    vout = eval_outs[0]
-
     # execution on pytorch
     model_input = img
 
@@ -141,6 +134,13 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     if act.perm is not None and len(model_out.shape) == len(act.shape):
         model_out = np.transpose(model_out, act.perm)
     scaled_model_out = model_out * out.scale_factor * act_max
+
+    # software-based verification
+    vact = img / np.max(np.abs(img)) * act_max
+    vact = np.round(vact).astype(np.int64)
+
+    eval_outs = ng.eval([out], act=vact)
+    vout = eval_outs[0]
 
     class_index = json.load(open('imagenet_class_index.json', 'r'))
     labels = {int(key): value for (key, value) in class_index.items()}
