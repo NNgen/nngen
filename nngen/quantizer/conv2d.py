@@ -112,7 +112,7 @@ def conv2d(visitor, node):
 
 
 def find_optimal_rshift(visitor, node, filter, bias, scale,
-                        allowed_rate=0.01,
+                        allowed_rate=0.0, range_ratio=0.6,
                         init_rshift_mul=0, init_rshift_sum=0, init_rshift_out=0):
 
     rshift_mul = init_rshift_mul
@@ -122,9 +122,9 @@ def find_optimal_rshift(visitor, node, filter, bias, scale,
     input = node.args[0].eval(visitor.memo, visitor.input_dict)
 
     if node.dtype.signed:
-        _range = (2 ** (node.dtype.width - 1)) - 1
+        _range = round((2 ** (node.dtype.width - 1)) * range_ratio)
     else:
-        _range = (2 ** node.dtype.width) - 1
+        _range = round((2 ** node.dtype.width) * range_ratio)
 
     while True:
         rslt = try_rshift(node, input, filter, bias, scale,

@@ -42,7 +42,7 @@ def normalize(visitor, node):
 
 
 def find_optimal_shamt_normalize(visitor, node, scale, bias,
-                                 allowed_rate=0.01,
+                                 allowed_rate=0.0, range_ratio=0.6,
                                  init_shamt=0):
 
     shamt = init_shamt
@@ -50,9 +50,9 @@ def find_optimal_shamt_normalize(visitor, node, scale, bias,
     input = node.args[0].eval(visitor.memo, visitor.input_dict)
 
     if node.dtype.signed:
-        _range = (2 ** (node.dtype.width - 1)) - 1
+        _range = round((2 ** (node.dtype.width - 1)) * range_ratio)
     else:
-        _range = (2 ** node.dtype.width) - 1
+        _range = round((2 ** node.dtype.width) * range_ratio)
 
     while True:
         rslt = try_shamt_normalize(node, input, scale, bias, shamt)
