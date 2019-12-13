@@ -40,7 +40,7 @@ def quantize_linear_scale(scale_value, width, allowed_rate=0.01):
     return q_scale_value, scale_scale_factor
 
 
-def find_optimal_scale_scale_factor(scale_value, width, allowed_rate=0.05):
+def find_optimal_scale_scale_factor(scale_value, width, allowed_rate=0.01):
     scale_scale_factor = 1.0
 
     while True:

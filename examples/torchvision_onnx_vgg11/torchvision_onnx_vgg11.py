@@ -39,6 +39,10 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
         # simtype=None,  # no RTL simulation
         outputfile=None):
 
+    # input mean and standard deviation
+    imagenet_mean = np.array([0.485, 0.456, 0.406]).astype(np.float32)
+    imagenet_std = np.array([0.229, 0.224, 0.225]).astype(np.float32)
+
     act_shape = (1, 224, 224, 3)
 
     # pytorch model
@@ -77,14 +81,16 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     # (2) Assign quantized weights to the NNgen operators
     # --------------------
 
-    if act_dtype.width >= 8:
-        act_max = 127
+    if act_dtype.width > 8:
+        act_scale_factor = 128
     else:
-        act_max = 2 ** (act_dtype.width - 1) - 1
+        act_scale_factor = round(2 ** (act_dtype.width - 1) * 0.8)
 
-    value_ranges = {'act': (-act_max, act_max)}
+    input_scale_factors = {'act': act_scale_factor}
+    input_means = {'act': imagenet_mean * act_scale_factor}
+    input_stds = {'act': imagenet_std * act_scale_factor}
 
-    ng.quantize(outputs, value_ranges=value_ranges)
+    ng.quantize(outputs, input_scale_factors, input_means, input_stds)
 
     # --------------------
     # (3) Assign hardware attributes
@@ -114,9 +120,6 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     out = outputs['out']
 
     # verification data
-    imagenet_mean = np.array([0.485, 0.456, 0.406]).astype(np.float32)
-    imagenet_std = np.array([0.229, 0.224, 0.225]).astype(np.float32)
-
     img = np.array(PIL.Image.open('car.png').convert('RGB')).astype(np.float32)
     img = img.reshape([1] + list(img.shape))
 
@@ -133,10 +136,13 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     model_out = model(torch.from_numpy(model_input)).detach().numpy()
     if act.perm is not None and len(model_out.shape) == len(act.shape):
         model_out = np.transpose(model_out, act.perm)
-    scaled_model_out = model_out * out.scale_factor * act_max
+    scaled_model_out = model_out * out.scale_factor
 
     # software-based verification
-    vact = img / np.max(np.abs(img)) * act_max
+    vact = img * act_scale_factor
+    vact = np.clip(vact,
+                   -1.0 * 2.0 ** (act.dtype.width - 1) - 1.0,
+                   2.0 ** (act.dtype.width - 1) - 1.0)
     vact = np.round(vact).astype(np.int64)
 
     eval_outs = ng.eval([out], act=vact)

@@ -34,16 +34,28 @@ def _get_func(op_type):
 
 class _QuantizeVisitor(object):
 
-    def __init__(self, num_samples=1, value_ranges=None, input_generators=None, verbose=False):
-        if value_ranges is None:
-            value_ranges = {}
+    def __init__(self, input_scale_factors,
+                 input_means=None, input_stds=None, input_generators=None, num_samples=1,
+                 verbose=False):
+
+        if not isinstance(input_scale_factors, dict):
+            raise TypeError('input_scale_factors must be dict.')
+
+        if input_means is None:
+            input_means = {}
+
+        if input_stds is None:
+            input_stds = {}
 
         if input_generators is None:
             input_generators = {}
 
-        self.num_samples = num_samples
-        self.value_ranges = value_ranges
+        self.input_scale_factors = input_scale_factors
+        self.input_means = input_means
+        self.input_stds = input_stds
         self.input_generators = input_generators
+        self.num_samples = num_samples
+
         self.verbose = verbose
 
         self.memo = {}
@@ -74,6 +86,7 @@ class _QuantizeVisitor(object):
             name = node.name
 
             if name in self.input_dict:
+                # values are already assigned
                 self._verbose_node(node)
                 return
 
@@ -81,11 +94,22 @@ class _QuantizeVisitor(object):
                 generator = self.input_generators[name]
                 value = generator(node, self.num_samples)
                 self.input_dict[name] = value
+
+                if name not in self.input_scale_factors:
+                    raise ValueError("scale_factor of '%s' not found." % name)
+                node.scale_factor = self.input_scale_factors[name]
+
                 self._verbose_node(node)
                 return
 
-            value = generate_uniform(node, self.num_samples, self.value_ranges)
+            value = generate_normal(node, self.input_scale_factors,
+                                    self.input_means, self.input_stds, self.num_samples)
             self.input_dict[name] = value
+
+            if name not in self.input_scale_factors:
+                raise ValueError("scale_factor of '%s' not found." % name)
+            node.scale_factor = self.input_scale_factors[name]
+
             self._verbose_node(node)
             return
 
@@ -115,9 +139,9 @@ class _QuantizeVisitor(object):
             print('[quantize] {}'.format(str(node)))
 
 
-def generate_uniform(node, num_samples, value_ranges):
+def generate_normal(node, input_scale_factors, input_means, input_stds, num_samples):
     """
-    Generate a dummy ndarray by uniform random values to determine shift-amounts.
+    Generate a dummy ndarray by Gaussian random values to determine shift-amounts.
 
     Parameters
     ----------
@@ -125,12 +149,18 @@ def generate_uniform(node, num_samples, value_ranges):
     node : nngen.placeholder
         Target placeholder object to make a dummy ndarray.
 
+    input_scale_factors: dict
+        Input scale factor dictionary by name.
+
+    input_means : dict
+        Input mean dictionary by name
+
+    input_stds : dict
+        Input standard deviation dictionary by name
+
     num_samples : int
         Number of sampling trials to determine the right-shift amount.
         This value is multiplied to the batch size of the placeholder.
-
-    value_ranges : dict
-        Numerical range dictionary of (min, max) tuples by name.
     """
 
     shape = list(node.shape)
@@ -138,26 +168,37 @@ def generate_uniform(node, num_samples, value_ranges):
     # enlarge the batch size by num_samples for shift-amount evaluation
     shape[0] *= num_samples
     shape = tuple(shape)
-
     length = np.multiply.reduce(shape)
 
-    if node.name in value_ranges:
-        min_val, max_val = value_ranges[node.name]
-    elif node.dtype.signed:
-        max_val = 2.0 ** (node.dtype.width - 1) - 1.0
-        min_val = -1.0 * max_val
+    if node.name not in input_means:
+        mean = np.array([0.0] * shape[-1]).astype(np.float32)
     else:
-        max_val = 2.0 ** node.dtype.width - 1.0
-        min_val = 0.0
+        mean = input_means[node.name]
 
-    v = np.random.uniform(min_val, max_val, size=length).reshape(shape)
+    if node.name not in input_stds:
+        scale_factor = input_scale_factors[node.name] * 1.0
+        std = np.array([1.0] * shape[-1]).astype(np.float32) * scale_factor / 3.0
+    else:
+        std = input_stds[node.name]
+
+    v = np.random.normal(size=length).reshape(shape) * std + mean
     v = np.round(v).astype(np.int64)
+
+    if node.dtype.signed:
+        max_val = 2 ** (node.dtype.width - 1) - 1
+        min_val = -1 * max_val
+    else:
+        max_val = 2 ** node.dtype.width - 1
+        min_val = 0
+
+    v = np.clip(v, min_val, max_val)
 
     return v
 
 
-def quantize(outputs,
-             num_samples=1, value_ranges=None, input_generators=None, verbose=False):
+def quantize(outputs, input_scale_factors,
+             input_means=None, input_stds=None, input_generators=None, num_samples=1,
+             verbose=False):
     """
     Quantize pre-trained weights and determine right-shift amounts
 
@@ -167,16 +208,22 @@ def quantize(outputs,
     outputs : list
         Output NNgen nodes.
 
-    num_samples : int
-        Number of sampling trials to determine the right-shift amount.
-        This value is multiplied to the batch size of the placeholder.
+    input_scale_factors: dict
+        Input scale factor dictionary by name.
 
-    value_ranges : dict
-        Numerical range dictionary of (min, max) tuples by name.
+    input_means : dict
+        Input mean dictionary by name
+
+    input_stds : dict
+        Input standard deviation dictionary by name
 
     input_generators : dict
         Dictionary by name for random sample value generator methods of placeholders.
         The methods must have arguments for node and num_samples.
+
+    num_samples : int
+        Number of sampling trials to determine the right-shift amount.
+        This value is multiplied to the batch size of the placeholder.
 
     verbose : bool
         If True, quantization steps are printed out.
@@ -188,7 +235,9 @@ def quantize(outputs,
     if input_generators is None:
         input_generators = {}
 
-    visitor = _QuantizeVisitor(num_samples, value_ranges, input_generators, verbose)
+    visitor = _QuantizeVisitor(input_scale_factors,
+                               input_means, input_stds, input_generators, num_samples,
+                               verbose)
 
     for output in outputs:
         visitor.visit(output)
