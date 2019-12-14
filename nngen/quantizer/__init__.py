@@ -102,8 +102,8 @@ class _QuantizeVisitor(object):
                 self._verbose_node(node)
                 return
 
-            value = generate_normal(node, self.input_scale_factors,
-                                    self.input_means, self.input_stds, self.num_samples)
+            value = generate_samples(node, self.input_scale_factors,
+                                     self.input_means, self.input_stds, self.num_samples)
             self.input_dict[name] = value
 
             if name not in self.input_scale_factors:
@@ -139,9 +139,9 @@ class _QuantizeVisitor(object):
             print('[quantize] {}'.format(str(node)))
 
 
-def generate_normal(node, input_scale_factors, input_means, input_stds, num_samples):
+def generate_samples(node, input_scale_factors, input_means, input_stds, num_samples):
     """
-    Generate a dummy ndarray by Gaussian random values to determine shift-amounts.
+    Generate a dummy ndarray of random values to determine shift-amounts.
 
     Parameters
     ----------
@@ -181,8 +181,19 @@ def generate_normal(node, input_scale_factors, input_means, input_stds, num_samp
     else:
         std = np.array(input_stds[node.name]).astype(np.float32)
 
-    v = np.random.normal(size=length).reshape(shape) * std + mean
+    #p_shape = list(shape[:])
+    #for i in range(len(p_shape)):
+    #    if i != 0 and i != len(p_shape) - 1:
+    #        p_shape[i] = 1
+    #p_mean = mean * np.random.uniform(0.8, 1.2, np.multiply.reduce(p_shape)).reshape(p_shape)
+    #p_std = std * np.random.uniform(0.8, 1.2, np.multiply.reduce(p_shape)).reshape(p_shape)
+
+    #v = np.random.normal(size=length).reshape(shape) * std + mean
+
+    width = 12.0 * std
+    v = np.random.uniform(-0.5, 0.5, size=length).reshape(shape) * width + mean
     v = np.round(v).astype(np.int64)
+    print('# v:', v.mean(), v.std(), v.max(), v.min())
 
     if node.dtype.signed:
         max_val = 2 ** (node.dtype.width - 1) - 1
