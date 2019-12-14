@@ -27,7 +27,7 @@ import veriloggen.types.axi as axi
 
 
 def run(act_dtype=ng.int16, weight_dtype=ng.int16,
-        bias_dtype=ng.int16, scale_dtype=ng.int16,
+        bias_dtype=ng.int32, scale_dtype=ng.int16,
         with_batchnorm=True, disable_fusion=False,
         conv2d_par_ich=1, conv2d_par_och=1, conv2d_par_col=1, conv2d_par_row=1,
         conv2d_concur_och=None, conv2d_stationary='filter',
