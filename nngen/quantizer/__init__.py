@@ -193,7 +193,6 @@ def generate_samples(node, input_scale_factors, input_means, input_stds, num_sam
     width = 12.0 * std
     v = np.random.uniform(-0.5, 0.5, size=length).reshape(shape) * width + mean
     v = np.round(v).astype(np.int64)
-    print('# v:', v.mean(), v.std(), v.max(), v.min())
 
     if node.dtype.signed:
         max_val = 2 ** (node.dtype.width - 1) - 1
