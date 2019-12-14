@@ -173,13 +173,13 @@ def generate_normal(node, input_scale_factors, input_means, input_stds, num_samp
     if node.name not in input_means:
         mean = np.array([0.0] * shape[-1]).astype(np.float32)
     else:
-        mean = input_means[node.name]
+        mean = np.array(input_means[node.name]).astype(np.float32)
 
     if node.name not in input_stds:
         scale_factor = input_scale_factors[node.name] * 1.0
         std = np.array([1.0] * shape[-1]).astype(np.float32) * scale_factor / 3.0
     else:
-        std = input_stds[node.name]
+        std = np.array(input_stds[node.name]).astype(np.float32)
 
     v = np.random.normal(size=length).reshape(shape) * std + mean
     v = np.round(v).astype(np.int64)
