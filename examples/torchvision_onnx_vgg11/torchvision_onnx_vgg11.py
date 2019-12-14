@@ -84,7 +84,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     if act_dtype.width > 8:
         act_scale_factor = 128
     else:
-        act_scale_factor = round(2 ** (act_dtype.width - 1) * 0.8)
+        act_scale_factor = int(round(2 ** (act_dtype.width - 1) * 0.5))
 
     input_scale_factors = {'act': act_scale_factor}
     input_means = {'act': imagenet_mean * act_scale_factor}
@@ -123,7 +123,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     img = np.array(PIL.Image.open('car.png').convert('RGB')).astype(np.float32)
     img = img.reshape([1] + list(img.shape))
 
-    img = img / np.max(np.abs(img))
+    img = img / 255
     img = (img - imagenet_mean) / imagenet_std
 
     # execution on pytorch
@@ -141,8 +141,8 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     # software-based verification
     vact = img * act_scale_factor
     vact = np.clip(vact,
-                   -1.0 * 2.0 ** (act.dtype.width - 1) - 1.0,
-                   2.0 ** (act.dtype.width - 1) - 1.0)
+                   -1.0 * (2 ** (act.dtype.width - 1) - 1),
+                   1.0 * (2 ** (act.dtype.width - 1) - 1))
     vact = np.round(vact).astype(np.int64)
 
     eval_outs = ng.eval([out], act=vact)
