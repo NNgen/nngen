@@ -145,6 +145,60 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
                    1.0 * (2 ** (act.dtype.width - 1) - 1))
     vact = np.round(vact).astype(np.int64)
 
+    # check intermediate results
+    # conv2d
+#    conv2d_ops = [v for k, v in operators.items()
+#                  if isinstance(v, ng.conv2d) and not isinstance(v, ng.matmul)]
+#    conv2d_ops = list(sorted(set(conv2d_ops), key=conv2d_ops.index))
+#    conv2d_outs = ng.eval(conv2d_ops, act=vact)
+#    conv2d_scale_factors = [op.scale_factor for op in conv2d_ops]
+#
+#    model_features_relu_layers = [layer
+#                                  for layer in model.features if isinstance(layer, nn.ReLU)]
+#    model_features_relu_indexes = [list(model.features).index(layer)
+#                                   for layer in model_features_relu_layers]
+#    model_sub_seqs = [model.features[:i + 1]
+#                      for i in model_features_relu_indexes]
+#    model_sub_outs = [sub(torch.from_numpy(model_input)).detach().numpy()
+#                      for sub in model_sub_seqs]
+#
+#    scaled_sub_outs = [(out * scale_factor)
+#                       for out, scale_factor in zip(model_sub_outs, conv2d_scale_factors)]
+#    error_rates = [(np.sum(np.abs(conv2d_out.transpose([0, 3, 1, 2]) - scaled_sub_out)) /
+#                    np.sum(scaled_sub_out))
+#                   for conv2d_out, scaled_sub_out in zip(conv2d_outs, scaled_sub_outs)]
+#    max_diffs = [scaled_sub_out.max() / conv2d_out.max()
+#                 for conv2d_out, scaled_sub_out in zip(conv2d_outs, scaled_sub_outs)]
+
+    # fc
+    matmul_ops = [v for k, v in operators.items() if isinstance(v, ng.matmul)]
+    matmul_ops = list(sorted(set(matmul_ops), key=matmul_ops.index))
+    matmul_outs = ng.eval(matmul_ops, act=vact)
+    matmul_scale_factors = [op.scale_factor for op in matmul_ops]
+
+    class Flatten(nn.Module):
+        def forward(self, input):
+            return input.view(input.size(0), -1)
+
+    model_classifier_relu_layers = [layer
+                                    for layer in model.classifier if isinstance(layer, nn.ReLU)]
+    model_classifier_relu_indexes = [list(model.classifier).index(layer)
+                                     for layer in model_classifier_relu_layers]
+    model_classifier_relu_indexes.append(len(model.classifier))
+    model_sub_seqs = [nn.Sequential(model.features, model.avgpool, Flatten(), model.classifier[:i + 1])
+                      for i in model_classifier_relu_indexes]
+    model_sub_outs = [sub(torch.from_numpy(model_input)).detach().numpy()
+                      for sub in model_sub_seqs]
+
+    scaled_sub_outs = [(out * scale_factor)
+                       for out, scale_factor in zip(model_sub_outs, matmul_scale_factors)]
+    error_rates = [(np.sum(np.abs(matmul_out - scaled_sub_out)) /
+                    np.sum(scaled_sub_out))
+                   for matmul_out, scaled_sub_out in zip(matmul_outs, scaled_sub_outs)]
+    max_diffs = [scaled_sub_out.max() / matmul_out.max()
+                 for matmul_out, scaled_sub_out in zip(matmul_outs, scaled_sub_outs)]
+    breakpoint()
+
     eval_outs = ng.eval([out], act=vact)
     vout = eval_outs[0]
 
