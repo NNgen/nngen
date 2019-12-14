@@ -187,6 +187,8 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     model_classifier_relu_indexes.append(len(model.classifier))
     model_sub_seqs = [nn.Sequential(model.features, model.avgpool, Flatten(), model.classifier[:i + 1])
                       for i in model_classifier_relu_indexes]
+    for sub in model_sub_seqs:
+        sub.eval()
     model_sub_outs = [sub(torch.from_numpy(model_input)).detach().numpy()
                       for sub in model_sub_seqs]
 

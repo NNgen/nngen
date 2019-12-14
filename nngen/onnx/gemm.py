@@ -29,8 +29,7 @@ def Gemm(visitor, node,
     name = util.get_name(node)
 
     scale_name = '_'.join(['onnx', name, 'gemm.scale'])
-    scale_width = filter.dtype.width
-    scale_dtype = dtype_list.dtype_int(scale_width, signed=True)
+    scale_dtype = visitor.default_scale_dtype
     scale_shape = batchnorm_scale.shape if batchnorm_scale is not None else (1,)
     scale = storage.variable(dtype=scale_dtype, shape=scale_shape, name=scale_name)
     scale_value = batchnorm_scale if batchnorm_scale is not None else [1]
@@ -39,8 +38,7 @@ def Gemm(visitor, node,
 
     if bias is None and batchnorm_bias is not None:
         bias_name = '_'.join(['onnx', name, 'gemm.bias'])
-        bias_width = filter.dtype.width
-        bias_dtype = dtype_list.dtype_int(bias_width, signed=True)
+        bias_dtype = visitor.default_bias_dtype
         bias_shape = batchnorm_bias.shape
         bias = storage.variable(dtype=bias_dtype, shape=bias_shape, name=bias_name)
         bias_value = batchnorm_bias / batchnorm_scale
@@ -48,8 +46,12 @@ def Gemm(visitor, node,
         visitor.variables[bias_name] = bias
 
     elif bias is not None and batchnorm_bias is not None:
+        bias.dtype = visitor.default_bias_dtype
         bias_value = batchnorm_bias / batchnorm_scale + bias.value
         bias.set_value(bias_value)
+
+    elif bias is not None:
+        bias.dtype = visitor.default_bias_dtype
 
     #rshift_out_name = '_'.join(['onnx, name, 'gemm.rshift_out'])
     #rshift_out_width = filter.dtype.width
