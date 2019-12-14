@@ -42,7 +42,7 @@ def normalize(visitor, node):
 
 
 def find_optimal_shamt_normalize(visitor, node, scale, bias,
-                                 allowed_rate=0.0, range_ratio=0.6,
+                                 allowed_rate=0.0001, range_ratio=0.1,
                                  init_shamt=0):
 
     shamt = init_shamt
