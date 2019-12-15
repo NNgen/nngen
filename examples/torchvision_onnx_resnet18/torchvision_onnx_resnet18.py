@@ -161,7 +161,7 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
                                         key=lambda x: x[1], reverse=True))[:10]:
             print("# vout: %s (%d) = %d" % (str(labels[index]), index, value))
 
-    breakpoint()
+    # breakpoint()
 
     # --------------------
     # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)

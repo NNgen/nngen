@@ -42,7 +42,7 @@ def normalize(visitor, node):
 
 
 def find_optimal_shamt_normalize(visitor, node, scale, bias,
-                                 allowed_rate=0.0001, range_ratio=0.1,
+                                 allowed_rate=0.0, range_ratio=0.2,
                                  init_shamt=0):
 
     shamt = init_shamt
@@ -123,7 +123,7 @@ def scaled_add(visitor, node):
 
 
 def find_optimal_shamt_scaled_add(visitor, node, a_scale, b_scale,
-                                  allowed_rate=0.01,
+                                  allowed_rate=0.0, range_ratio=0.2,
                                   init_shamt=0):
 
     shamt = init_shamt
@@ -132,9 +132,9 @@ def find_optimal_shamt_scaled_add(visitor, node, a_scale, b_scale,
     b_input = node.args[1].eval(visitor.memo, visitor.input_dict)
 
     if node.dtype.signed:
-        _range = (2 ** (node.dtype.width - 1)) - 1
+        _range = round((2 ** (node.dtype.width - 1)) * range_ratio)
     else:
-        _range = (2 ** node.dtype.width) - 1
+        _range = round((2 ** node.dtype.width) * range_ratio)
 
     while True:
         rslt = try_shamt_scaled_add(node, a_input, a_scale,
@@ -219,16 +219,17 @@ def scaled_concat(visitor, node):
 
 
 def find_optimal_shamt_scaled_concat(visitor, node, scales,
-                                     allowed_rate=0.01, input_threshold=3.0):
+                                     allowed_rate=0.0, range_ratio=0.2,
+                                     init_shamt=0):
 
-    shamt = 0
+    shamt = init_shamt
 
     inputs = [arg.eval(visitor.memo, visitor.input_dict) for arg in node.args]
 
     if node.dtype.signed:
-        _range = (2 ** (node.dtype.width - 1)) - 1
+        _range = round((2 ** (node.dtype.width - 1)) * range_ratio)
     else:
-        _range = (2 ** node.dtype.width) - 1
+        _range = round((2 ** node.dtype.width) * range_ratio)
 
     while True:
         rslt = try_shamt_scaled_concat(node, inputs, scales, shamt)
