@@ -147,59 +147,81 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
     # check intermediate results
     # conv2d
-#    conv2d_ops = [v for k, v in operators.items()
-#                  if isinstance(v, ng.conv2d) and not isinstance(v, ng.matmul)]
-#    conv2d_ops = list(sorted(set(conv2d_ops), key=conv2d_ops.index))
-#    conv2d_outs = ng.eval(conv2d_ops, act=vact)
-#    conv2d_scale_factors = [op.scale_factor for op in conv2d_ops]
-#
-#    model_features_relu_layers = [layer
-#                                  for layer in model.features if isinstance(layer, nn.ReLU)]
-#    model_features_relu_indexes = [list(model.features).index(layer)
-#                                   for layer in model_features_relu_layers]
-#    model_sub_seqs = [model.features[:i + 1]
-#                      for i in model_features_relu_indexes]
-#    model_sub_outs = [sub(torch.from_numpy(model_input)).detach().numpy()
-#                      for sub in model_sub_seqs]
-#
-#    scaled_sub_outs = [(out * scale_factor)
-#                       for out, scale_factor in zip(model_sub_outs, conv2d_scale_factors)]
-#    error_rates = [(np.sum(np.abs(conv2d_out.transpose([0, 3, 1, 2]) - scaled_sub_out)) /
-#                    np.sum(scaled_sub_out))
-#                   for conv2d_out, scaled_sub_out in zip(conv2d_outs, scaled_sub_outs)]
-#    max_diffs = [scaled_sub_out.max() / conv2d_out.max()
-#                 for conv2d_out, scaled_sub_out in zip(conv2d_outs, scaled_sub_outs)]
+    # conv2d_ops = [v for k, v in operators.items()
+    #               if isinstance(v, ng.conv2d) and not isinstance(v, ng.matmul)]
+    # conv2d_ops = list(sorted(set(conv2d_ops), key=conv2d_ops.index))
+    # conv2d_outs = ng.eval(conv2d_ops, act=vact)
+    # conv2d_scale_factors = [op.scale_factor for op in conv2d_ops]
+
+    # model_features_relu_layers = [layer
+    #                               for layer in model.features if isinstance(layer, nn.ReLU)]
+    # model_features_relu_indexes = [list(model.features).index(layer)
+    #                                for layer in model_features_relu_layers]
+    # model_features_seqs = [model.features[:i + 1]
+    #                   for i in model_features_relu_indexes]
+    # for sub in model_features_seqs:
+    #     sub.eval()
+    # model_features_outs = [sub(torch.from_numpy(model_input)).detach().numpy()
+    #                   for sub in model_features_seqs]
+
+    # scaled_features_outs = [(out * scale_factor)
+    #                    for out, scale_factor in zip(model_features_outs, conv2d_scale_factors)]
+    # features_error_rates = [(np.sum(np.abs(conv2d_out.transpose([0, 3, 1, 2]) - scaled_features_out)) /
+    #                          np.sum(scaled_features_out))
+    #                         for conv2d_out, scaled_features_out in zip(conv2d_outs, scaled_features_outs)]
+    # features_max_diffs = [scaled_features_out.max() / conv2d_out.max()
+    #                       for conv2d_out, scaled_features_out in zip(conv2d_outs, scaled_features_outs)]
+
+    # avgpool
+    # avg_pool_ops = [v for k, v in operators.items() if isinstance(v, (ng.avg_pool, ng.avg_pool_serial))]
+    # avg_pool_ops = list(sorted(set(avg_pool_ops), key=avg_pool_ops.index))
+    # avg_pool_outs = ng.eval(avg_pool_ops, act=vact)
+    # avg_pool_scale_factors = [op.scale_factor for op in avg_pool_ops]
+
+    # model_avgpool_seqs = [nn.Sequential(model.features, model.avgpool)]
+    # for sub in model_avgpool_seqs:
+    #     sub.eval()
+    # model_avgpool_outs = [sub(torch.from_numpy(model_input)).detach().numpy()
+    #                   for sub in model_avgpool_seqs]
+
+    # scaled_avgpool_outs = [(out * scale_factor)
+    #                    for out, scale_factor in zip(model_avgpool_outs, avg_pool_scale_factors)]
+    # avgpool_error_rates = [(np.sum(np.abs(avg_pool_out.transpose([0, 3, 1, 2]) - scaled_avgpool_out)) /
+    #                         np.sum(scaled_avgpool_out))
+    #                        for avg_pool_out, scaled_avgpool_out in zip(avg_pool_outs, scaled_avgpool_outs)]
+    # avgpool_max_diffs = [scaled_avgpool_out.max() / avg_pool_out.max()
+    #                      for avg_pool_out, scaled_avgpool_out in zip(avg_pool_outs, scaled_avgpool_outs)]
 
     # fc
-    matmul_ops = [v for k, v in operators.items() if isinstance(v, ng.matmul)]
-    matmul_ops = list(sorted(set(matmul_ops), key=matmul_ops.index))
-    matmul_outs = ng.eval(matmul_ops, act=vact)
-    matmul_scale_factors = [op.scale_factor for op in matmul_ops]
+    # matmul_ops = [v for k, v in operators.items() if isinstance(v, ng.matmul)]
+    # matmul_ops = list(sorted(set(matmul_ops), key=matmul_ops.index))
+    # matmul_outs = ng.eval(matmul_ops, act=vact)
+    # matmul_scale_factors = [op.scale_factor for op in matmul_ops]
 
-    class Flatten(nn.Module):
-        def forward(self, input):
-            return input.view(input.size(0), -1)
+    # class Flatten(nn.Module):
+    #     def forward(self, input):
+    #         return input.view(input.size(0), -1)
 
-    model_classifier_relu_layers = [layer
-                                    for layer in model.classifier if isinstance(layer, nn.ReLU)]
-    model_classifier_relu_indexes = [list(model.classifier).index(layer)
-                                     for layer in model_classifier_relu_layers]
-    model_classifier_relu_indexes.append(len(model.classifier))
-    model_sub_seqs = [nn.Sequential(model.features, model.avgpool, Flatten(), model.classifier[:i + 1])
-                      for i in model_classifier_relu_indexes]
-    for sub in model_sub_seqs:
-        sub.eval()
-    model_sub_outs = [sub(torch.from_numpy(model_input)).detach().numpy()
-                      for sub in model_sub_seqs]
+    # model_classifier_relu_layers = [layer
+    #                                 for layer in model.classifier if isinstance(layer, nn.ReLU)]
+    # model_classifier_relu_indexes = [list(model.classifier).index(layer)
+    #                                  for layer in model_classifier_relu_layers]
+    # model_classifier_relu_indexes.append(len(model.classifier))
+    # model_classifier_seqs = [nn.Sequential(model.features, model.avgpool, Flatten(), model.classifier[:i + 1])
+    #                   for i in model_classifier_relu_indexes]
+    # for sub in model_classifier_seqs:
+    #     sub.eval()
+    # model_classifier_outs = [sub(torch.from_numpy(model_input)).detach().numpy()
+    #                   for sub in model_classifier_seqs]
 
-    scaled_sub_outs = [(out * scale_factor)
-                       for out, scale_factor in zip(model_sub_outs, matmul_scale_factors)]
-    error_rates = [(np.sum(np.abs(matmul_out - scaled_sub_out)) /
-                    np.sum(scaled_sub_out))
-                   for matmul_out, scaled_sub_out in zip(matmul_outs, scaled_sub_outs)]
-    max_diffs = [scaled_sub_out.max() / matmul_out.max()
-                 for matmul_out, scaled_sub_out in zip(matmul_outs, scaled_sub_outs)]
-    breakpoint()
+    # scaled_classifier_outs = [(out * scale_factor)
+    #                    for out, scale_factor in zip(model_classifier_outs, matmul_scale_factors)]
+    # classifier_error_rates = [(np.sum(np.abs(matmul_out - scaled_classifier_out)) /
+    #                            np.sum(scaled_classifier_out))
+    #                           for matmul_out, scaled_classifier_out in zip(matmul_outs, scaled_classifier_outs)]
+    # classifier_max_diffs = [scaled_classifier_out.max() / matmul_out.max()
+    #                         for matmul_out, scaled_classifier_out in zip(matmul_outs, scaled_classifier_outs)]
+    # breakpoint()
 
     eval_outs = ng.eval([out], act=vact)
     vout = eval_outs[0]
@@ -216,13 +238,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
                                         key=lambda x: x[1], reverse=True))[:10]:
             print("# vout: %s (%d) = %d" % (str(labels[index]), index, value))
 
-    # out_diff = vout - scaled_model_out
-    # out_err = out_diff / (scaled_model_out + 0.00000001)
-    # max_out_err = np.max(np.abs(out_err))
     # breakpoint()
-
-    # if max_out_err > 0.1:
-    #    raise ValueError("too large output error: %f > 0.1" % max_out_err)
 
     # --------------------
     # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)
