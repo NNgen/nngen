@@ -145,92 +145,59 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
                    1.0 * (2 ** (act.dtype.width - 1) - 1))
     vact = np.round(vact).astype(np.int64)
 
-#    # compare outputs of hidden layers
-#    # features (conv2d)
-#    conv2d_ops = [v for k, v in operators.items()
-#                  if isinstance(v, ng.conv2d) and not isinstance(v, ng.matmul)]
-#    conv2d_ops = list(sorted(set(conv2d_ops), key=conv2d_ops.index))
-#    conv2d_outs = ng.eval(conv2d_ops, act=vact)
-#    conv2d_scale_factors = [op.scale_factor for op in conv2d_ops]
-#
-#    model_features_relu_layers = [layer
-#                                  for layer in model.features if isinstance(layer, nn.ReLU)]
-#    model_features_relu_indexes = [list(model.features).index(layer)
-#                                   for layer in model_features_relu_layers]
-#    model_features_seqs = [model.features[:i + 1]
-#                           for i in model_features_relu_indexes]
-#    for sub in model_features_seqs:
-#        sub.eval()
-#    model_features_outs = [sub(torch.from_numpy(model_input)).detach().numpy()
-#                           for sub in model_features_seqs]
-#
-#    scaled_features_outs = [(out * scale_factor)
-#                            for out, scale_factor in zip(model_features_outs, conv2d_scale_factors)]
-#    features_error_rates = [(np.sum(np.abs(conv2d_out.transpose([0, 3, 1, 2]) - scaled_features_out)) /
-#                             np.sum(scaled_features_out))
-#                            for conv2d_out, scaled_features_out in zip(conv2d_outs, scaled_features_outs)]
-#    features_max_diffs = [scaled_features_out.max() / conv2d_out.max()
-#                          for conv2d_out, scaled_features_out in zip(conv2d_outs, scaled_features_outs)]
-#    features_corrcoefs = [np.corrcoef(model_features_out.reshape([-1]),
-#                                      conv2d_out.transpose([0, 3, 1, 2]).reshape([-1]))
-#                          for conv2d_out, model_features_out in zip(conv2d_outs, model_features_outs)]
-#
-#    # avgpool (avg_pool)
-#    avg_pool_ops = [v for k, v in operators.items()
-#                    if isinstance(v, (ng.avg_pool, ng.avg_pool_serial))]
-#    avg_pool_ops = list(sorted(set(avg_pool_ops), key=avg_pool_ops.index))
-#    avg_pool_outs = ng.eval(avg_pool_ops, act=vact)
-#    avg_pool_scale_factors = [op.scale_factor for op in avg_pool_ops]
-#
-#    model_avgpool_seqs = [nn.Sequential(model.features, model.avgpool)]
-#    for sub in model_avgpool_seqs:
-#        sub.eval()
-#    model_avgpool_outs = [sub(torch.from_numpy(model_input)).detach().numpy()
-#                          for sub in model_avgpool_seqs]
-#
-#    scaled_avgpool_outs = [(out * scale_factor)
-#                           for out, scale_factor in zip(model_avgpool_outs, avg_pool_scale_factors)]
-#    avgpool_error_rates = [(np.sum(np.abs(avg_pool_out.transpose([0, 3, 1, 2]) - scaled_avgpool_out)) /
-#                            np.sum(scaled_avgpool_out))
-#                           for avg_pool_out, scaled_avgpool_out in zip(avg_pool_outs, scaled_avgpool_outs)]
-#    avgpool_max_diffs = [scaled_avgpool_out.max() / avg_pool_out.max()
-#                         for avg_pool_out, scaled_avgpool_out in zip(avg_pool_outs, scaled_avgpool_outs)]
-#    avgpool_corrcoefs = [np.corrcoef(model_avgpool_out.reshape([-1]),
-#                                     avg_pool_out.transpose([0, 3, 1, 2]).reshape([-1]))
-#                         for avg_pool_out, model_avgpool_out in zip(avg_pool_outs, model_avgpool_outs)]
-#
-#    # classifier (matmul)
-#    matmul_ops = [v for k, v in operators.items() if isinstance(v, ng.matmul)]
-#    matmul_ops = list(sorted(set(matmul_ops), key=matmul_ops.index))
-#    matmul_outs = ng.eval(matmul_ops, act=vact)
-#    matmul_scale_factors = [op.scale_factor for op in matmul_ops]
-#
-#    class Flatten(nn.Module):
-#        def forward(self, input):
-#            return input.view(input.size(0), -1)
-#
-#    model_classifier_relu_layers = [layer
-#                                    for layer in model.classifier if isinstance(layer, nn.ReLU)]
-#    model_classifier_relu_indexes = [list(model.classifier).index(layer)
-#                                     for layer in model_classifier_relu_layers]
-#    model_classifier_relu_indexes.append(len(model.classifier))
-#    model_classifier_seqs = [nn.Sequential(model.features, model.avgpool, Flatten(), model.classifier[:i + 1])
-#                             for i in model_classifier_relu_indexes]
-#    for sub in model_classifier_seqs:
-#        sub.eval()
-#    model_classifier_outs = [sub(torch.from_numpy(model_input)).detach().numpy()
-#                             for sub in model_classifier_seqs]
-#
-#    scaled_classifier_outs = [(out * scale_factor)
-#                              for out, scale_factor in zip(model_classifier_outs, matmul_scale_factors)]
-#    classifier_error_rates = [(np.sum(np.abs(matmul_out - scaled_classifier_out)) /
-#                               np.sum(scaled_classifier_out))
-#                              for matmul_out, scaled_classifier_out in zip(matmul_outs, scaled_classifier_outs)]
-#    classifier_max_diffs = [scaled_classifier_out.max() / matmul_out.max()
-#                            for matmul_out, scaled_classifier_out in zip(matmul_outs, scaled_classifier_outs)]
-#    classifier_corrcoefs = [np.corrcoef(model_classifier_out.reshape([-1]),
-#                                        matmul_out.reshape([-1]))
-#                            for matmul_out, model_classifier_out in zip(matmul_outs, model_classifier_outs)]
+    # compare outputs of hidden layers
+    features_ops = [v for k, v in operators.items()
+                    if isinstance(v, ng.conv2d) and not isinstance(v, ng.matmul)]
+    features_ops = list(sorted(set(features_ops), key=features_ops.index))
+    avgpool_op = [v for k, v in operators.items()
+                  if isinstance(v, (ng.avg_pool, ng.avg_pool_serial))][0]
+    classifier_ops = [v for k, v in operators.items() if isinstance(v, ng.matmul)]
+    classifier_ops = list(sorted(set(classifier_ops), key=classifier_ops.index))
+
+    sub_ops = features_ops + [avgpool_op] + classifier_ops
+    sub_outs = ng.eval(sub_ops, act=vact)
+    sub_outs = [sub_out.transpose([0, 3, 1, 2])
+                for sub_out in sub_outs[:-len(classifier_ops)]] + sub_outs[-len(classifier_ops):]
+    sub_scale_factors = ([features_op.scale_factor for features_op in features_ops] +
+                         [avgpool_op.scale_factor] +
+                         [classifier_op.scale_factor for classifier_op in classifier_ops])
+
+    model.eval()
+    model_features_relu_layers = [layer
+                                  for layer in model.features if isinstance(layer, nn.ReLU)]
+    model_features_relu_indexes = [list(model.features).index(layer)
+                                   for layer in model_features_relu_layers]
+    model_features_seqs = [model.features[:i + 1]
+                           for i in model_features_relu_indexes]
+    model_features_outs = [seq(torch.from_numpy(model_input)).detach().numpy()
+                           for seq in model_features_seqs]
+
+    model_avgpool_out = nn.Sequential(model.features,
+                                      model.avgpool)(torch.from_numpy(model_input)).detach().numpy()
+
+    class Flatten(nn.Module):
+        def forward(self, input):
+            return input.view(input.size(0), -1)
+
+    model_classifier_relu_layers = [layer
+                                    for layer in model.classifier if isinstance(layer, nn.ReLU)]
+    model_classifier_relu_indexes = [list(model.classifier).index(layer)
+                                     for layer in model_classifier_relu_layers]
+    model_classifier_relu_indexes.append(len(model.classifier))
+    model_classifier_seqs = [nn.Sequential(model.features, model.avgpool, Flatten(), model.classifier[:i + 1])
+                             for i in model_classifier_relu_indexes]
+    model_classifier_outs = [seq(torch.from_numpy(model_input)).detach().numpy()
+                             for seq in model_classifier_seqs]
+
+    model_outs = model_features_outs + [model_avgpool_out] + model_classifier_outs
+    scaled_outs = [model_out * scale_factor
+                   for model_out, scale_factor in zip(model_outs, sub_scale_factors)]
+    error_rates = [np.sum(np.abs(sub_out - model_out)) / np.sum(np.abs(model_out))
+                   for model_out, sub_out in zip(scaled_outs, sub_outs)]
+    max_diffs = [model_out.max() / sub_out.max()
+                 for model_out, sub_out in zip(scaled_outs, sub_outs)]
+    corrcoefs = [np.corrcoef(model_out.reshape([-1]), sub_out.reshape([-1]))
+                 for model_out, sub_out in zip(model_outs, sub_outs)]
 
     # compare prediction results
     eval_outs = ng.eval([out], act=vact)
