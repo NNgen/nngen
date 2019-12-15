@@ -32,6 +32,9 @@ class _Numeric(_Node):
 
     parallel_scheduling_allowed = True
 
+    # for ONNX
+    layout = None
+
     def __init__(self, dtype=None, shape=None, name=None):
         _Node.__init__(self)
 
@@ -82,14 +85,12 @@ class _Numeric(_Node):
         # numpy value for variable/constant
         self.value = None
 
-        # for ONNX and Quantization
+        # for quantization
         self.quantized = False
-        # current data layout
-        self.layout = None
-        # remember applied permutation pattern
-        self.perm = None
-        # scale factor by quantization
+        # scale factor for quantization
         self.scale_factor = 1.0
+        # remember applied permutation pattern for ONNX
+        self.perm = None
 
     def __str__(self):
         clsname = self.__class__.__name__
@@ -288,6 +289,15 @@ class _Numeric(_Node):
         value = value.reshape(self.shape)
 
         self.value = value
+
+    def get_original_shape(self):
+        return self.shape
+
+    def get_layout(self):
+        return self.layout
+
+    def get_original_layout(self):
+        return self.get_layout()
 
     @property
     def reversed_perm(self):
@@ -1056,6 +1066,17 @@ class _Operator(_Numeric):
         self.objaddr = obj.objaddr
         self.arg_objaddrs = obj.arg_objaddrs
         self.control = obj.control
+
+    def get_layout(self):
+        if self.layout is not None:
+            return self.layout
+
+        for arg in self.args:
+            layout = arg.get_layout()
+            if layout is not None:
+                return layout
+
+        return None
 
     def eval(self, memo, input_dict, **kwargs):
         if id(self) in memo:
@@ -2216,6 +2237,12 @@ class _Reshape(_Operator):
 
         fsm.goto(state_copy)
         fsm.If(total_count + self.write_size >= self.total_size).goto_next()
+
+    def get_original_shape(self):
+        return self.args[0].get_original_shape()
+
+    def get_original_layout(self):
+        return self.args[0].get_original_layout()
 
     def eval(self, memo, input_dict, **kwargs):
         if id(self) in memo:
