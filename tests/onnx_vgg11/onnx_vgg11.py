@@ -25,8 +25,7 @@ import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 
 
-def run(act_shape=(1, 32, 32, 3),
-        act_dtype=ng.int16, weight_dtype=ng.int16,
+def run(act_dtype=ng.int16, weight_dtype=ng.int16,
         bias_dtype=ng.int32, scale_dtype=ng.int16,
         with_batchnorm=False, disable_fusion=False,
         conv2d_par_ich=1, conv2d_par_och=1, conv2d_par_col=1, conv2d_par_row=1,
@@ -41,8 +40,10 @@ def run(act_shape=(1, 32, 32, 3),
         outputfile=None):
 
     # input mean and standard deviation
-    act_mean = np.array([0.485, 0.456, 0.406]).astype(np.float32)
-    act_std = np.array([0.229, 0.224, 0.225]).astype(np.float32)
+    cifar10_mean = np.array([0.4914, 0.4822, 0.4465]).astype(np.float32)
+    cifar10_std = np.array([0.247, 0.243, 0.261]).astype(np.float32)
+
+    act_shape = (1, 32, 32, 3)
 
     # pytorch model
     if with_batchnorm:
@@ -102,8 +103,8 @@ def run(act_shape=(1, 32, 32, 3),
         act_scale_factor = int(round(2 ** (act_dtype.width - 1) * 0.5))
 
     input_scale_factors = {'act': act_scale_factor}
-    input_means = {'act': act_mean * act_scale_factor}
-    input_stds = {'act': act_std * act_scale_factor}
+    input_means = {'act': cifar10_mean * act_scale_factor}
+    input_stds = {'act': cifar10_std * act_scale_factor}
 
     ng.quantize(outputs, input_scale_factors, input_means, input_stds)
 
@@ -137,9 +138,9 @@ def run(act_shape=(1, 32, 32, 3),
     # verification data
     # random data
     img = np.random.uniform(size=act.length).astype(np.float32).reshape(act.shape)
-    img = img * 12.0 * act_std + act_mean
+    img = img * 12.0 * cifar10_std + cifar10_mean
     # img = np.random.normal(size=act.length).astype(np.float32).reshape(act.shape)
-    # img = img * act_std + act_mean
+    # img = img * cifar10_std + cifar10_mean
 
     # execution on pytorch
     model_input = img
