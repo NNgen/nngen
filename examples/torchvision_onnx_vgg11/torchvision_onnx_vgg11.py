@@ -26,8 +26,8 @@ import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 
 
-def run(act_dtype=ng.int16, weight_dtype=ng.int16,
-        bias_dtype=ng.int32, scale_dtype=ng.int16,
+def run(act_dtype=ng.int8, weight_dtype=ng.int8,
+        bias_dtype=ng.int32, scale_dtype=ng.int8,
         with_batchnorm=True, disable_fusion=False,
         conv2d_par_ich=1, conv2d_par_och=1, conv2d_par_col=1, conv2d_par_row=1,
         conv2d_concur_och=None, conv2d_stationary='filter',
@@ -176,8 +176,8 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
                           for conv2d_out, model_features_out in zip(conv2d_outs, model_features_outs)]
 
     # avgpool (avg_pool)
-    avg_pool_ops = [v for k, v in operators.items() if isinstance(
-        v, (ng.avg_pool, ng.avg_pool_serial))]
+    avg_pool_ops = [v for k, v in operators.items()
+                    if isinstance(v, (ng.avg_pool, ng.avg_pool_serial))]
     avg_pool_ops = list(sorted(set(avg_pool_ops), key=avg_pool_ops.index))
     avg_pool_outs = ng.eval(avg_pool_ops, act=vact)
     avg_pool_scale_factors = [op.scale_factor for op in avg_pool_ops]
