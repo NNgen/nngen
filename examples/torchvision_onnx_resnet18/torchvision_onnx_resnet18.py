@@ -26,8 +26,8 @@ import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 
 
-def run(act_dtype=ng.int16, weight_dtype=ng.int16,
-        bias_dtype=ng.int16, scale_dtype=ng.int16,
+def run(act_dtype=ng.int8, weight_dtype=ng.int8,
+        bias_dtype=ng.int32, scale_dtype=ng.int8,
         with_batchnorm=True, disable_fusion=False,
         conv2d_par_ich=1, conv2d_par_och=1, conv2d_par_col=1, conv2d_par_row=1,
         conv2d_concur_och=None, conv2d_stationary='filter',
@@ -38,6 +38,10 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
         # simtype='verilator',
         # simtype=None,  # no RTL simulation
         outputfile=None):
+
+    # input mean and standard deviation
+    imagenet_mean = np.array([0.485, 0.456, 0.406]).astype(np.float32)
+    imagenet_std = np.array([0.229, 0.224, 0.225]).astype(np.float32)
 
     act_shape = (1, 224, 224, 3)
 
@@ -77,14 +81,16 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     # (2) Assign quantized weights to the NNgen operators
     # --------------------
 
-    if act_dtype.width >= 8:
-        act_max = 127
+    if act_dtype.width > 8:
+        act_scale_factor = 128
     else:
-        act_max = 2 ** (act_dtype.width - 1) - 1
+        act_scale_factor = int(round(2 ** (act_dtype.width - 1) * 0.5))
 
-    value_ranges = {'act': (-act_max, act_max)}
+    input_scale_factors = {'act': act_scale_factor}
+    input_means = {'act': imagenet_mean * act_scale_factor}
+    input_stds = {'act': imagenet_std * act_scale_factor}
 
-    ng.quantize(outputs, value_ranges=value_ranges)
+    ng.quantize(outputs, input_scale_factors, input_means, input_stds)
 
     # --------------------
     # (3) Assign hardware attributes
@@ -114,13 +120,10 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     out = outputs['out']
 
     # verification data
-    imagenet_mean = np.array([0.485, 0.456, 0.406]).astype(np.float32)
-    imagenet_std = np.array([0.229, 0.224, 0.225]).astype(np.float32)
-
     img = np.array(PIL.Image.open('car.png').convert('RGB')).astype(np.float32)
     img = img.reshape([1] + list(img.shape))
 
-    img = img / np.max(np.abs(img))
+    img = img / 255
     img = (img - imagenet_mean) / imagenet_std
 
     # execution on pytorch
@@ -133,12 +136,16 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     model_out = model(torch.from_numpy(model_input)).detach().numpy()
     if act.perm is not None and len(model_out.shape) == len(act.shape):
         model_out = np.transpose(model_out, act.perm)
-    scaled_model_out = model_out * out.scale_factor * act_max
+    scaled_model_out = model_out * out.scale_factor
 
     # software-based verification
-    vact = img / np.max(np.abs(img)) * act_max
+    vact = img * act_scale_factor
+    vact = np.clip(vact,
+                   -1.0 * (2 ** (act.dtype.width - 1) - 1),
+                   1.0 * (2 ** (act.dtype.width - 1) - 1))
     vact = np.round(vact).astype(np.int64)
 
+    # compare prediction results
     eval_outs = ng.eval([out], act=vact)
     vout = eval_outs[0]
 
@@ -154,13 +161,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
                                         key=lambda x: x[1], reverse=True))[:10]:
             print("# vout: %s (%d) = %d" % (str(labels[index]), index, value))
 
-    # out_diff = vout - scaled_model_out
-    # out_err = out_diff / (scaled_model_out + 0.00000001)
-    # max_out_err = np.max(np.abs(out_err))
-    # breakpoint()
-
-    # if max_out_err > 0.1:
-    #    raise ValueError("too large output error: %f > 0.1" % max_out_err)
+    breakpoint()
 
     # --------------------
     # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)
