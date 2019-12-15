@@ -24,6 +24,25 @@ def Gemm(visitor, node,
     input = srcs[0]
     filter = srcs[1]
 
+    orig_layout = input.get_original_layout()
+    orig_shape = input.get_original_shape()
+
+    if orig_layout is None:
+        pass
+    elif orig_layout == 'NCHW':
+        pass
+    elif orig_layout == 'NHWC':
+        # Though the original weight layout is identical to that of NNgen.
+        # However it assumes values before Reshape operators have the 'NCHW' layout.
+        # So the weight layout must be transposed.
+        shape = [filter.shape[0], orig_shape[3], orig_shape[1], orig_shape[2]]
+        reshape_value = filter.value.reshape(shape)
+        transpose_value = reshape_value.transpose([0, 2, 3, 1])
+        new_value = transpose_value.reshape([filter.shape[0], -1])
+        filter.value = new_value
+    else:
+        raise ValueError("not supported input layout for Gemm: '%s'" % layout)
+
     bias = srcs[2] if len(srcs) > 2 else None
 
     name = util.get_name(node)
@@ -53,7 +72,7 @@ def Gemm(visitor, node,
     elif bias is not None:
         bias.dtype = visitor.default_bias_dtype
 
-    #rshift_out_name = '_'.join(['onnx, name, 'gemm.rshift_out'])
+    # rshift_out_name = '_'.join(['onnx, name, 'gemm.rshift_out'])
     #rshift_out_width = filter.dtype.width
     #rshift_out_dtype = dtype_list.dtype_int(rshift_out_width, signed=False)
     #rshift_out_shape = (1,)

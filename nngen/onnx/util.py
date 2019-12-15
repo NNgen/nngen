@@ -56,8 +56,7 @@ def transpose_layout(value, expected_layout, default_layout):
 
         return value
 
-    #current_layout = value.layout if value.layout is not None else default_layout
-    current_layout = get_layout(value)
+    current_layout = value.get_layout()
 
     if current_layout == expected_layout:
         return value
@@ -74,25 +73,3 @@ def transpose_layout(value, expected_layout, default_layout):
     value.layout = expected_layout
 
     return value
-
-
-def get_layout(value):
-    if value.layout is not None:
-        return value.layout
-
-    if not isinstance(value, bt._Operator):
-        return None
-
-    if isinstance(value, operator.conv2d):
-        return get_layout(value.args[0])
-
-    if isinstance(value, (operator.normalize, operator.scaled_add)):
-        return get_layout(value.args[0])
-
-    if isinstance(value, bt._ElementwiseOperator):
-        for arg in value.args:
-            ret = get_layout(arg)
-            if ret is not None:
-                return ret
-
-    raise ValueError('can not identify layout.')
