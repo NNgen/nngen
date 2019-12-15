@@ -914,6 +914,19 @@ class transpose(bt._Operator):
         fsm.If(laddr == read_size - 1).goto(read_state)
         fsm.If(prev_done).goto_next()
 
+    def get_layout(self):
+        if self.layout is not None:
+            return self.layout
+
+        orig_layout = self.args[0].get_layout()
+        if orig_layout is None:
+            return None
+
+        new_layout = [l for l in orig_layout]
+        for i, p in enumerate(self.transpose_perm):
+            new_layout[i] = orig_layout[p]
+        return ''.join(new_layout)
+
     def eval(self, memo, input_dict, **kwargs):
         if id(self) in memo:
             return memo[id(self)]
