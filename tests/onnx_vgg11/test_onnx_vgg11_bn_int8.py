@@ -17,8 +17,8 @@ import onnx_vgg11
 act_shape = (1, 32, 32, 3)
 act_dtype = ng.int8
 weight_dtype = ng.int8
-bias_dtype = ng.int16
-scale_dtype = ng.int16
+bias_dtype = ng.int32
+scale_dtype = ng.int8
 with_batchnorm = True
 disable_fusion = False
 conv2d_par_ich = 1
