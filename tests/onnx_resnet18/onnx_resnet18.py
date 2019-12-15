@@ -25,16 +25,25 @@ import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 
 
-def run(act_shape=(1, 32, 32, 3),
-        act_dtype=ng.int32, weight_dtype=ng.int32,
-        bias_dtype=ng.int32, scale_dtype=ng.int32,
+def run(act_dtype=ng.int16, weight_dtype=ng.int16,
+        bias_dtype=ng.int32, scale_dtype=ng.int16,
         with_batchnorm=True, disable_fusion=False,
         conv2d_par_ich=1, conv2d_par_och=1, conv2d_par_col=1, conv2d_par_row=1,
         conv2d_concur_och=None, conv2d_stationary='filter',
         pool_par=1, elem_par=1,
         chunk_size=64,
         axi_datawidth=32, silent=False,
-        filename=None, simtype='iverilog', outputfile=None):
+        filename=None,
+        simtype='iverilog',
+        # simtype='verilator',
+        # simtype=None,  # no RTL simulation
+        outputfile=None):
+
+    # input mean and standard deviation
+    cifar10_mean = np.array([0.4914, 0.4822, 0.4465]).astype(np.float32)
+    cifar10_std = np.array([0.247, 0.243, 0.261]).astype(np.float32)
+
+    act_shape = (1, 32, 32, 3)
 
     if not with_batchnorm:
         raise ValueError('with_batchnorm must be True for ResNet18.')
@@ -55,6 +64,10 @@ def run(act_shape=(1, 32, 32, 3),
     torch.onnx.export(model, dummy_input, onnx_filename,
                       input_names=input_names, output_names=output_names)
 
+    # --------------------
+    # (1) Represent a DNN model as a dataflow by NNgen operators
+    # --------------------
+
     # ONNX to NNgen
     dtypes = {}
     (outputs, placeholders, variables,
@@ -68,12 +81,25 @@ def run(act_shape=(1, 32, 32, 3),
                                           default_bias_dtype=bias_dtype,
                                           disable_fusion=disable_fusion)
 
-    # default linear quantization
-    value_ranges = {'act': (0, 255)}
+    # --------------------
+    # (2) Assign quantized weights to the NNgen operators
+    # --------------------
 
-    ng.quantize(outputs, value_ranges=value_ranges)
+    if act_dtype.width > 8:
+        act_scale_factor = 128
+    else:
+        act_scale_factor = int(round(2 ** (act_dtype.width - 1) * 0.5))
 
-    # set attribute
+    input_scale_factors = {'act': act_scale_factor}
+    input_means = {'act': cifar10_mean * act_scale_factor}
+    input_stds = {'act': cifar10_std * act_scale_factor}
+
+    ng.quantize(outputs, input_scale_factors, input_means, input_stds)
+
+    # --------------------
+    # (3) Assign hardware attributes
+    # --------------------
+
     for op in operators.values():
         if isinstance(op, ng.conv2d):
             op.attribute(par_ich=conv2d_par_ich,
@@ -90,27 +116,23 @@ def run(act_shape=(1, 32, 32, 3),
         if ng.is_elementwise_operator(op):
             op.attribute(par=elem_par)
 
-    # create target hardware
+    # --------------------
+    # (4) Verify the DNN model behavior by executing the NNgen dataflow as a software
+    # --------------------
+
     act = placeholders['act']
     out = outputs['out']
 
-    targ = ng.to_veriloggen([out], 'onnx_resnet18', silent=silent,
-                            config={'maxi_datawidth': axi_datawidth})
-
     # verification data
-    vact = np.random.normal(size=act.length).reshape(act.shape)
-    vact = np.clip(vact, -3.0, 3.0)
-    vact_min_val, vact_max_val = value_ranges['act']
-    vact_max_abs_range = max(abs(vact_min_val), abs(vact_max_val))
-    vact_width = vact_max_abs_range.bit_length() + 1
-    vact = vact * (1.0 * (2 ** (vact_width - 1) - 1)) / 3.0
-    vact = np.round(vact).astype(np.int64)
+    # random data
+    img = np.random.uniform(size=act.length).astype(np.float32).reshape(act.shape)
+    img = img * 12.0 * cifar10_std + cifar10_mean
+    # img = np.random.normal(size=act.length).astype(np.float32).reshape(act.shape)
+    # img = img * cifar10_std + cifar10_mean
 
-    eval_outs = ng.eval([out], act=vact)
-    vout = eval_outs[0]
+    # execution on pytorch
+    model_input = img
 
-    # exec on pytorch
-    model_input = vact.astype(np.float32)
     if act.perm is not None:
         model_input = np.transpose(model_input, act.reversed_perm)
 
@@ -120,22 +142,51 @@ def run(act_shape=(1, 32, 32, 3),
         model_out = np.transpose(model_out, act.perm)
     scaled_model_out = model_out * out.scale_factor
 
-    mout = scaled_model_out.astype(np.int64)
-    for bat in range(vout.shape[0]):
-        vout_max = np.max(vout[bat])
-        vout_max_index = list(vout[bat]).index(vout_max)
-        mout_max = np.max(mout[bat])
-        mout_max_index = list(mout[bat]).index(mout_max)
-        print("# vout[%d]: max = %d, index = %d" % (bat, vout_max, vout_max_index))
-        print("# mout[%d]: max = %d, index = %d" % (bat, mout_max, mout_max_index))
+    # software-based verification
+    vact = img * act_scale_factor
+    vact = np.clip(vact,
+                   -1.0 * (2 ** (act.dtype.width - 1) - 1),
+                   1.0 * (2 ** (act.dtype.width - 1) - 1))
+    vact = np.round(vact).astype(np.int64)
 
-    # out_diff = vout - scaled_model_out
-    # out_err = out_diff / (scaled_model_out + 0.00000001)
-    # max_out_err = np.max(np.abs(out_err))
+    eval_outs = ng.eval([out], act=vact)
+    vout = eval_outs[0]
+
+    labels = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+
+    mout = scaled_model_out
+    for bat in range(mout.shape[0]):
+        for index, value in list(sorted(enumerate(mout[bat]),
+                                        key=lambda x: x[1], reverse=True))[:10]:
+            print("# mout: %s (%d) = %f" % (str(labels[index]), index, value))
+        for index, value in list(sorted(enumerate(vout[bat]),
+                                        key=lambda x: x[1], reverse=True))[:10]:
+            print("# vout: %s (%d) = %d" % (str(labels[index]), index, value))
+
     # breakpoint()
 
-    # if max_out_err > 0.1:
-    #    raise ValueError("too large output error: %f > 0.1" % max_out_err)
+    # --------------------
+    # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)
+    # --------------------
+
+    # to Veriloggen object
+    # targ = ng.to_veriloggen([out], 'resnet18', silent=silent,
+    #                        config={'maxi_datawidth': axi_datawidth})
+
+    # to IP-XACT (the method returns Veriloggen object, as well as to_veriloggen)
+    targ = ng.to_ipxact([out], 'onnx_resnet18', silent=silent,
+                        config={'maxi_datawidth': axi_datawidth})
+
+    # to Verilog HDL RTL (the method returns a source code text)
+    # rtl = ng.to_verilog([out], 'resnet18', silent=silent,
+    #                    config={'maxi_datawidth': axi_datawidth})
+
+    # --------------------
+    # (6) Simulate the generated hardware by Veriloggen and Verilog simulator
+    # --------------------
+
+    if simtype is None:
+        sys.exit()
 
     # to memory image
     param_data = ng.export_ndarray([out], chunk_size)
@@ -146,7 +197,8 @@ def run(act_shape=(1, 32, 32, 3),
     tmp_addr = int(math.ceil((check_addr + out.memory_size) / chunk_size)) * chunk_size
 
     memimg_datawidth = 32
-    mem = np.zeros([1024 * 1024 * 256 // (memimg_datawidth // 8)], dtype=np.int64)
+    # mem = np.zeros([1024 * 1024 * 256 // (memimg_datawidth // 8)], dtype=np.int64)
+    mem = np.zeros([1024 * 1024 * 1024 // (memimg_datawidth // 8)], dtype=np.int16)
     mem = mem + [100]
 
     # placeholder

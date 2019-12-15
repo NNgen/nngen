@@ -36,50 +36,39 @@ def normalize(visitor, node):
     bias.set_value(q_bias_value)
     bias.scale_factor = input.scale_factor * scale_scale_factor
 
-    q_shamt = find_optimal_shamt_normalize(node, q_scale_value, q_bias_value,
-                                           value_ranges=visitor.value_ranges,
-                                           num_trials=visitor.num_trials)
+    q_shamt = find_optimal_shamt_normalize(visitor, node, q_scale_value, q_bias_value)
     shamt.fill_value = q_shamt
     node.scale_factor = input.scale_factor * scale.scale_factor / (2 ** q_shamt)
 
 
-def find_optimal_shamt_normalize(node, scale, bias,
-                                 value_ranges={}, num_trials=5,
-                                 allowed_rate=0.05, input_threshold=3.0):
+def find_optimal_shamt_normalize(visitor, node, scale, bias,
+                                 allowed_rate=0.0, range_ratio=0.3,
+                                 init_shamt=0):
 
-    shamt = 0
+    shamt = init_shamt
 
-    input_shape = node.args[0].shape
-    input_length = node.args[0].length
-    input_name = node.args[0].name
+    input = node.args[0].eval(visitor.memo, visitor.input_dict)
 
-    if input_name in value_ranges:
-        min_val, max_val = value_ranges[input_name]
-        abs_min_val = abs(min_val)
-        abs_max_val = abs(max_val)
-        max_abs_range = max(abs_min_val, abs_max_val)
-        input_bits = max_abs_range.bit_length() + 1
+    if node.dtype.signed:
+        _range = round((2 ** (node.dtype.width - 1)) * range_ratio)
     else:
-        input_bits = node.args[0].dtype.width
-
-    out_length = node.length
+        _range = round((2 ** node.dtype.width) * range_ratio)
 
     while True:
-        acc_overflow = 0
+        rslt = try_shamt_normalize(node, input, scale, bias, shamt)
+        neg_overflow = np.where(rslt <= - _range,
+                                np.ones_like(rslt), np.zeros_like(rslt))
+        pos_overflow = np.where(rslt >= _range,
+                                np.ones_like(rslt), np.zeros_like(rslt))
+        num_overflow = np.sum(neg_overflow + pos_overflow)
 
-        for _ in range(num_trials):
-            input = np.random.normal(size=input_length).reshape(input_shape)
-            input = np.clip(input, -input_threshold, input_threshold)
-            input = input * (2.0 ** (input_bits - 1) - 1) / input_threshold
-            input = np.round(input).astype(np.int64)
-
-            acc_overflow += try_shamt_normalize(node, input, scale, bias, shamt)
-
-        rate = acc_overflow / (out_length * num_trials)
+        rate = num_overflow / rslt.size
         if rate <= allowed_rate:
             break
 
         shamt += 1
+
+    visitor.memo[id(node)] = rslt
 
     return shamt
 
@@ -97,16 +86,7 @@ def try_shamt_normalize(node, x, y, z, shamt):
     kwargs['name'] = node.name
     kwargs['par'] = node.par
 
-    rslt = method(x, y, z, shamt, **kwargs)
-
-    half_range = (2 ** (node.dtype.width - 1)) - 1
-    neg_overflow = np.where(rslt <= - half_range,
-                            np.ones_like(rslt), np.zeros_like(rslt))
-    pos_overflow = np.where(rslt >= half_range,
-                            np.ones_like(rslt), np.zeros_like(rslt))
-    num_overflow = np.sum(neg_overflow + pos_overflow)
-
-    return num_overflow
+    return method(x, y, z, shamt, **kwargs)
 
 
 def scaled_add(visitor, node):
@@ -136,70 +116,42 @@ def scaled_add(visitor, node):
     node.a_scale = int(q_a_scale_value)
     node.b_scale = int(q_b_scale_value)
 
-    q_shamt = find_optimal_shamt_scaled_add(node, q_a_scale_value, q_b_scale_value,
-                                            value_ranges=visitor.value_ranges,
-                                            num_trials=visitor.num_trials)
+    q_shamt = find_optimal_shamt_scaled_add(visitor, node, q_a_scale_value, q_b_scale_value)
     node.shamt = q_shamt
     node.scale_factor = max(a.scale_factor * a_scale_scale_factor,
                             b.scale_factor * b_scale_scale_factor) / (2 ** q_shamt)
 
 
-def find_optimal_shamt_scaled_add(node, a_scale, b_scale,
-                                  value_ranges={}, num_trials=5,
-                                  allowed_rate=0.05, input_threshold=3.0):
+def find_optimal_shamt_scaled_add(visitor, node, a_scale, b_scale,
+                                  allowed_rate=0.0, range_ratio=0.5,
+                                  init_shamt=0):
 
-    shamt = 0
+    shamt = init_shamt
 
-    a_input_shape = node.args[0].shape
-    a_input_length = node.args[0].length
-    a_input_name = node.args[0].name
+    a_input = node.args[0].eval(visitor.memo, visitor.input_dict)
+    b_input = node.args[1].eval(visitor.memo, visitor.input_dict)
 
-    b_input_shape = node.args[1].shape
-    b_input_length = node.args[1].length
-    b_input_name = node.args[1].name
-
-    if a_input_name in value_ranges:
-        min_val, max_val = value_ranges[a_input_name]
-        abs_min_val = abs(min_val)
-        abs_max_val = abs(max_val)
-        max_abs_range = max(abs_min_val, abs_max_val)
-        a_input_bits = max_abs_range.bit_length() + 1
+    if node.dtype.signed:
+        _range = round((2 ** (node.dtype.width - 1)) * range_ratio)
     else:
-        a_input_bits = node.args[0].dtype.width
-
-    if b_input_name in value_ranges:
-        min_val, max_val = value_ranges[b_input_name]
-        abs_min_val = abs(min_val)
-        abs_max_val = abs(max_val)
-        max_abs_range = max(abs_min_val, abs_max_val)
-        b_input_bits = max_abs_range.bit_length() + 1
-    else:
-        b_input_bits = node.args[1].dtype.width
-
-    out_length = node.length
+        _range = round((2 ** node.dtype.width) * range_ratio)
 
     while True:
-        acc_overflow = 0
+        rslt = try_shamt_scaled_add(node, a_input, a_scale,
+                                    b_input, b_scale, shamt)
+        neg_overflow = np.where(rslt <= - _range,
+                                np.ones_like(rslt), np.zeros_like(rslt))
+        pos_overflow = np.where(rslt >= _range,
+                                np.ones_like(rslt), np.zeros_like(rslt))
+        num_overflow = np.sum(neg_overflow + pos_overflow)
 
-        for _ in range(num_trials):
-            a_input = np.random.normal(size=a_input_length).reshape(a_input_shape)
-            a_input = np.clip(a_input, -input_threshold, input_threshold)
-            a_input = a_input * (2.0 ** (a_input_bits - 1) - 1) / input_threshold
-            a_input = np.round(a_input).astype(np.int64)
-
-            b_input = np.random.normal(size=b_input_length).reshape(b_input_shape)
-            b_input = np.clip(b_input, -input_threshold, input_threshold)
-            b_input = b_input * (2.0 ** (b_input_bits - 1) - 1) / input_threshold
-            b_input = np.round(b_input).astype(np.int64)
-
-            acc_overflow += try_shamt_scaled_add(node, a_input, a_scale,
-                                                 b_input, b_scale, shamt)
-
-        rate = acc_overflow / (out_length * num_trials)
+        rate = num_overflow / rslt.size
         if rate <= allowed_rate:
             break
 
         shamt += 1
+
+    visitor.memo[id(node)] = rslt
 
     return shamt
 
@@ -217,16 +169,7 @@ def try_shamt_scaled_add(node, a, a_scale, b, b_scale, shamt):
     kwargs['name'] = node.name
     kwargs['par'] = node.par
 
-    rslt = method(a, b, a_scale, b_scale, shamt, **kwargs)
-
-    half_range = (2 ** (node.dtype.width - 1)) - 1
-    neg_overflow = np.where(rslt <= - half_range,
-                            np.ones_like(rslt), np.zeros_like(rslt))
-    pos_overflow = np.where(rslt >= half_range,
-                            np.ones_like(rslt), np.zeros_like(rslt))
-    num_overflow = np.sum(neg_overflow + pos_overflow)
-
-    return num_overflow
+    return method(a, b, a_scale, b_scale, shamt, **kwargs)
 
 
 def scaled_concat(visitor, node):
@@ -268,56 +211,41 @@ def scaled_concat(visitor, node):
 
     node.scales = new_scales
 
-    q_shamt = find_optimal_shamt_scaled_concat(node, new_scales,
-                                               value_ranges=visitor.value_ranges,
-                                               num_trials=visitor.num_trials)
-
+    q_shamt = find_optimal_shamt_scaled_concat(visitor, node, new_scales)
     node.shamt = q_shamt
     node.scale_factor = max(*[value.scale_factor * scale_scale_factor
                               for value, scale_scale_factor in zip(
                                   values, new_scale_scale_factors)]) / (2 ** q_shamt)
 
 
-def find_optimal_shamt_scaled_concat(node, scales,
-                                     value_ranges={}, num_trials=5,
-                                     allowed_rate=0.05, input_threshold=3.0):
+def find_optimal_shamt_scaled_concat(visitor, node, scales,
+                                     allowed_rate=0.0, range_ratio=0.5,
+                                     init_shamt=0):
 
-    shamt = 0
+    shamt = init_shamt
 
-    input_bits_list = []
-    for arg in node.args:
-        if arg.name in value_ranges:
-            min_val, max_val = value_ranges[arg.name]
-            abs_min_val = abs(min_val)
-            abs_max_val = abs(max_val)
-            max_abs_range = max(abs_min_val, abs_max_val)
-            input_bits = max_abs_range.bit_length() + 1
-        else:
-            input_bits = arg.dtype.width
+    inputs = [arg.eval(visitor.memo, visitor.input_dict) for arg in node.args]
 
-        input_bits_list.append(input_bits)
-
-    out_length = node.length
+    if node.dtype.signed:
+        _range = round((2 ** (node.dtype.width - 1)) * range_ratio)
+    else:
+        _range = round((2 ** node.dtype.width) * range_ratio)
 
     while True:
-        acc_overflow = 0
+        rslt = try_shamt_scaled_concat(node, inputs, scales, shamt)
+        neg_overflow = np.where(rslt <= - _range,
+                                np.ones_like(rslt), np.zeros_like(rslt))
+        pos_overflow = np.where(rslt >= _range,
+                                np.ones_like(rslt), np.zeros_like(rslt))
+        num_overflow = np.sum(neg_overflow + pos_overflow)
 
-        for _ in range(num_trials):
-            inputs = []
-            for arg, input_bits in zip(node.args, input_bits_list):
-                input = np.random.normal(size=arg.length).reshape(arg.shape)
-                input = np.clip(input, -input_threshold, input_threshold)
-                input = input * (2.0 ** (input_bits - 1) - 1) / input_threshold
-                input = np.round(input).astype(np.int64)
-                inputs.append(input)
-
-            acc_overflow += try_shamt_scaled_concat(node, inputs, scales, shamt)
-
-        rate = acc_overflow / (out_length * num_trials)
+        rate = num_overflow / rslt.size
         if rate <= allowed_rate:
             break
 
         shamt += 1
+
+    visitor.memo[id(node)] = rslt
 
     return shamt
 
@@ -335,13 +263,4 @@ def try_shamt_scaled_concat(node, values, scales, shamt):
     kwargs['mul_dtype'] = node.mul_dtype
     kwargs['name'] = node.name
 
-    rslt = method(values, scales, shamt, **kwargs)
-
-    half_range = (2 ** (node.dtype.width - 1)) - 1
-    neg_overflow = np.where(rslt <= - half_range,
-                            np.ones_like(rslt), np.zeros_like(rslt))
-    pos_overflow = np.where(rslt >= half_range,
-                            np.ones_like(rslt), np.zeros_like(rslt))
-    num_overflow = np.sum(neg_overflow + pos_overflow)
-
-    return num_overflow
+    return method(values, scales, shamt, **kwargs)

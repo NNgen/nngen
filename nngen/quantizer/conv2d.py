@@ -73,10 +73,12 @@ def conv2d(visitor, node):
         (rshift_sum is None or isinstance(rshift_sum, int)) and
             (rshift_out is None or isinstance(rshift_out, int))):
 
+        q_filter_value_bits = int(np.mean(np.abs(q_filter_value))).bit_length()
         q_rshift_mul, q_rshift_sum, q_rshift_out = find_optimal_rshift(
-            node, q_filter_value, q_bias_value, q_scale_value,
-            value_ranges=visitor.value_ranges,
-            num_trials=visitor.num_trials)
+            visitor, node, q_filter_value, q_bias_value, q_scale_value,
+            init_rshift_mul=0,
+            init_rshift_sum=0,
+            init_rshift_out=q_filter_value_bits)
 
         total_rshift = 0
 
@@ -109,46 +111,37 @@ def conv2d(visitor, node):
                              scale_scale_factor)
 
 
-def find_optimal_rshift(node, filter, bias, scale,
-                        value_ranges={}, num_trials=5,
-                        allowed_rate=0.05, input_threshold=3.0):
+def find_optimal_rshift(visitor, node, filter, bias, scale,
+                        allowed_rate=0.0, range_ratio=0.3,
+                        init_rshift_mul=0, init_rshift_sum=0, init_rshift_out=0):
 
-    rshift_mul = 0
-    rshift_sum = 0
-    rshift_out = 0
+    rshift_mul = init_rshift_mul
+    rshift_sum = init_rshift_sum
+    rshift_out = init_rshift_out
 
-    input_shape = node.args[0].shape
-    input_length = node.args[0].length
-    input_name = node.args[0].name
+    input = node.args[0].eval(visitor.memo, visitor.input_dict)
 
-    if input_name in value_ranges:
-        min_val, max_val = value_ranges[input_name]
-        abs_min_val = abs(min_val)
-        abs_max_val = abs(max_val)
-        max_abs_range = max(abs_min_val, abs_max_val)
-        input_bits = max_abs_range.bit_length() + 1
+    if node.dtype.signed:
+        _range = round((2 ** (node.dtype.width - 1)) * range_ratio)
     else:
-        input_bits = node.args[0].dtype.width
-
-    out_length = node.length
+        _range = round((2 ** node.dtype.width) * range_ratio)
 
     while True:
-        acc_overflow = 0
+        rslt = try_rshift(node, input, filter, bias, scale,
+                          rshift_mul, rshift_sum, rshift_out)
+        neg_overflow = np.where(rslt <= - _range,
+                                np.ones_like(rslt), np.zeros_like(rslt))
+        pos_overflow = np.where(rslt >= _range,
+                                np.ones_like(rslt), np.zeros_like(rslt))
+        num_overflow = np.sum(neg_overflow + pos_overflow)
 
-        for _ in range(num_trials):
-            input = np.random.normal(size=input_length).reshape(input_shape)
-            input = np.clip(input, -input_threshold, input_threshold)
-            input = input * (2.0 ** (input_bits - 1) - 1) / input_threshold
-            input = np.round(input).astype(np.int64)
-
-            acc_overflow += try_rshift(node, input, filter, bias, scale,
-                                       rshift_mul, rshift_sum, rshift_out)
-
-        rate = acc_overflow / (out_length * num_trials)
+        rate = num_overflow / rslt.size
         if rate <= allowed_rate:
             break
 
         rshift_out += 1
+
+    visitor.memo[id(node)] = rslt
 
     return rshift_mul, rshift_sum, rshift_out
 
@@ -192,13 +185,4 @@ def try_rshift(node, input, filter, bias, scale,
         del kwargs['par_row']
         del kwargs['concur_och']
 
-    rslt = method(input, filter, **kwargs)
-
-    half_range = (2 ** (node.dtype.width - 1)) - 1
-    neg_overflow = np.where(rslt <= - half_range,
-                            np.ones_like(rslt), np.zeros_like(rslt))
-    pos_overflow = np.where(rslt >= half_range,
-                            np.ones_like(rslt), np.zeros_like(rslt))
-    num_overflow = np.sum(neg_overflow + pos_overflow)
-
-    return num_overflow
+    return method(input, filter, **kwargs)
