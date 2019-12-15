@@ -30,7 +30,7 @@ NNgen project always welcomes questions, bug reports, feature proposals, and pul
 Community manager
 --------------------
 
-As a manager of this project, the community manager leads community management, and promote software development and diffusion. 
+As a manager of this project, the community manager leads community management, and promote software development and diffusion.
 
 Committers
 --------------------
@@ -52,7 +52,7 @@ for pull requests
 
 Please check "CONTRIBUTORS.md" for the contributors who provided pull requests.
 
-NNgen uses **pytest** for the integration testing. **When you send a pull request, please include a testing example with pytest.** 
+NNgen uses **pytest** for the integration testing. **When you send a pull request, please include a testing example with pytest.**
 To write a testing code, please refer the existing testing examples in "tests" directory.
 
 If the pull request code passes all the tests successfully and has no obvious problem, it will be merged to the *develop* branch by the committers.
@@ -131,10 +131,10 @@ sudo apt install texlive-science texlive-fonts-recommended texlive-fonts-extra d
 ```
 pip3 install sphinx sphinx_rtd_theme
 ```
-    
+
 Another installation way
 --------------------
-    
+
 The current NNgen and Veriloggen are under the aggresive development.
 Instead of the standard installation, you can download (or git clone) and install the latest version of NNgen, Veriloggen, and other libraries from GitHub.
 
@@ -193,7 +193,7 @@ python3 -m pytest --sim=verilator .
 Getting started
 ==============================
 
-Let's begin NNgen by an example. 
+Let's begin NNgen by an example.
 For the complete example, see "hello_nngen.py".
 
 (1) Represent a DNN model as a dataflow by NNgen operators
@@ -418,16 +418,24 @@ NNgen provides a simple (but experimental) quantizer that converts floating-poin
 
 You can use quantizer even if you assign "float" parameters to variables by "set_value" method. Note that it is still experimental implementation. If you have an own better quantizer, please use it.
 
-The quantizer assumes that the input of every layer has the Gaussian distribution. You can set min/max ranges of input values by the value_range argument.
+input_scale_factors is required to calculate right-shift amounts from input numerical ranges.
+The quantizer assumes the input of every layer has a uniform distribution. For a better quantization, distribution parameters (input_means and input_stds) should be assigned.
 
 ```python
 if act_dtype.width > 8:
-    value_ranges = {'act': (0, 255)}
+    act_scale_factor = 128
 else:
-    value_ranges = {'act': (0, 2 ** (act_dtype.width - 1) - 1)}
+    act_scale_factor = int(round(2 ** (act_dtype.width - 1) * 0.5))
 
-ng.quantize(outputs, value_ranges=value_ranges)
+input_scale_factors = {'act': act_scale_factor}
+input_means = {'act': imagenet_mean * act_scale_factor}
+input_stds = {'act': imagenet_std * act_scale_factor}
+
+ng.quantize(outputs, input_scale_factors, input_means, input_stds)
 ```
+
+For more information about the quantizer, please see torchvision_onnx_resnet18 and torchvision_onnx_vgg11 in examples.
+They generate an accelerator from a pre-trained model which is available from torchvision.
 
 (3) Assign hardware attributes
 --------------------
