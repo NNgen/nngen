@@ -94,7 +94,7 @@ def GlobalAveragePool(visitor, node):
     kwargs['dtype'] = dtype
     kwargs['name'] = name
 
-    c = operator.max_pool_serial(input, **kwargs)
+    c = operator.avg_pool_serial(input, **kwargs)
     c.layout = 'NHWC'
 
     return c
