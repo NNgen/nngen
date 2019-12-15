@@ -145,6 +145,91 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
                    1.0 * (2 ** (act.dtype.width - 1) - 1))
     vact = np.round(vact).astype(np.int64)
 
+    # compare outputs of hidden layers
+    relu_op = [v for k, v in operators.items()
+               if isinstance(v, ng.conv2d) and not isinstance(v, ng.matmul)][0]
+    maxpool_op = [v for k, v in operators.items()
+                  if isinstance(v, (ng.max_pool, ng.max_pool_serial))][0]
+    relu_ops = [v for k, v in operators.items()
+                if isinstance(v, ng.relu)]
+    layer1_op = relu_ops[1]
+    layer2_op = relu_ops[3]
+    layer3_op = relu_ops[5]
+    layer4_op = relu_ops[7]
+    avgpool_op = [v for k, v in operators.items()
+                  if isinstance(v, (ng.avg_pool, ng.avg_pool_serial))][0]
+    fc_op = [v for k, v in operators.items()
+             if isinstance(v, ng.matmul)][0]
+    sub_ops = [relu_op, maxpool_op, layer1_op, layer2_op, layer3_op, layer4_op, avgpool_op, fc_op]
+    sub_outs = ng.eval(sub_ops, act=vact)
+    sub_outs = [sub_out.transpose([0, 3, 1, 2]) for sub_out in sub_outs[:-1]] + sub_outs[-1:]
+    sub_scale_factors = [sub_op.scale_factor for sub_op in sub_ops]
+
+    model.eval()
+    model_relu_out = nn.Sequential(model.conv1,
+                                   model.bn1,
+                                   model.relu)(torch.from_numpy(model_input)).detach().numpy()
+    model_maxpool_out = nn.Sequential(model.conv1,
+                                      model.bn1,
+                                      model.maxpool)(torch.from_numpy(model_input)).detach().numpy()
+    model_layer1_out = nn.Sequential(model.conv1,
+                                     model.bn1,
+                                     model.maxpool,
+                                     model.layer1)(torch.from_numpy(model_input)).detach().numpy()
+    model_layer2_out = nn.Sequential(model.conv1,
+                                     model.bn1,
+                                     model.maxpool,
+                                     model.layer1,
+                                     model.layer2)(torch.from_numpy(model_input)).detach().numpy()
+    model_layer3_out = nn.Sequential(model.conv1,
+                                     model.bn1,
+                                     model.maxpool,
+                                     model.layer1,
+                                     model.layer2,
+                                     model.layer3)(torch.from_numpy(model_input)).detach().numpy()
+    model_layer4_out = nn.Sequential(model.conv1,
+                                     model.bn1,
+                                     model.maxpool,
+                                     model.layer1,
+                                     model.layer2,
+                                     model.layer3,
+                                     model.layer4)(torch.from_numpy(model_input)).detach().numpy()
+    model_avgpool_out = nn.Sequential(model.conv1,
+                                      model.bn1,
+                                      model.maxpool,
+                                      model.layer1,
+                                      model.layer2,
+                                      model.layer3,
+                                      model.layer4,
+                                      model.avgpool)(torch.from_numpy(model_input)).detach().numpy()
+
+    class Flatten(nn.Module):
+        def forward(self, input):
+            return input.view(input.size(0), -1)
+
+    model_fc_out = nn.Sequential(model.conv1,
+                                 model.bn1,
+                                 model.maxpool,
+                                 model.layer1,
+                                 model.layer2,
+                                 model.layer3,
+                                 model.layer4,
+                                 model.avgpool,
+                                 Flatten(),
+                                 model.fc)(torch.from_numpy(model_input)).detach().numpy()
+
+    model_outs = [model_relu_out, model_maxpool_out,
+                  model_layer1_out, model_layer2_out, model_layer3_out, model_layer4_out,
+                  model_avgpool_out, model_fc_out]
+    scaled_outs = [model_out * scale_factor
+                   for model_out, scale_factor in zip(model_outs, sub_scale_factors)]
+    error_rates = [np.sum(np.abs(sub_out - model_out)) / np.sum(np.abs(model_out))
+                   for model_out, sub_out in zip(scaled_outs, sub_outs)]
+    max_diffs = [model_out.max() / sub_out.max()
+                 for model_out, sub_out in zip(scaled_outs, sub_outs)]
+    corrcoefs = [np.corrcoef(model_out.reshape([-1]), sub_out.reshape([-1]))
+                 for model_out, sub_out in zip(model_outs, sub_outs)]
+
     # compare prediction results
     eval_outs = ng.eval([out], act=vact)
     vout = eval_outs[0]
