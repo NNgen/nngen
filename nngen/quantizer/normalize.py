@@ -42,7 +42,7 @@ def normalize(visitor, node):
 
 
 def find_optimal_shamt_normalize(visitor, node, scale, bias,
-                                 allowed_rate=0.0, range_ratio=0.2,
+                                 allowed_rate=0.0, range_ratio=0.3,
                                  init_shamt=0):
 
     shamt = init_shamt
@@ -123,7 +123,7 @@ def scaled_add(visitor, node):
 
 
 def find_optimal_shamt_scaled_add(visitor, node, a_scale, b_scale,
-                                  allowed_rate=0.0, range_ratio=0.2,
+                                  allowed_rate=0.0, range_ratio=0.5,
                                   init_shamt=0):
 
     shamt = init_shamt
@@ -219,7 +219,7 @@ def scaled_concat(visitor, node):
 
 
 def find_optimal_shamt_scaled_concat(visitor, node, scales,
-                                     allowed_rate=0.0, range_ratio=0.2,
+                                     allowed_rate=0.0, range_ratio=0.5,
                                      init_shamt=0):
 
     shamt = init_shamt
