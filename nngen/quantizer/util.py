@@ -34,27 +34,39 @@ def quantize_linear_by_scale_factor(value, width, scale_factor):
     return v
 
 
-def quantize_linear_scale(scale_value, width, allowed_rate=0.05):
+def quantize_linear_scale(scale_value, width, allowed_rate=0.01):
     scale_scale_factor = find_optimal_scale_scale_factor(scale_value, width, allowed_rate)
     q_scale_value = np.round(scale_value * scale_scale_factor).astype(np.int64)
     return q_scale_value, scale_scale_factor
 
 
-def find_optimal_scale_scale_factor(scale_value, width, allowed_rate=0.05):
+def find_optimal_scale_scale_factor(scale_value, width, allowed_rate=0.01):
     scale_scale_factor = 1.0
 
     while True:
         float_value = scale_value * scale_scale_factor
         round_value = np.round(float_value)
-        rate = np.max(np.abs((float_value - round_value) / float_value))
 
-        if rate <= allowed_rate:
+        cont = False
+        for i, (f, r) in enumerate(sorted(zip(float_value.reshape([-1]),
+                                              round_value.reshape([-1])),
+                                          key=lambda x: abs(x[0]), reverse=True)):
+
+            rate = abs(r - f) / (f + 0.0000001)
+            if rate > allowed_rate:
+                cont = True
+                break
+
+            if i >= float_value.size / 10:
+                break
+
+        if not cont:
             break
-
-        scale_scale_factor *= 2.0
 
         if np.max(np.abs(round_value)) >= 2 ** (width - 1) - 1:
             break
+
+        scale_scale_factor *= 2.0
 
     return scale_scale_factor
 

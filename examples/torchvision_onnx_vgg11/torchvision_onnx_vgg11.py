@@ -6,6 +6,7 @@ import sys
 import math
 import numpy as np
 import PIL
+import json
 
 import torch
 import torchvision
@@ -25,8 +26,8 @@ import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 
 
-def run(act_dtype=ng.int32, weight_dtype=ng.int32,
-        bias_dtype=ng.int32, scale_dtype=ng.int32,
+def run(act_dtype=ng.int8, weight_dtype=ng.int8,
+        bias_dtype=ng.int32, scale_dtype=ng.int8,
         with_batchnorm=True, disable_fusion=False,
         conv2d_par_ich=1, conv2d_par_och=1, conv2d_par_col=1, conv2d_par_row=1,
         conv2d_concur_och=None, conv2d_stationary='filter',
@@ -37,6 +38,10 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
         # simtype='verilator',
         # simtype=None,  # no RTL simulation
         outputfile=None):
+
+    # input mean and standard deviation
+    imagenet_mean = np.array([0.485, 0.456, 0.406]).astype(np.float32)
+    imagenet_std = np.array([0.229, 0.224, 0.225]).astype(np.float32)
 
     act_shape = (1, 224, 224, 3)
 
@@ -77,11 +82,15 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     # --------------------
 
     if act_dtype.width > 8:
-        value_ranges = {'act': (0, 255)}
+        act_scale_factor = 128
     else:
-        value_ranges = {'act': (0, 2 ** (act_dtype.width - 1) - 1)}
+        act_scale_factor = int(round(2 ** (act_dtype.width - 1) * 0.5))
 
-    ng.quantize(outputs, value_ranges=value_ranges)
+    input_scale_factors = {'act': act_scale_factor}
+    input_means = {'act': imagenet_mean * act_scale_factor}
+    input_stds = {'act': imagenet_std * act_scale_factor}
+
+    ng.quantize(outputs, input_scale_factors, input_means, input_stds)
 
     # --------------------
     # (3) Assign hardware attributes
@@ -114,16 +123,11 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     img = np.array(PIL.Image.open('car.png').convert('RGB')).astype(np.float32)
     img = img.reshape([1] + list(img.shape))
 
-    vact = img
-    if act_dtype.width < 16:
-        vact = vact / (16 / act_dtype.width)
-    vact = np.round(vact).astype(np.int64)
+    img = img / 255
+    img = (img - imagenet_mean) / imagenet_std
 
-    eval_outs = ng.eval([out], act=vact)
-    vout = eval_outs[0]
-
-    # exec on pytorch
-    model_input = img / np.max(img)
+    # execution on pytorch
+    model_input = img
 
     if act.perm is not None:
         model_input = np.transpose(model_input, act.reversed_perm)
@@ -134,22 +138,117 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
         model_out = np.transpose(model_out, act.perm)
     scaled_model_out = model_out * out.scale_factor
 
-    mout = scaled_model_out.astype(np.int64)
-    for bat in range(vout.shape[0]):
-        vout_max = np.max(vout[bat])
-        vout_max_index = list(vout[bat]).index(vout_max)
-        mout_max = np.max(mout[bat])
-        mout_max_index = list(mout[bat]).index(mout_max)
-        print("# vout[%d]: max = %d, index = %d" % (bat, vout_max, vout_max_index))
-        print("# mout[%d]: max = %d, index = %d" % (bat, mout_max, mout_max_index))
+    # software-based verification
+    vact = img * act_scale_factor
+    vact = np.clip(vact,
+                   -1.0 * (2 ** (act.dtype.width - 1) - 1),
+                   1.0 * (2 ** (act.dtype.width - 1) - 1))
+    vact = np.round(vact).astype(np.int64)
 
-    # out_diff = vout - scaled_model_out
-    # out_err = out_diff / (scaled_model_out + 0.00000001)
-    # max_out_err = np.max(np.abs(out_err))
+    # compare behaviors of hidden layers
+    # features (conv2d)
+    conv2d_ops = [v for k, v in operators.items()
+                  if isinstance(v, ng.conv2d) and not isinstance(v, ng.matmul)]
+    conv2d_ops = list(sorted(set(conv2d_ops), key=conv2d_ops.index))
+    conv2d_outs = ng.eval(conv2d_ops, act=vact)
+    conv2d_scale_factors = [op.scale_factor for op in conv2d_ops]
+
+    model_features_relu_layers = [layer
+                                  for layer in model.features if isinstance(layer, nn.ReLU)]
+    model_features_relu_indexes = [list(model.features).index(layer)
+                                   for layer in model_features_relu_layers]
+    model_features_seqs = [model.features[:i + 1]
+                           for i in model_features_relu_indexes]
+    for sub in model_features_seqs:
+        sub.eval()
+    model_features_outs = [sub(torch.from_numpy(model_input)).detach().numpy()
+                           for sub in model_features_seqs]
+
+    scaled_features_outs = [(out * scale_factor)
+                            for out, scale_factor in zip(model_features_outs, conv2d_scale_factors)]
+    features_error_rates = [(np.sum(np.abs(conv2d_out.transpose([0, 3, 1, 2]) - scaled_features_out)) /
+                             np.sum(scaled_features_out))
+                            for conv2d_out, scaled_features_out in zip(conv2d_outs, scaled_features_outs)]
+    features_max_diffs = [scaled_features_out.max() / conv2d_out.max()
+                          for conv2d_out, scaled_features_out in zip(conv2d_outs, scaled_features_outs)]
+    features_corrcoefs = [np.corrcoef(model_features_out.reshape([-1]),
+                                      conv2d_out.transpose([0, 3, 1, 2]).reshape([-1]))
+                          for conv2d_out, model_features_out in zip(conv2d_outs, model_features_outs)]
+
+    # avgpool (avg_pool)
+    avg_pool_ops = [v for k, v in operators.items()
+                    if isinstance(v, (ng.avg_pool, ng.avg_pool_serial))]
+    avg_pool_ops = list(sorted(set(avg_pool_ops), key=avg_pool_ops.index))
+    avg_pool_outs = ng.eval(avg_pool_ops, act=vact)
+    avg_pool_scale_factors = [op.scale_factor for op in avg_pool_ops]
+
+    model_avgpool_seqs = [nn.Sequential(model.features, model.avgpool)]
+    for sub in model_avgpool_seqs:
+        sub.eval()
+    model_avgpool_outs = [sub(torch.from_numpy(model_input)).detach().numpy()
+                          for sub in model_avgpool_seqs]
+
+    scaled_avgpool_outs = [(out * scale_factor)
+                           for out, scale_factor in zip(model_avgpool_outs, avg_pool_scale_factors)]
+    avgpool_error_rates = [(np.sum(np.abs(avg_pool_out.transpose([0, 3, 1, 2]) - scaled_avgpool_out)) /
+                            np.sum(scaled_avgpool_out))
+                           for avg_pool_out, scaled_avgpool_out in zip(avg_pool_outs, scaled_avgpool_outs)]
+    avgpool_max_diffs = [scaled_avgpool_out.max() / avg_pool_out.max()
+                         for avg_pool_out, scaled_avgpool_out in zip(avg_pool_outs, scaled_avgpool_outs)]
+    avgpool_corrcoefs = [np.corrcoef(model_avgpool_out.reshape([-1]),
+                                     avg_pool_out.transpose([0, 3, 1, 2]).reshape([-1]))
+                         for avg_pool_out, model_avgpool_out in zip(avg_pool_outs, model_avgpool_outs)]
+
+    # classifier (matmul)
+    matmul_ops = [v for k, v in operators.items() if isinstance(v, ng.matmul)]
+    matmul_ops = list(sorted(set(matmul_ops), key=matmul_ops.index))
+    matmul_outs = ng.eval(matmul_ops, act=vact)
+    matmul_scale_factors = [op.scale_factor for op in matmul_ops]
+
+    class Flatten(nn.Module):
+        def forward(self, input):
+            return input.view(input.size(0), -1)
+
+    model_classifier_relu_layers = [layer
+                                    for layer in model.classifier if isinstance(layer, nn.ReLU)]
+    model_classifier_relu_indexes = [list(model.classifier).index(layer)
+                                     for layer in model_classifier_relu_layers]
+    model_classifier_relu_indexes.append(len(model.classifier))
+    model_classifier_seqs = [nn.Sequential(model.features, model.avgpool, Flatten(), model.classifier[:i + 1])
+                             for i in model_classifier_relu_indexes]
+    for sub in model_classifier_seqs:
+        sub.eval()
+    model_classifier_outs = [sub(torch.from_numpy(model_input)).detach().numpy()
+                             for sub in model_classifier_seqs]
+
+    scaled_classifier_outs = [(out * scale_factor)
+                              for out, scale_factor in zip(model_classifier_outs, matmul_scale_factors)]
+    classifier_error_rates = [(np.sum(np.abs(matmul_out - scaled_classifier_out)) /
+                               np.sum(scaled_classifier_out))
+                              for matmul_out, scaled_classifier_out in zip(matmul_outs, scaled_classifier_outs)]
+    classifier_max_diffs = [scaled_classifier_out.max() / matmul_out.max()
+                            for matmul_out, scaled_classifier_out in zip(matmul_outs, scaled_classifier_outs)]
+    classifier_corrcoefs = [np.corrcoef(model_classifier_out.reshape([-1]),
+                                        matmul_out.reshape([-1]))
+                            for matmul_out, model_classifier_out in zip(matmul_outs, model_classifier_outs)]
+
+    # compare prediction results
+    eval_outs = ng.eval([out], act=vact)
+    vout = eval_outs[0]
+
+    class_index = json.load(open('imagenet_class_index.json', 'r'))
+    labels = {int(key): value for (key, value) in class_index.items()}
+
+    mout = scaled_model_out
+    for bat in range(mout.shape[0]):
+        for index, value in list(sorted(enumerate(mout[bat]),
+                                        key=lambda x: x[1], reverse=True))[:10]:
+            print("# mout: %s (%d) = %f" % (str(labels[index]), index, value))
+        for index, value in list(sorted(enumerate(vout[bat]),
+                                        key=lambda x: x[1], reverse=True))[:10]:
+            print("# vout: %s (%d) = %d" % (str(labels[index]), index, value))
+
     # breakpoint()
-
-    # if max_out_err > 0.1:
-    #    raise ValueError("too large output error: %f > 0.1" % max_out_err)
 
     # --------------------
     # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)
@@ -183,7 +282,8 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     tmp_addr = int(math.ceil((check_addr + out.memory_size) / chunk_size)) * chunk_size
 
     memimg_datawidth = 32
-    mem = np.zeros([1024 * 1024 * 256 // (memimg_datawidth // 8)], dtype=np.int64)
+    # mem = np.zeros([1024 * 1024 * 256 // (memimg_datawidth // 8)], dtype=np.int64)
+    mem = np.zeros([1024 * 1024 * 1024 // (memimg_datawidth // 8)], dtype=np.int16)
     mem = mem + [100]
 
     # placeholder

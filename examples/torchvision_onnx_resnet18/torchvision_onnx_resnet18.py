@@ -6,6 +6,7 @@ import sys
 import math
 import numpy as np
 import PIL
+import json
 
 import torch
 import torchvision
@@ -25,8 +26,8 @@ import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 
 
-def run(act_dtype=ng.int32, weight_dtype=ng.int32,
-        bias_dtype=ng.int32, scale_dtype=ng.int32,
+def run(act_dtype=ng.int8, weight_dtype=ng.int8,
+        bias_dtype=ng.int32, scale_dtype=ng.int8,
         with_batchnorm=True, disable_fusion=False,
         conv2d_par_ich=1, conv2d_par_och=1, conv2d_par_col=1, conv2d_par_row=1,
         conv2d_concur_och=None, conv2d_stationary='filter',
@@ -38,6 +39,10 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
         # simtype=None,  # no RTL simulation
         outputfile=None):
 
+    # input mean and standard deviation
+    imagenet_mean = np.array([0.485, 0.456, 0.406]).astype(np.float32)
+    imagenet_std = np.array([0.229, 0.224, 0.225]).astype(np.float32)
+
     act_shape = (1, 224, 224, 3)
 
     if not with_batchnorm:
@@ -45,10 +50,6 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
 
     # pytorch model
     model = torchvision.models.resnet18(pretrained=True)
-
-    # --------------------
-    # (1) Represent a DNN model as a dataflow by NNgen operators
-    # --------------------
 
     # Pytorch to ONNX
     onnx_filename = 'resnet18_imagenet.onnx'
@@ -58,6 +59,10 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     model.eval()
     torch.onnx.export(model, dummy_input, onnx_filename,
                       input_names=input_names, output_names=output_names)
+
+    # --------------------
+    # (1) Represent a DNN model as a dataflow by NNgen operators
+    # --------------------
 
     # ONNX to NNgen
     dtypes = {}
@@ -77,11 +82,15 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     # --------------------
 
     if act_dtype.width > 8:
-        value_ranges = {'act': (0, 255)}
+        act_scale_factor = 128
     else:
-        value_ranges = {'act': (0, 2 ** (act_dtype.width - 1) - 1)}
+        act_scale_factor = int(round(2 ** (act_dtype.width - 1) * 0.5))
 
-    ng.quantize(outputs, value_ranges=value_ranges)
+    input_scale_factors = {'act': act_scale_factor}
+    input_means = {'act': imagenet_mean * act_scale_factor}
+    input_stds = {'act': imagenet_std * act_scale_factor}
+
+    ng.quantize(outputs, input_scale_factors, input_means, input_stds)
 
     # --------------------
     # (3) Assign hardware attributes
@@ -114,17 +123,11 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     img = np.array(PIL.Image.open('car.png').convert('RGB')).astype(np.float32)
     img = img.reshape([1] + list(img.shape))
 
-    vact = img
-    if act_dtype.width < 16:
-        vact = vact / (16 / act_dtype.width)
-    vact = np.round(vact).astype(np.int64)
-
-    # software-based verification
-    eval_outs = ng.eval([out], act=vact)
-    vout = eval_outs[0]
+    img = img / 255
+    img = (img - imagenet_mean) / imagenet_std
 
     # execution on pytorch
-    model_input = img / np.max(img)
+    model_input = img
 
     if act.perm is not None:
         model_input = np.transpose(model_input, act.reversed_perm)
@@ -135,22 +138,30 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
         model_out = np.transpose(model_out, act.perm)
     scaled_model_out = model_out * out.scale_factor
 
-    mout = scaled_model_out.astype(np.int64)
-    for bat in range(vout.shape[0]):
-        vout_max = np.max(vout[bat])
-        vout_max_index = list(vout[bat]).index(vout_max)
-        mout_max = np.max(mout[bat])
-        mout_max_index = list(mout[bat]).index(mout_max)
-        print("# vout[%d]: max = %d, index = %d" % (bat, vout_max, vout_max_index))
-        print("# mout[%d]: max = %d, index = %d" % (bat, mout_max, mout_max_index))
+    # software-based verification
+    vact = img * act_scale_factor
+    vact = np.clip(vact,
+                   -1.0 * (2 ** (act.dtype.width - 1) - 1),
+                   1.0 * (2 ** (act.dtype.width - 1) - 1))
+    vact = np.round(vact).astype(np.int64)
 
-    # out_diff = vout - scaled_model_out
-    # out_err = out_diff / (scaled_model_out + 0.00000001)
-    # max_out_err = np.max(np.abs(out_err))
+    # compare prediction results
+    eval_outs = ng.eval([out], act=vact)
+    vout = eval_outs[0]
+
+    class_index = json.load(open('imagenet_class_index.json', 'r'))
+    labels = {int(key): value for (key, value) in class_index.items()}
+
+    mout = scaled_model_out
+    for bat in range(mout.shape[0]):
+        for index, value in list(sorted(enumerate(mout[bat]),
+                                        key=lambda x: x[1], reverse=True))[:10]:
+            print("# mout: %s (%d) = %f" % (str(labels[index]), index, value))
+        for index, value in list(sorted(enumerate(vout[bat]),
+                                        key=lambda x: x[1], reverse=True))[:10]:
+            print("# vout: %s (%d) = %d" % (str(labels[index]), index, value))
+
     # breakpoint()
-
-    # if max_out_err > 0.1:
-    #    raise ValueError("too large output error: %f > 0.1" % max_out_err)
 
     # --------------------
     # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)
@@ -184,7 +195,8 @@ def run(act_dtype=ng.int32, weight_dtype=ng.int32,
     tmp_addr = int(math.ceil((check_addr + out.memory_size) / chunk_size)) * chunk_size
 
     memimg_datawidth = 32
-    mem = np.zeros([1024 * 1024 * 256 // (memimg_datawidth // 8)], dtype=np.int64)
+    # mem = np.zeros([1024 * 1024 * 256 // (memimg_datawidth // 8)], dtype=np.int64)
+    mem = np.zeros([1024 * 1024 * 1024 // (memimg_datawidth // 8)], dtype=np.int16)
     mem = mem + [100]
 
     # placeholder

@@ -14,10 +14,9 @@ import veriloggen
 import onnx_vgg11
 
 
-act_shape = (1, 32, 32, 3)
 act_dtype = ng.int16
 weight_dtype = ng.int16
-bias_dtype = ng.int16
+bias_dtype = ng.int32
 scale_dtype = ng.int16
 with_batchnorm = False
 disable_fusion = False
@@ -38,8 +37,7 @@ def test(request, silent=True):
 
     simtype = request.config.getoption('--sim')
 
-    rslt = onnx_vgg11.run(act_shape,
-                          act_dtype, weight_dtype,
+    rslt = onnx_vgg11.run(act_dtype, weight_dtype,
                           bias_dtype, scale_dtype,
                           with_batchnorm, disable_fusion,
                           conv2d_par_ich, conv2d_par_och, conv2d_par_col, conv2d_par_row,
@@ -55,8 +53,7 @@ def test(request, silent=True):
 
 
 if __name__ == '__main__':
-    rslt = onnx_vgg11.run(act_shape,
-                          act_dtype, weight_dtype,
+    rslt = onnx_vgg11.run(act_dtype, weight_dtype,
                           bias_dtype, scale_dtype,
                           with_batchnorm, disable_fusion,
                           conv2d_par_ich, conv2d_par_och, conv2d_par_col, conv2d_par_row,

@@ -2998,6 +2998,9 @@ class conv2d(bt._Operator):
         fsm.If(self.data_stationary == STATIONARY_INPUT).goto_from(
             state_read_filter_end, state_comp)
 
+    def get_layout(self):
+        return self.layout
+
     def eval(self, memo, input_dict, **kwargs):
         if id(self) in memo:
             return memo[id(self)]

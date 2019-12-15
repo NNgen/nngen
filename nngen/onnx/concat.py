@@ -40,7 +40,7 @@ def Concat(visitor, node):
 
     layout = None
     for src in srcs:
-        l = util.get_layout(src)
+        l = src.get_layout()
         if l is None:
             continue
         if layout is None:
