@@ -227,6 +227,8 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
                    for model_out, sub_out in zip(scaled_outs, sub_outs)]
     max_diffs = [model_out.max() / sub_out.max()
                  for model_out, sub_out in zip(scaled_outs, sub_outs)]
+    mean_square_errors = [np.sum((sub_out - model_out) ** 2) / sub_out.size
+                          for model_out, sub_out in zip(scaled_outs, sub_outs)]
     corrcoefs = [np.corrcoef(model_out.reshape([-1]), sub_out.reshape([-1]))
                  for model_out, sub_out in zip(model_outs, sub_outs)]
 
@@ -239,12 +241,21 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
 
     mout = scaled_model_out
     for bat in range(mout.shape[0]):
-        for index, value in list(sorted(enumerate(mout[bat]),
-                                        key=lambda x: x[1], reverse=True))[:10]:
+        m_top10 = list(sorted(enumerate(mout[bat]), key=lambda x: x[1], reverse=True))[:10]
+        m_top10_indexes = [index for index, value in m_top10]
+        v_top10 = list(sorted(enumerate(vout[bat]), key=lambda x: x[1], reverse=True))[:10]
+        v_top10_indexes = [index for index, value in v_top10]
+        num_hit = 0
+        score = 0
+        for index, value in m_top10:
             print("# mout: %s (%d) = %f" % (str(labels[index]), index, value))
-        for index, value in list(sorted(enumerate(vout[bat]),
-                                        key=lambda x: x[1], reverse=True))[:10]:
+        for index, value in v_top10:
             print("# vout: %s (%d) = %d" % (str(labels[index]), index, value))
+            if index in m_top10_indexes:
+                num_hit += 1
+                score += 10 - abs(m_top10_indexes.index(index) - v_top10_indexes.index(index))
+        print("# top-10 hit: %d" % num_hit)
+        print("# top-10 score: %d" % score)
 
     # breakpoint()
 
