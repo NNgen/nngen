@@ -9,6 +9,8 @@ from . import util
 
 def conv2d(visitor, node):
 
+    threshold_norm_filter = 0.2
+
     input = node.args[0]
     filter = node.args[1]
 
@@ -39,6 +41,30 @@ def conv2d(visitor, node):
 
     if rshift_out is not None:
         visitor.visit(rshift_out)
+
+    # normalize filter vaules for each output channel
+    if (scale is not None and scale.shape[-1] == node.shape[-1] and
+          scale.dtype.width >= filter.dtype.width * 4 and
+            (bias is None or bias.shape[-1] == node.shape[-1])):
+
+        out_scale_value = np.abs(filter.value)
+        for _ in range(len(filter.value.shape) - 1):
+            out_scale_value = out_scale_value.max(axis=1)
+
+        out_scale_value = np.clip(out_scale_value, threshold_norm_filter, None)
+        filter.value = (filter.value /
+                        out_scale_value.reshape([-1] + [1] * (len(filter.value.shape) - 1)))
+
+        scale_value = scale.value
+        if isinstance(scale_value, (tuple, list)):
+            scale_value = np.array(scale_value)
+        scale.value = scale_value * out_scale_value
+
+        if bias is not None:
+            bias_value = bias.value
+            if isinstance(bias_value, (tuple, list)):
+                bias_value = np.array(bias_value)
+            bias.value = bias_value / out_scale_value
 
     q_filter_value, filter_scale_factor = util.quantize_linear(filter.value, filter.dtype.width)
     filter.set_value(q_filter_value)
