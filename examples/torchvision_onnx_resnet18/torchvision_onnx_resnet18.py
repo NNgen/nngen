@@ -152,15 +152,24 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
                   if isinstance(v, (ng.max_pool, ng.max_pool_serial))][0]
     relu_ops = [v for k, v in operators.items()
                 if isinstance(v, ng.relu)]
+    layer1_0_op = relu_ops[0]
     layer1_op = relu_ops[1]
+    layer2_0_op = relu_ops[2]
     layer2_op = relu_ops[3]
+    layer3_0_op = relu_ops[4]
     layer3_op = relu_ops[5]
+    layer4_0_op = relu_ops[6]
     layer4_op = relu_ops[7]
     avgpool_op = [v for k, v in operators.items()
                   if isinstance(v, (ng.avg_pool, ng.avg_pool_serial))][0]
     fc_op = [v for k, v in operators.items()
              if isinstance(v, ng.matmul)][0]
-    sub_ops = [relu_op, maxpool_op, layer1_op, layer2_op, layer3_op, layer4_op, avgpool_op, fc_op]
+    sub_ops = [relu_op, maxpool_op,
+               layer1_0_op, layer1_op,
+               layer2_0_op, layer2_op,
+               layer3_0_op, layer3_op,
+               layer4_0_op, layer4_op,
+               avgpool_op, fc_op]
     sub_outs = ng.eval(sub_ops, act=vact)
     sub_outs = [sub_out.transpose([0, 3, 1, 2]) for sub_out in sub_outs[:-1]] + sub_outs[-1:]
     sub_scale_factors = [sub_op.scale_factor for sub_op in sub_ops]
@@ -172,21 +181,64 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
     model_maxpool_out = nn.Sequential(model.conv1,
                                       model.bn1,
                                       model.maxpool)(torch.from_numpy(model_input)).detach().numpy()
+
+#    class model_layer1_0(nn.Module):
+#        def __init__(self):
+#            super(model_layer1_0, self).__init__()
+#            self.conv1 = model.conv1
+#            self.bn1 = model.bn1
+#            self.relu = model.relu
+#            self.maxpool = model.maxpool
+#            self.layer1_0 = model.layer1[0]
+#
+#        def forward(self, x):
+#            x = self.relu(self.bn1(self.conv1(x)))
+#            x = self.maxpool(x)
+#            x = self.layer1_0(x)
+#            return x
+#
+#    model_layer1_0_out = model_layer1_0()(torch.from_numpy(model_input)).detach().numpy()
+
+    model_layer1_0_out = nn.Sequential(model.conv1,
+                                       model.bn1,
+                                       model.maxpool,
+                                       model.layer1[0])(torch.from_numpy(model_input)).detach().numpy()
     model_layer1_out = nn.Sequential(model.conv1,
                                      model.bn1,
                                      model.maxpool,
                                      model.layer1)(torch.from_numpy(model_input)).detach().numpy()
+
+    model_layer2_0_out = nn.Sequential(model.conv1,
+                                       model.bn1,
+                                       model.maxpool,
+                                       model.layer1,
+                                       model.layer2[0])(torch.from_numpy(model_input)).detach().numpy()
     model_layer2_out = nn.Sequential(model.conv1,
                                      model.bn1,
                                      model.maxpool,
                                      model.layer1,
                                      model.layer2)(torch.from_numpy(model_input)).detach().numpy()
+
+    model_layer3_0_out = nn.Sequential(model.conv1,
+                                       model.bn1,
+                                       model.maxpool,
+                                       model.layer1,
+                                       model.layer2,
+                                       model.layer3[0])(torch.from_numpy(model_input)).detach().numpy()
     model_layer3_out = nn.Sequential(model.conv1,
                                      model.bn1,
                                      model.maxpool,
                                      model.layer1,
                                      model.layer2,
                                      model.layer3)(torch.from_numpy(model_input)).detach().numpy()
+
+    model_layer4_0_out = nn.Sequential(model.conv1,
+                                       model.bn1,
+                                       model.maxpool,
+                                       model.layer1,
+                                       model.layer2,
+                                       model.layer3,
+                                       model.layer4[0])(torch.from_numpy(model_input)).detach().numpy()
     model_layer4_out = nn.Sequential(model.conv1,
                                      model.bn1,
                                      model.maxpool,
@@ -194,6 +246,7 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
                                      model.layer2,
                                      model.layer3,
                                      model.layer4)(torch.from_numpy(model_input)).detach().numpy()
+
     model_avgpool_out = nn.Sequential(model.conv1,
                                       model.bn1,
                                       model.maxpool,
@@ -219,7 +272,10 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
                                  model.fc)(torch.from_numpy(model_input)).detach().numpy()
 
     model_outs = [model_relu_out, model_maxpool_out,
-                  model_layer1_out, model_layer2_out, model_layer3_out, model_layer4_out,
+                  model_layer1_0_out, model_layer1_out,
+                  model_layer2_0_out, model_layer2_out,
+                  model_layer3_0_out, model_layer3_out,
+                  model_layer4_0_out, model_layer4_out,
                   model_avgpool_out, model_fc_out]
     scaled_outs = [model_out * scale_factor
                    for model_out, scale_factor in zip(model_outs, sub_scale_factors)]
