@@ -192,10 +192,11 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
     model_outs = model_features_outs + [model_avgpool_out] + model_classifier_outs
     scaled_outs = [model_out * scale_factor
                    for model_out, scale_factor in zip(model_outs, sub_scale_factors)]
-    error_rates = [np.sum(np.abs(sub_out - model_out)) / np.sum(np.abs(model_out))
-                   for model_out, sub_out in zip(scaled_outs, sub_outs)]
+
     max_diffs = [model_out.max() / sub_out.max()
                  for model_out, sub_out in zip(scaled_outs, sub_outs)]
+    overflows = [np.sum(np.abs(sub_out) >= abs(2 ** (sub_op.dtype.width - 1) - 1))
+                 for sub_op, sub_out in zip(sub_ops, sub_outs)]
     mean_square_errors = [np.sum((sub_out - model_out) ** 2) / sub_out.size
                           for model_out, sub_out in zip(scaled_outs, sub_outs)]
     corrcoefs = [np.corrcoef(model_out.reshape([-1]), sub_out.reshape([-1]))
