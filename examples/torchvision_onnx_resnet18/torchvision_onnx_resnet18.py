@@ -180,6 +180,7 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
                                    model.relu)(torch.from_numpy(model_input)).detach().numpy()
     model_maxpool_out = nn.Sequential(model.conv1,
                                       model.bn1,
+                                      model.relu,
                                       model.maxpool)(torch.from_numpy(model_input)).detach().numpy()
 
 #    class model_layer1_0(nn.Module):
@@ -201,32 +202,38 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
 
     model_layer1_0_out = nn.Sequential(model.conv1,
                                        model.bn1,
+                                       model.relu,
                                        model.maxpool,
                                        model.layer1[0])(torch.from_numpy(model_input)).detach().numpy()
     model_layer1_out = nn.Sequential(model.conv1,
                                      model.bn1,
+                                     model.relu,
                                      model.maxpool,
                                      model.layer1)(torch.from_numpy(model_input)).detach().numpy()
 
     model_layer2_0_out = nn.Sequential(model.conv1,
                                        model.bn1,
+                                       model.relu,
                                        model.maxpool,
                                        model.layer1,
                                        model.layer2[0])(torch.from_numpy(model_input)).detach().numpy()
     model_layer2_out = nn.Sequential(model.conv1,
                                      model.bn1,
+                                     model.relu,
                                      model.maxpool,
                                      model.layer1,
                                      model.layer2)(torch.from_numpy(model_input)).detach().numpy()
 
     model_layer3_0_out = nn.Sequential(model.conv1,
                                        model.bn1,
+                                       model.relu,
                                        model.maxpool,
                                        model.layer1,
                                        model.layer2,
                                        model.layer3[0])(torch.from_numpy(model_input)).detach().numpy()
     model_layer3_out = nn.Sequential(model.conv1,
                                      model.bn1,
+                                     model.relu,
                                      model.maxpool,
                                      model.layer1,
                                      model.layer2,
@@ -234,6 +241,7 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
 
     model_layer4_0_out = nn.Sequential(model.conv1,
                                        model.bn1,
+                                       model.relu,
                                        model.maxpool,
                                        model.layer1,
                                        model.layer2,
@@ -241,6 +249,7 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
                                        model.layer4[0])(torch.from_numpy(model_input)).detach().numpy()
     model_layer4_out = nn.Sequential(model.conv1,
                                      model.bn1,
+                                     model.relu,
                                      model.maxpool,
                                      model.layer1,
                                      model.layer2,
@@ -249,6 +258,7 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
 
     model_avgpool_out = nn.Sequential(model.conv1,
                                       model.bn1,
+                                      model.relu,
                                       model.maxpool,
                                       model.layer1,
                                       model.layer2,
@@ -262,6 +272,7 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
 
     model_fc_out = nn.Sequential(model.conv1,
                                  model.bn1,
+                                 model.relu,
                                  model.maxpool,
                                  model.layer1,
                                  model.layer2,
