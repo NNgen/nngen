@@ -3,6 +3,7 @@ from __future__ import print_function
 from __future__ import division
 
 import numpy as np
+import math
 
 
 def quantize_linear(orig_weight, num_bits=8):
@@ -12,12 +13,19 @@ def quantize_linear(orig_weight, num_bits=8):
     return _quantize_linear(orig_weight, num_bits)
 
 
-def _quantize_linear(orig_weight, num_bits=8):
+def _quantize_linear(orig_weight, num_bits=8, range_rate=0.995):
     if isinstance(orig_weight, (tuple, list)):
         orig_weight = np.array(orig_weight)
 
-    max_value = np.max(orig_weight)
-    min_value = np.min(orig_weight)
+    if num_bits >= 8:
+        max_value = np.max(orig_weight)
+        min_value = np.min(orig_weight)
+    else:
+        sorted_abs_weight = np.sort(np.abs(orig_weight).reshape([-1]))
+        max_value = sorted_abs_weight[math.ceil(orig_weight.size * range_rate) - 1]
+        min_value = - max_value
+        orig_weight = np.clip(orig_weight, min_value, max_value)
+
     abs_max = max(abs(max_value), abs(min_value))
 
     pos_num_quantized_bins = 2 ** (num_bits - 1) - 1

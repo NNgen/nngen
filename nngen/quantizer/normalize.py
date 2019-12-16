@@ -101,14 +101,14 @@ def scaled_add(visitor, node):
     b_scale_value = max_scale_factor / b.scale_factor
 
     if max_scale_factor == a.scale_factor:
-        q_b_scale_value, b_scale_scale_factor = util.quantize_linear_scale(b_scale_value,
-                                                                           b.dtype.width)
+        q_b_scale_value, b_scale_scale_factor = util.quantize_linear_scale(b_scale_value, 32,
+                                                                           allowed_rate=0.001)
         a_scale_value = np.round(b_scale_scale_factor).astype(np.int64)
         q_a_scale_value = a_scale_value
         a_scale_scale_factor = a_scale_value
     elif max_scale_factor == b.scale_factor:
-        q_a_scale_value, a_scale_scale_factor = util.quantize_linear_scale(a_scale_value,
-                                                                           a.dtype.width)
+        q_a_scale_value, a_scale_scale_factor = util.quantize_linear_scale(a_scale_value, 32,
+                                                                           allowed_rate=0.001)
         b_scale_value = np.round(a_scale_scale_factor).astype(np.int64)
         q_b_scale_value = b_scale_value
         b_scale_scale_factor = b_scale_value
@@ -186,8 +186,8 @@ def scaled_concat(visitor, node):
 
     for value, scale_value in zip(values, scale_values):
         if max_scale_factor != value.scale_factor:
-            q_scale_value, scale_scale_factor = util.quantize_linear_scale(scale_value,
-                                                                           value.dtype.width)
+            q_scale_value, scale_scale_factor = util.quantize_linear_scale(scale_value, 32,
+                                                                           allowed_rate=0.001)
             new_scale_values.append(q_scale_value)
             scale_scale_factors.append(scale_scale_factor)
         else:
