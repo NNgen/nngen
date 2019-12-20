@@ -152,6 +152,9 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     eval_outs = ng.eval([out], act=vact)
     vout = eval_outs[0]
 
+    mean_square_error = np.sum((vout - scaled_model_out) ** 2) / vout.size
+    corrcoef = np.corrcoef(model_out.reshape([-1]), vout.reshape([-1]))
+
     labels = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
     mout = scaled_model_out
