@@ -49,7 +49,7 @@ class relu6(relu):
         name: A name for the operation (optional).
         par: The number of parallel operations (optional).
     """
-    
+
     @staticmethod
     def op(strm, *args, **kwargs):
         return strm.Mux(args[0] > strm.Int(0),
