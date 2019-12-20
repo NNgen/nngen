@@ -52,7 +52,7 @@ def LeakyRelu(visitor, node):
     alpha = 0.01
     for attribute in node.attribute:
         if attribute.name == 'alpha':
-            alpha = attribute.floats[0]
+            alpha = attribute.f
 
     rshift = 31
     slope = round(alpha * (2 ** 31))
