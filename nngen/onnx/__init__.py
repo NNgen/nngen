@@ -35,6 +35,7 @@ func_map = {
     'GlobalAveragePool': pool.GlobalAveragePool,
     'MaxPool': pool.MaxPool,
     'Relu': relu.Relu,
+    'LeakyRelu': relu.LeakyRelu,
     'BatchNormalization': batchnormalization.BatchNormalization,
     'Squeeze': squeeze.Squeeze,
     'Unsqueeze': squeeze.Unsqueeze,

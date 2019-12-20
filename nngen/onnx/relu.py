@@ -46,3 +46,15 @@ def _relu(act_func, visitor, node):
 
 def Relu(visitor, node):
     return _relu(operator.relu, visitor, node)
+
+
+def LeakyRelu(visitor, node):
+    alpha = 0.01
+    for attribute in node.attribute:
+        if attribute.name == 'alpha':
+            alpha = attribute.floats[0]
+
+    rshift = 31
+    slope = round(alpha * (2 ** 31))
+    op = operator.get_leaky_relu_op(slope, rshift)
+    return _relu(op, visitor, node)
