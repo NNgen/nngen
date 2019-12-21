@@ -64,9 +64,9 @@ weights = onnx_model.graph.initializer
 
 for weight in weights:
     name = weight.name
+    inputs[name] = weight
     np_weight = numpy_helper.to_array(weight)
     input_values[name] = np_weight
-    inputs[name] = np_weight
 
 weight_inputs = collections.OrderedDict([(name, node) for name, node in inputs.items()
                                          if name in input_values])
