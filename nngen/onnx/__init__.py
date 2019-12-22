@@ -21,6 +21,7 @@ from . import reshape
 from . import concat
 from . import gather
 from . import flatten
+from . import identity
 
 
 # describe custom ONNX converting methods here
@@ -45,6 +46,7 @@ func_map = {
     'Concat': concat.Concat,
     'Gather': gather.Gather,
     'Flatten': flatten.Flatten,
+    'Identity': identity.Identity,
 }
 
 
@@ -103,18 +105,19 @@ class _OperatorVisitor(object):
 
         node = util.search_node_from_model(self.model, name)
 
-        node_name = util.get_name(node)
         node_func = _get_func(node.op_type)
-
         node_op = node_func(self, node)
 
-        self.operators[node_name] = node_op
+        output_names = util.get_output_names(node)
+        for output_name in output_names:
+            self.operators[output_name] = node_op
 
         return node_op
 
 
 def from_onnx(filename,
               value_dtypes=None,
+              value_shapes=None,
               default_placeholder_dtype=dtype_list.int32,
               default_variable_dtype=dtype_list.int32,
               default_constant_dtype=dtype_list.int32,
@@ -134,6 +137,9 @@ def from_onnx(filename,
 
     value_dtypes : dict
         dtype_info dictionary by name
+
+    value_shapes : dict
+        shape dictionary for undefined node shapes by name
 
     default_placeholder_dtype : nngen.dtype_info
         Default dtype for placeholder
@@ -189,6 +195,9 @@ def from_onnx(filename,
     if value_dtypes is None:
         value_dtypes = {}
 
+    if value_shapes is None:
+        value_shapes = {}
+
     # load model
     model = onnx.load(filename)
 
@@ -215,14 +224,15 @@ def from_onnx(filename,
 
     for node in model.graph.node:
         if node.op_type == 'Constant':
-            name = util.get_name(node)
             value = numpy_helper.to_array(node.attribute[0].t)
-            constant_values[name] = value
+            output_names = util.get_output_names(node)
+            for output_name in output_names:
+                constant_values[output_name] = value
 
     # placeholders
     placeholders = _to_placeholders(input_nodes, output_nodes,
                                     variable_values, constant_values,
-                                    value_dtypes,
+                                    value_dtypes, value_shapes,
                                     default_placeholder_dtype,
                                     default_variable_dtype,
                                     default_constant_dtype,
@@ -231,7 +241,7 @@ def from_onnx(filename,
     # variables
     variables = _to_variables(input_nodes, output_nodes,
                               variable_values, constant_values,
-                              value_dtypes,
+                              value_dtypes, value_shapes,
                               default_placeholder_dtype,
                               default_variable_dtype,
                               default_constant_dtype,
@@ -240,7 +250,7 @@ def from_onnx(filename,
     # constants
     # constants = _to_constants(input_nodes, output_nodes,
     #                          variable_values, constant_values,
-    #                          value_dtypes,
+    #                          value_dtypes, value_shapes,
     #                          default_placeholder_dtype,
     #                          default_variable_dtype,
     #                          default_constant_dtype,
@@ -252,12 +262,13 @@ def from_onnx(filename,
     consumers = collections.defaultdict(list)
 
     for node in model.graph.node:
-        node_name = util.get_name(node)
-        for arg in node.input:
-            if arg not in producers[node_name]:
-                producers[node_name].append(arg)
-            if node_name not in consumers[arg]:
-                consumers[arg].append(node_name)
+        output_names = util.get_output_names(node)
+        for output_name in output_names:
+            for arg in node.input:
+                if arg not in producers[output_name]:
+                    producers[output_name].append(arg)
+                if output_name not in consumers[arg]:
+                    consumers[arg].append(output_name)
 
     # operators
     operators = collections.OrderedDict()
@@ -296,7 +307,7 @@ def from_onnx(filename,
 
 
 def _to_placeholders(input_nodes, output_nodes, variable_values, constant_values,
-                     value_dtypes,
+                     value_dtypes, value_shapes,
                      default_placeholder_dtype, default_variable_dtype,
                      default_constant_dtype, default_operator_dtype):
 
@@ -312,7 +323,7 @@ def _to_placeholders(input_nodes, output_nodes, variable_values, constant_values
         else:
             dtype = default_placeholder_dtype
 
-        shape = util.to_shape(node)
+        shape = util.to_shape(node, value_shapes)
         p = storage.placeholder(dtype=dtype, shape=shape, name=name)
         placeholders[name] = p
 
@@ -320,7 +331,7 @@ def _to_placeholders(input_nodes, output_nodes, variable_values, constant_values
 
 
 def _to_variables(input_nodes, output_nodes, variable_values, constant_values,
-                  value_dtypes,
+                  value_dtypes, value_shapes,
                   default_placeholder_dtype, default_variable_dtype,
                   default_constant_dtype, default_operator_dtype):
 
@@ -341,7 +352,7 @@ def _to_variables(input_nodes, output_nodes, variable_values, constant_values,
 
 
 def _to_constants(input_nodes, output_nodes, variable_values, constant_values,
-                  value_dtypes,
+                  value_dtypes, value_shapes,
                   default_placeholder_dtype, default_variable_dtype,
                   default_constant_dtype, default_operator_dtype):
 

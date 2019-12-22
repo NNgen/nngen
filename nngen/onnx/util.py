@@ -16,18 +16,26 @@ def get_name(node):
     return name
 
 
+def get_output_names(node):
+    return [name for name in node.output]
+
+
 def search_node_from_model(model, name):
     for node in model.graph.node:
-        node_name = get_name(node)
+        output_names = get_output_names(node)
 
-        if name == node_name:
-            return node
+        for output_name in output_names:
+            if name == output_name:
+                return node
 
     return None
 
 
-def to_shape(node):
-    return tuple([d.dim_value for d in node.type.tensor_type.shape.dim])
+def to_shape(node, value_shapes):
+    shape = tuple([d.dim_value for d in node.type.tensor_type.shape.dim])
+    if node.name in value_shapes:
+        shape = value_shapes[node.name]
+    return shape
 
 
 def transpose_layout(value, expected_layout, default_layout):
