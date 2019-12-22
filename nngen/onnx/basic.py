@@ -75,7 +75,7 @@ def Add(visitor, node):
     return _normalize_elementwise(operator.add, None, visitor, node)
 
 
-def Sub(node, visitor):
+def Sub(visitor, node):
 
     pre_methods = (None, operator.neg)
     return _normalize_elementwise(operator.sub, pre_methods, visitor, node)
