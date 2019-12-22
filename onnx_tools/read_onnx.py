@@ -23,14 +23,14 @@ for i, node in enumerate(onnx_model.graph.node):
     print(node)
 
 # Input
-# for i, input in enumerate(onnx_model.graph.input):
-#    print("[Input #{}]".format(i))
-#    print(input)
+for i, input in enumerate(onnx_model.graph.input):
+    print("[Input #{}]".format(i))
+    print(input)
 
 # Output
-# for i, output in enumerate(onnx_model.graph.output):
-#    print("[Output #{}]".format(i))
-#    print(output)
+for i, output in enumerate(onnx_model.graph.output):
+    print("[Output #{}]".format(i))
+    print(output)
 
 
 def get_name(obj):
@@ -101,4 +101,5 @@ for node in onnx_model.graph.node:
 #            print('# dim {}: {}'.format(i, d.dim_value))
 
 breakpoint()
+
 print('# end')
