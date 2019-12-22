@@ -29,19 +29,20 @@ def Gemm(visitor, node,
 
     if orig_layout is None:
         pass
-    elif orig_layout == 'NCHW':
+    elif orig_layout == visitor.onnx_input_layout:
         pass
-    elif orig_layout == 'NHWC':
-        # Though the original weight layout is identical to that of NNgen.
-        # However it assumes values before Reshape operators have the 'NCHW' layout.
-        # So the weight layout must be transposed.
-        shape = [filter.shape[0], orig_shape[3], orig_shape[1], orig_shape[2]]
+    else:
+        # The weight layout of Gemm is identical to nngen.matmul.
+        # However, Gemm assumes values before the Reshape operator have the different layout.
+        # (Almost ONNX models usually have 'NCHW' layouts).
+        # Thus the weight layout is transposed.
+        shape = ([filter.shape[0]] +
+                 [orig_shape[orig_layout.index(s)] for s in visitor.onnx_input_layout[1:]])
         reshape_value = filter.value.reshape(shape)
-        transpose_value = reshape_value.transpose([0, 2, 3, 1])
+        perm = [visitor.onnx_input_layout.index(s) for s in orig_layout]
+        transpose_value = reshape_value.transpose(perm)
         new_value = transpose_value.reshape([filter.shape[0], -1])
         filter.value = new_value
-    else:
-        raise ValueError("not supported input layout for Gemm: '%s'" % layout)
 
     bias = srcs[2] if len(srcs) > 2 else None
 
