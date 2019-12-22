@@ -35,9 +35,9 @@ def _pool(pool_op, visitor, node, no_sum_dtype=False):
     ksize, strides, padding = _get_ksize_strides_padding(node)
 
     kwargs = collections.OrderedDict()
-    kwargs['ksize'] = tuple(ksize)
-    kwargs['strides'] = tuple(strides)
-    kwargs['padding'] = tuple(padding)
+    kwargs['ksize'] = ksize
+    kwargs['strides'] = strides
+    kwargs['padding'] = padding
     kwargs['dtype'] = dtype
     if not no_sum_dtype:
         kwargs['sum_dtype'] = sum_dtype
@@ -83,14 +83,14 @@ def GlobalAveragePool(visitor, node):
 
     sum_dtype = dtype_list.int32
 
-    ksize = [1, input.shape[1], input.shape[2], 1]
-    strides = [1, input.shape[1], input.shape[2], 1]
-    padding = [0, 0, 0, 0]
+    ksize = tuple([1, input.shape[1], input.shape[2], 1])
+    strides = tuple([1, input.shape[1], input.shape[2], 1])
+    padding = tuple([0, 0, 0, 0])
 
     kwargs = collections.OrderedDict()
-    kwargs['ksize'] = tuple(ksize)
-    kwargs['strides'] = tuple(strides)
-    kwargs['padding'] = tuple(padding)
+    kwargs['ksize'] = ksize
+    kwargs['strides'] = strides
+    kwargs['padding'] = padding
     kwargs['dtype'] = dtype
     kwargs['name'] = name
 
@@ -127,13 +127,16 @@ def _get_ksize_strides_padding(node):
             padding[1] = attribute.ints[1]
             padding[2] = attribute.ints[2]
             padding[3] = attribute.ints[3]
+            padding = tuple(padding)
 
         elif attribute.name == 'strides':
             strides[1] = attribute.ints[0]
             strides[2] = attribute.ints[1]
+            strides = tuple(strides)
 
         elif attribute.name == 'kernel_shape':
             ksize[1] = attribute.ints[0]
             ksize[2] = attribute.ints[1]
+            ksize = tuple(ksize)
 
     return ksize, strides, padding

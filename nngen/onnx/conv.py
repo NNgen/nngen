@@ -87,20 +87,22 @@ def Conv(visitor, node,
             padding[1] = attribute.ints[1]
             padding[2] = attribute.ints[2]
             padding[3] = attribute.ints[3]
+            padding = tuple(padding)
 
         elif attribute.name == 'strides':
             strides[1] = attribute.ints[0]
             strides[2] = attribute.ints[1]
+            strides = tuple(strides)
 
     args = [input, filter]
 
     kwargs = collections.OrderedDict()
-    kwargs['strides'] = tuple(strides)
+    kwargs['strides'] = strides
     kwargs['bias'] = bias
     kwargs['scale'] = scale
     kwargs['rshift_out'] = rshift_out
     kwargs['act_func'] = act_func
-    kwargs['padding'] = tuple(padding)
+    kwargs['padding'] = padding
     kwargs['dtype'] = dtype
     kwargs['sum_dtype'] = sum_dtype
     kwargs['name'] = name
