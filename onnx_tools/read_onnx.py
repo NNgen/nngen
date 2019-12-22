@@ -68,12 +68,6 @@ for weight in weights:
     np_weight = numpy_helper.to_array(weight)
     input_values[name] = np_weight
 
-weight_inputs = collections.OrderedDict([(name, node) for name, node in inputs.items()
-                                         if name in input_values])
-user_inputs = collections.OrderedDict([(name, node) for name, node in inputs.items()
-                                       if name not in input_values])
-
-
 for node in onnx_model.graph.node:
     if node.op_type == 'Constant':
         name = get_name(node)
@@ -91,6 +85,12 @@ for node in onnx_model.graph.node:
             op_inputs[name].append(inputs[src])
         else:
             op_inputs[name].append(op_outputs[src])
+
+weight_inputs = collections.OrderedDict([(name, node) for name, node in inputs.items()
+                                         if name in input_values])
+user_inputs = collections.OrderedDict([(name, node) for name, node in inputs.items()
+                                       if name not in input_values])
+
 
 # for name, node in weight_inputs.items():
 #    print(node.name)
