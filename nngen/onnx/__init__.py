@@ -13,14 +13,17 @@ from . import conv
 from . import gemm
 from . import pool
 from . import relu
+from . import sigmoid
 from . import batchnormalization
 from . import squeeze
 from . import pad
 from . import shape
 from . import reshape
+from . import transpose
 from . import concat
 from . import gather
 from . import flatten
+from . import _slice
 from . import identity
 
 
@@ -37,15 +40,18 @@ func_map = {
     'MaxPool': pool.MaxPool,
     'Relu': relu.Relu,
     'LeakyRelu': relu.LeakyRelu,
+    'Sigmoid': sigmoid.Sigmoid,
     'BatchNormalization': batchnormalization.BatchNormalization,
     'Squeeze': squeeze.Squeeze,
     'Unsqueeze': squeeze.Unsqueeze,
     'Pad': pad.Pad,
     'Shape': shape.Shape,
     'Reshape': reshape.Reshape,
+    'Transpose': transpose.Transpose,
     'Concat': concat.Concat,
     'Gather': gather.Gather,
     'Flatten': flatten.Flatten,
+    'Slice': _slice.Slice,
     'Identity': identity.Identity,
 }
 

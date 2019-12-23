@@ -74,3 +74,7 @@ def transpose_layout(value, expected_layout, default_layout):
     value.layout = expected_layout
 
     return value
+
+
+def convert_transpose_perm(perm, src_layout, dst_layout):
+    return tuple([dst_layout.index(src_layout[p]) for p in perm])
