@@ -48,16 +48,12 @@ def transpose_layout(value, expected_layout, default_layout):
             raise ValueError('layout format size mismatch: %d != %d' %
                              (len(expected_layout), len(default_layout)))
 
-        perm = []
-        new_shape = []
-        for e in expected_layout:
-            index = default_layout.find(e)
-            perm.append(index)
-            new_shape.append(value.shape[index])
+        perm = tuple([default_layout.index(e) for e in expected_layout])
+        new_shape = tuple([value.shape[p] for p in perm])
 
-        value.shape = tuple(new_shape)
+        value.shape = new_shape
         value.layout = expected_layout
-        value.perm = tuple(perm)
+        value.perm = perm
 
         if value.value is not None:
             value.value = np.transpose(value.value, perm)
@@ -72,10 +68,7 @@ def transpose_layout(value, expected_layout, default_layout):
     if current_layout is None:
         current_layout = default_layout
 
-    perm = []
-    for e in expected_layout:
-        index = current_layout.find(e)
-        perm.append(index)
+    perm = tuple([current_layout.index(e) for e in expected_layout])
 
     value = operator.transpose(value, perm)
     value.layout = expected_layout
