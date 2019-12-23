@@ -21,7 +21,7 @@ def _pool(pool_op, visitor, node, no_sum_dtype=False):
     input = srcs[0]
 
     # transpose data layout to nngen-compatible format
-    input = util.transpose_layout(input, 'NHWC', visitor.onnx_input_layout)
+    input = util.transpose_layout(input, visitor.nngen_input_layout, visitor.onnx_input_layout)
 
     name = util.get_name(node)
 
@@ -44,7 +44,7 @@ def _pool(pool_op, visitor, node, no_sum_dtype=False):
     kwargs['name'] = name
 
     c = pool_op(input, **kwargs)
-    c.layout = 'NHWC'
+    c.layout = visitor.nngen_input_layout
 
     return c
 
@@ -72,7 +72,7 @@ def GlobalAveragePool(visitor, node):
     input = srcs[0]
 
     # transpose data layout to nngen-compatible format
-    input = util.transpose_layout(input, 'NHWC', visitor.onnx_input_layout)
+    input = util.transpose_layout(input, visitor.nngen_input_layout, visitor.onnx_input_layout)
 
     name = util.get_name(node)
 
@@ -95,7 +95,7 @@ def GlobalAveragePool(visitor, node):
     kwargs['name'] = name
 
     c = operator.avg_pool_serial(input, **kwargs)
-    c.layout = 'NHWC'
+    c.layout = visitor.nngen_input_layout
 
     return c
 

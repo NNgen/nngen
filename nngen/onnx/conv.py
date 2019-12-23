@@ -25,8 +25,8 @@ def Conv(visitor, node,
     filter = srcs[1]
 
     # transpose data layout to nngen-compatible format
-    input = util.transpose_layout(input, 'NHWC', visitor.onnx_input_layout)
-    filter = util.transpose_layout(filter, 'OHWI', visitor.onnx_filter_layout)
+    input = util.transpose_layout(input, visitor.nngen_input_layout, visitor.onnx_input_layout)
+    filter = util.transpose_layout(filter, visitor.nngen_filter_layout, visitor.onnx_filter_layout)
 
     bias = srcs[2] if len(srcs) > 2 else None
 
@@ -108,6 +108,6 @@ def Conv(visitor, node,
     kwargs['name'] = name
 
     c = operator.conv2d(*args, **kwargs)
-    c.layout = 'NHWC'
+    c.layout = visitor.nngen_input_layout
 
     return c

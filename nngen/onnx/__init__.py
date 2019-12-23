@@ -64,6 +64,7 @@ class _OperatorVisitor(object):
                  default_constant_dtype, default_operator_dtype,
                  default_scale_dtype, default_bias_dtype,
                  onnx_input_layout='NCHW', onnx_filter_layout='OIHW',
+                 nngen_input_layout='NHWC', nngen_filter_layout='OHWI',
                  disable_fusion=False):
 
         self.model = model
@@ -87,6 +88,9 @@ class _OperatorVisitor(object):
 
         self.onnx_input_layout = onnx_input_layout
         self.onnx_filter_layout = onnx_filter_layout
+
+        self.nngen_input_layout = nngen_input_layout
+        self.nngen_filter_layout = nngen_filter_layout
 
         self.disable_fusion = disable_fusion
 
@@ -280,7 +284,7 @@ def from_onnx(filename,
                                default_constant_dtype, default_operator_dtype,
                                default_scale_dtype, default_bias_dtype,
                                onnx_input_layout, onnx_filter_layout,
-                               disable_fusion)
+                               disable_fusion=disable_fusion)
 
     placeholders = visitor.placeholders
     variables = visitor.variables
