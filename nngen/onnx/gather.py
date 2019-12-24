@@ -4,8 +4,6 @@ from __future__ import division
 
 import numpy as np
 
-import nngen.basic_types as bt
-
 
 def Gather(visitor, node):
 

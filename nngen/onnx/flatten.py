@@ -5,7 +5,6 @@ from __future__ import division
 import numpy as np
 
 import nngen.operator as operator
-import nngen.dtype_list as dtype_list
 
 from . import util
 

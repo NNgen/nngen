@@ -6,7 +6,6 @@ import collections
 
 import nngen.storage as storage
 import nngen.operator as operator
-import nngen.dtype_list as dtype_list
 
 from . import util
 

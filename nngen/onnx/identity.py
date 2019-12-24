@@ -4,6 +4,7 @@ from __future__ import division
 
 
 def Identity(visitor, node):
+
     srcs = []
 
     for src in node.input:
