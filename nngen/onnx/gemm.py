@@ -26,11 +26,11 @@ def Gemm(visitor, node,
 
     orig_shape = input.get_original_shape()
     orig_layout = input.get_original_layout()
-    onnx_layout = input.get_original_onnx_layout()
+    orig_onnx_layout = input.get_original_onnx_layout()
 
     if orig_layout is None:
         pass
-    elif orig_layout == onnx_layout:
+    elif orig_layout == orig_onnx_layout:
         pass
     else:
         # The weight layout of Gemm is identical to nngen.matmul.
@@ -39,9 +39,9 @@ def Gemm(visitor, node,
         # Thus the weight layout is transposed.
 
         shape = ([filter.shape[0]] +
-                 [orig_shape[orig_layout.index(s)] for s in onnx_layout[1:]])
+                 [orig_shape[orig_layout.index(s)] for s in orig_onnx_layout[1:]])
         reshape_value = filter.value.reshape(shape)
-        perm = [onnx_layout.index(s) for s in orig_layout]
+        perm = [orig_onnx_layout.index(s) for s in orig_layout]
         transpose_value = reshape_value.transpose(perm)
         new_value = transpose_value.reshape([filter.shape[0], -1])
         filter.value = new_value
