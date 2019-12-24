@@ -34,6 +34,7 @@ class _Numeric(_Node):
 
     # for ONNX
     layout = None
+    onnx_layout = None
 
     def __init__(self, dtype=None, shape=None, name=None):
         _Node.__init__(self)
@@ -298,6 +299,12 @@ class _Numeric(_Node):
 
     def get_original_layout(self):
         return self.get_layout()
+
+    def get_onnx_layout(self):
+        return self.onnx_layout
+
+    def get_original_onnx_layout(self):
+        return self.get_onnx_layout()
 
     @property
     def reversed_perm(self):
@@ -1075,6 +1082,17 @@ class _Operator(_Numeric):
             layout = arg.get_layout()
             if layout is not None:
                 return layout
+
+        return None
+
+    def get_onnx_layout(self):
+        if self.onnx_layout is not None:
+            return self.onnx_layout
+
+        for arg in self.args:
+            onnx_layout = arg.get_onnx_layout()
+            if onnx_layout is not None:
+                return onnx_layout
 
         return None
 
@@ -1999,11 +2017,11 @@ class _View(_Operator):
                      'objaddr',
                      'add_consumer', 'set_output', 'add_alignment_request')
 
-    def __init__(self, value, dtype=None, shape=None, name=None):
-        if dtype is None:
-            dtype = value.dtype
+    def __init__(self, value, shape=None, dtype=None, name=None):
         if shape is None:
             shape = value.shape
+        if dtype is None:
+            dtype = value.dtype
         _Operator.__init__(self, value, dtype=dtype, shape=shape, name=name)
 
     def set_global_index(self, global_index):
@@ -2243,6 +2261,9 @@ class _Reshape(_Operator):
 
     def get_original_layout(self):
         return self.args[0].get_original_layout()
+
+    def get_original_onnx_layout(self):
+        return self.args[0].get_original_onnx_layout()
 
     def eval(self, memo, input_dict, **kwargs):
         if id(self) in memo:

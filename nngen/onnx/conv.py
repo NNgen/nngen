@@ -109,5 +109,6 @@ def Conv(visitor, node,
 
     c = operator.conv2d(*args, **kwargs)
     c.layout = visitor.nngen_input_layout
+    c.onnx_layout = visitor.onnx_input_layout
 
     return c

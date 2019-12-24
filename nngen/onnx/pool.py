@@ -30,7 +30,10 @@ def _pool(pool_op, visitor, node, no_sum_dtype=False):
     else:
         dtype = visitor.default_operator_dtype
 
-    sum_dtype = dtype_list.int32
+    if dtype.width >= 16:
+        sum_dtype = dtype_list.dtype_int(dtype.width * 4)
+    else:
+        sum_dtype = dtype_list.int32
 
     ksize, strides, padding = _get_ksize_strides_padding(node)
 
@@ -45,6 +48,7 @@ def _pool(pool_op, visitor, node, no_sum_dtype=False):
 
     c = pool_op(input, **kwargs)
     c.layout = visitor.nngen_input_layout
+    c.onnx_layout = visitor.onnx_input_layout
 
     return c
 
@@ -81,7 +85,10 @@ def GlobalAveragePool(visitor, node):
     else:
         dtype = visitor.default_operator_dtype
 
-    sum_dtype = dtype_list.int32
+    if dtype.width >= 16:
+        sum_dtype = dtype_list.dtype_int(dtype.width * 4)
+    else:
+        sum_dtype = dtype_list.int32
 
     ksize = tuple([1, input.shape[1], input.shape[2], 1])
     strides = tuple([1, input.shape[1], input.shape[2], 1])

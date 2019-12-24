@@ -3,7 +3,6 @@ from __future__ import print_function
 from __future__ import division
 
 import nngen.operator as operator
-import nngen.dtype_list as dtype_list
 
 from . import util
 
@@ -35,7 +34,7 @@ def Pad(visitor, node):
     input = srcs[0]
 
     # transpose data layout to nngen-compatible format
-    input = util.transpose_layout(input, 'NHWC', visitor.onnx_input_layout)
+    input = util.transpose_layout(input, visitor.nngen_input_layout, visitor.onnx_input_layout)
 
     name = util.get_name(node)
 
@@ -50,6 +49,7 @@ def Pad(visitor, node):
     kwargs['name'] = name
 
     c = operator.pad(input, **kwargs)
-    c.layout = 'NHWC'
+    c.layout = visitor.nngen_input_layout
+    c.onnx_layout = visitor.onnx_input_layout
 
     return c

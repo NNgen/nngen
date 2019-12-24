@@ -23,15 +23,25 @@ def Transpose(visitor, node):
 
     input = srcs[0]
 
-#    orig_layout = input.get_original_layout()
-#    if orig_layout is not None:
-#        perm = util.convert_transpose_perm(perm, visitor.onnx_input_layout,
-#                                           visitor.nngen_input_layout)
+    layout = input.get_layout()
+    onnx_layout = input.get_onnx_layout()
 
-    raise NotImplementedError()
+    if layout is not None and onnx_layout is not None:
+        onnx_perm = perm
+        perm = util.convert_transpose_perm(perm, onnx_layout, layout)
+
     kwargs = collections.OrderedDict()
 
     name = util.get_name(node)
     kwargs['name'] = name
 
-    return operator.transpose(input, perm, **kwargs)
+    c = operator.transpose(input, perm, **kwargs)
+    c.transpose_onnx_perm = onnx_perm
+
+    if layout is not None:
+        c.layout = ''.join([layout[p] for p in perm])
+
+    if onnx_layout is not None:
+        c.onnx_layout = ''.join([onnx_layout[p] for p in onnx_perm])
+
+    return c

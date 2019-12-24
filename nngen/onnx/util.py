@@ -5,7 +5,6 @@ from __future__ import division
 import numpy as np
 
 import nngen.basic_types as bt
-import nngen.storage as storage
 import nngen.operator as operator
 
 
@@ -38,21 +37,22 @@ def to_shape(node, value_shapes):
     return shape
 
 
-def transpose_layout(value, expected_layout, default_layout):
+def transpose_layout(value, expected_layout, onnx_layout):
 
     if value.layout == expected_layout:
         return value
 
     if isinstance(value, bt._Storage) and value.layout is None and not value.consumers:
-        if len(expected_layout) != len(default_layout):
+        if len(expected_layout) != len(onnx_layout):
             raise ValueError('layout format size mismatch: %d != %d' %
-                             (len(expected_layout), len(default_layout)))
+                             (len(expected_layout), len(onnx_layout)))
 
-        perm = tuple([default_layout.index(e) for e in expected_layout])
+        perm = tuple([onnx_layout.index(e) for e in expected_layout])
         new_shape = tuple([value.shape[p] for p in perm])
 
         value.shape = new_shape
         value.layout = expected_layout
+        value.onnx_layout = onnx_layout
         value.perm = perm
 
         if value.value is not None:
@@ -66,12 +66,13 @@ def transpose_layout(value, expected_layout, default_layout):
         return value
 
     if current_layout is None:
-        current_layout = default_layout
+        current_layout = onnx_layout
 
     perm = tuple([current_layout.index(e) for e in expected_layout])
 
     value = operator.transpose(value, perm)
     value.layout = expected_layout
+    value.onnx_layout = onnx_layout
 
     return value
 

@@ -3001,6 +3001,9 @@ class conv2d(bt._Operator):
     def get_layout(self):
         return self.layout
 
+    def get_onnx_layout(self):
+        return self.onnx_layout
+
     def eval(self, memo, input_dict, **kwargs):
         if id(self) in memo:
             return memo[id(self)]

@@ -808,7 +808,9 @@ class transpose(bt._Operator):
 
         if perm is None:
             perm = tuple(reversed(range(bt.get_rank(a_shape))))
+
         self.transpose_perm = perm
+        self.transpose_onnx_perm = None
 
         shape = []
         for p in perm:
@@ -926,6 +928,19 @@ class transpose(bt._Operator):
         for i, p in enumerate(self.transpose_perm):
             new_layout[i] = orig_layout[p]
         return ''.join(new_layout)
+
+    def get_onnx_layout(self):
+        if self.onnx_layout is not None:
+            return self.onnx_layout
+
+        orig_onnx_layout = self.args[0].get_onnx_layout()
+        if orig_onnx_layout is None:
+            return None
+
+        new_onnx_layout = [l for l in orig_onnx_layout]
+        for i, p in enumerate(self.transpose_onnx_perm):
+            new_onnx_layout[i] = orig_onnx_layout[p]
+        return ''.join(new_onnx_layout)
 
     def eval(self, memo, input_dict, **kwargs):
         if id(self) in memo:
