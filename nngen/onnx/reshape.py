@@ -9,7 +9,7 @@ import nngen.operator as operator
 from . import util
 
 
-def Reshape(visitor, node):
+def Reshape(visitor, node, no_transpose=False):
 
     srcs = []
 
@@ -22,6 +22,13 @@ def Reshape(visitor, node):
 
     if isinstance(shape, np.ndarray):
         shape = shape.tolist()
+
+    if (not no_transpose and
+        input.layout is not None and input.onnx_layout is not None and
+            input.layout != input.onnx_layout):
+
+        perm = [layout.index(l) for l in onnx_layout]
+        input = operator.transpose(input, perm)
 
     name = util.get_name(node)
 

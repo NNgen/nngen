@@ -9,6 +9,7 @@ import nngen.operator as operator
 import nngen.dtype_list as dtype_list
 
 from . import util
+from . import reshape
 
 
 def Gemm(visitor, node,
@@ -17,7 +18,19 @@ def Gemm(visitor, node,
     # input, filter
     srcs = []
 
-    for src in node.input:
+    for i, src in enumerate(node.input):
+        src_node = util.search_node_from_model(visitor.model, src)
+
+        if (i == 0 and src_node.op_type == 'Reshape' and
+                len(visitor.consumers[src]) == 1):
+
+            shape = visitor.visit(src_node.input[1])
+            if len(shape) == 2:
+                src_obj = reshape.Reshape(visitor, src_node, no_transpose=True)
+                srcs.append(src_obj)
+                breakpoint()
+                continue
+
         src_obj = visitor.visit(src)
         srcs.append(src_obj)
 
