@@ -21,6 +21,8 @@ def Concat(visitor, node):
         if attribute.name == 'axis':
             axis = attribute.i
 
+    srcs = [util.optimize_to_raw_value(src) for src in srcs]
+
     all_ndarray = True
     for src in srcs:
         if not isinstance(src, np.ndarray):

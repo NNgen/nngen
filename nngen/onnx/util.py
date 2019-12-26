@@ -6,6 +6,7 @@ import numpy as np
 
 import nngen.basic_types as bt
 import nngen.operator as operator
+import nngen.storage as storage
 
 
 def get_name(node):
@@ -79,3 +80,25 @@ def transpose_layout(value, expected_layout, onnx_layout):
 
 def convert_transpose_perm(perm, src_layout, dst_layout):
     return tuple([dst_layout.index(src_layout[p]) for p in perm])
+
+
+def optimize_to_raw_value(value):
+
+    while True:
+        if isinstance(value, bt._View):
+            value = value.args[0]
+            continue
+
+        if isinstance(value, bt._LazyReshape) and not value.args[0].shape:
+            value = value.args[0]
+            continue
+
+        break
+
+    if isinstance(value, storage.variable):
+        value = value.value
+        if not value.shape:
+            value = np.reshape(value, (1,))
+        return value
+
+    return value
