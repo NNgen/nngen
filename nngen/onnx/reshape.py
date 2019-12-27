@@ -27,8 +27,14 @@ def Reshape(visitor, node, no_transpose=False):
         input.layout is not None and input.onnx_layout is not None and
             input.layout != input.onnx_layout):
 
-        perm = [layout.index(l) for l in onnx_layout]
+        perm = [input.layout.index(l) for l in input.onnx_layout]
+        onnx_perm = [i for i, l in enumerate(input.onnx_layout)]
+
         input = operator.transpose(input, perm)
+        input.transpose_onnx_perm = onnx_perm
+
+        input.layout = input.onnx_layout
+        input.onnx_layout = input.onnx_layout
 
     name = util.get_name(node)
 
