@@ -85,7 +85,7 @@ def convert_transpose_perm(perm, src_layout, dst_layout):
 def optimize_to_raw_value(value):
 
     while True:
-        if isinstance(value, bt._View):
+        if isinstance(value, bt._View) and value.dtype == value.args[0].dtype:
             value = value.args[0]
             continue
 
