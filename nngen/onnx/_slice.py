@@ -15,6 +15,8 @@ def Slice(visitor, node):
         src_obj = visitor.visit(src)
         srcs.append(src_obj)
 
+    srcs = [util.optimize_to_raw_value(src) for src in srcs]
+
     input = srcs[0]
     starts = srcs[1]
     ends = srcs[2]
@@ -23,10 +25,6 @@ def Slice(visitor, node):
 
     if isinstance(input, (tuple, list, np.ndarray)):
         input = np.array(input)
-        starts = util.optimize_to_raw_value(starts)
-        ends = util.optimize_to_raw_value(ends)
-        axes = util.optimize_to_raw_value(axes)
-        steps = util.optimize_to_raw_value(steps)
         v = get_sliced_value(input, starts, ends, axes, steps)
         return v
 
