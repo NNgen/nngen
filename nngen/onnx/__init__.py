@@ -23,7 +23,7 @@ from . import transpose
 from . import concat
 from . import squeeze
 from . import gather
-from . import _slice
+from . import slice
 from . import cast
 from . import identity
 
@@ -52,7 +52,7 @@ func_map = {
     'Squeeze': squeeze.Squeeze,
     'Unsqueeze': squeeze.Unsqueeze,
     'Gather': gather.Gather,
-    'Slice': _slice.Slice,
+    'Slice': slice.Slice,
     'Cast': cast.Cast,
     'Identity': identity.Identity,
 }

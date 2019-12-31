@@ -14,6 +14,7 @@ from .pool import avg_pool, max_pool
 from .pool_serial import avg_pool_serial, max_pool_serial
 from .extern import extern
 from .concat import concat
+from .slice import slice
 from .upsampling2d import upsampling2d
 from .pad import pad
 from .normalize import *
