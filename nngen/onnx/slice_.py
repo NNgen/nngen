@@ -31,7 +31,7 @@ def Slice(visitor, node):
         return v
 
     starts, ends, steps = extract_slices(input, starts, ends, axes, steps)
-    return operator.slice(input, starts, ends, steps)
+    return operator.slice_(input, starts, ends, steps)
 
 
 def get_sliced_value(input, starts, ends, axes, steps):
