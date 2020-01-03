@@ -74,8 +74,8 @@ class slice_(bt._Operator):
             if not isinstance(stride, int):
                 raise TypeError('values of strides must be int, not %s' % str(type(stride)))
 
-        if par != 1:
-            raise ValueError("par must be 1 in the current implementation.")
+        if strides[-1] != 1 and par != 1:
+            raise ValueError("par must be 1 when strides[-1] is not 1")
 
         if value_ram_size is not None and value_ram_size < 1:
             raise ValueError('value_ram_size must be greater than 0')
