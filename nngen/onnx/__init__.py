@@ -13,8 +13,7 @@ from . import conv
 from . import gemm
 from . import pool
 from . import pad
-from . import relu
-from . import sigmoid
+from . import act_func
 from . import batchnormalization
 from . import shape
 from . import reshape
@@ -40,9 +39,9 @@ func_map = {
     'GlobalAveragePool': pool.GlobalAveragePool,
     'MaxPool': pool.MaxPool,
     'Pad': pad.Pad,
-    'Relu': relu.Relu,
-    'LeakyRelu': relu.LeakyRelu,
-    'Sigmoid': sigmoid.Sigmoid,
+    'Relu': act_func.Relu,
+    'LeakyRelu': act_func.LeakyRelu,
+    'Sigmoid': act_func.Sigmoid,
     'BatchNormalization': batchnormalization.BatchNormalization,
     'Shape': shape.Shape,
     'Reshape': reshape.Reshape,

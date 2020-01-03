@@ -5,6 +5,7 @@ from __future__ import division
 from .basic import *
 from .relu import relu, relu6
 from .leaky_relu import leaky_relu, get_leaky_relu_op, leaky_relu_base
+from .sigmoid import sigmoid
 from .matmul import matmul
 from .conv2d import conv2d
 from .log_weight_conv2d import log_weight_conv2d

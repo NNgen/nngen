@@ -11,7 +11,7 @@ from . import conv
 from . import gemm
 
 
-def _relu(act_func, visitor, node):
+def _act_func_base(act_func, visitor, node):
 
     node_name = util.get_name(node)
 
@@ -45,7 +45,7 @@ def _relu(act_func, visitor, node):
 
 
 def Relu(visitor, node):
-    return _relu(operator.relu, visitor, node)
+    return _act_func_base(operator.relu, visitor, node)
 
 
 def LeakyRelu(visitor, node):
@@ -57,4 +57,8 @@ def LeakyRelu(visitor, node):
     rshift = 31
     slope = round(alpha * (2 ** 31))
     op = operator.get_leaky_relu_op(slope, rshift)
-    return _relu(op, visitor, node)
+    return _act_func_base(op, visitor, node)
+
+
+def Sigmoid(visitor, node):
+    return _sigmoid(operator.sigmoid, visitor, node)
