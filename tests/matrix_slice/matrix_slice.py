@@ -20,14 +20,14 @@ import veriloggen.types.axi as axi
 
 def run(act_shape=(1, 7, 7, 15),
         act_dtype=ng.int32, out_dtype=ng.int32,
-        starts=(0, 2, 2, 0), ends=(1, 6, 6, 3), strides=(1, 1, 1, 1),
+        begins=(0, 2, 2, 0), ends=(1, 6, 6, 3), strides=(1, 1, 1, 1),
         par=1,
         axi_datawidth=32, silent=False,
         filename=None, simtype='iverilog', outputfile=None):
 
     # create target hardware
     act = ng.placeholder(act_dtype, shape=act_shape, name='act')
-    out = ng.slice_(act, starts, ends, strides,
+    out = ng.slice_(act, begins, ends, strides,
                     dtype=out_dtype, name='out',
                     par=par)
 
@@ -35,7 +35,7 @@ def run(act_shape=(1, 7, 7, 15),
                             config={'maxi_datawidth': axi_datawidth})
 
     # verification data
-    vact = np.arange(act.length, dtype=np.int64).reshape(act.shape) % [10]
+    vact = np.arange(act.length, dtype=np.int64).reshape(act.shape)
 
     eval_outs = ng.eval([out], act=vact)
     vout = eval_outs[0]

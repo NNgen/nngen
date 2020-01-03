@@ -17,9 +17,9 @@ import matrix_slice
 act_shape = (1, 7, 7, 15)
 act_dtype = ng.int32
 out_dtype = ng.int32
-starts = (0, 2, 2, 0)
+begins = (0, 2, 2, 0)
 ends = (1, 6, 6, 3)
-strides = (1, 1, 1, 1)
+strides = (1, 2, 2, 2)
 par = 1
 axi_datawidth = 32
 
@@ -31,7 +31,7 @@ def test(request, silent=True):
 
     rslt = matrix_slice.run(act_shape,
                             act_dtype, out_dtype,
-                            starts, ends, strides,
+                            begins, ends, strides,
                             par,
                             axi_datawidth, silent,
                             filename=None, simtype=simtype,
@@ -44,7 +44,7 @@ def test(request, silent=True):
 if __name__ == '__main__':
     rslt = matrix_slice.run(act_shape,
                             act_dtype, out_dtype,
-                            starts, ends, strides,
+                            begins, ends, strides,
                             par,
                             axi_datawidth, silent=False,
                             filename='tmp.v',
