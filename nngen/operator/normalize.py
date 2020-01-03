@@ -3,7 +3,6 @@ from __future__ import print_function
 from __future__ import division
 
 import math
-import functools
 from collections import OrderedDict
 
 import veriloggen as vg
