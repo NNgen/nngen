@@ -20,6 +20,20 @@ class slice_(bt._Operator):
     input_chainable = False
     output_chainable = False
 
+    def __sub_str__(self):
+        begins = str(self.begins)
+        ends = str(self.ends)
+        strides = str(self.strides)
+        par = ' par:%d' % self.par if self.par > 1 else ''
+
+        value_ram_size = (' value_ram_size:%d' % self.value_ram_size
+                          if self.value_ram_size is not None else '')
+        out_ram_size = (' out_ram_size:%d' % self.out_ram_size
+                        if self.out_ram_size is not None else '')
+
+        return (' begins:%s ends:%s strides:%s %s%s%s' %
+                (begins, ends, strides, par, value_ram_size, out_ram_size))
+
     def __init__(self, value, begins, ends, strides,
                  dtype=None, name=None, par=1,
                  value_ram_size=None, out_ram_size=None):
