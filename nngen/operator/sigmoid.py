@@ -6,4 +6,6 @@ import nngen.basic_types as bt
 
 
 class sigmoid(bt._ElementwiseOperator):
-    pass
+
+    def __init__(self, features, dtype=None, name=None, par=1):
+        raise NotImplementedError()

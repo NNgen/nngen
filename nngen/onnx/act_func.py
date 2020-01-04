@@ -11,7 +11,7 @@ from . import conv
 from . import gemm
 
 
-def _act_func_base(act_func, visitor, node):
+def _act_func(method, visitor, node):
 
     node_name = util.get_name(node)
 
@@ -23,29 +23,29 @@ def _act_func_base(act_func, visitor, node):
             len(visitor.consumers[src_name]) == 1):
 
         src_op = batchnormalization.BatchNormalization(visitor, src_node,
-                                                       act_func=act_func)
+                                                       act_func=method)
         visitor.operators[node_name] = src_op
         return src_op
 
     if (not visitor.disable_fusion and
             src_node.op_type == 'Conv' and len(visitor.consumers[src_name]) == 1):
 
-        src_op = conv.Conv(visitor, src_node, act_func=act_func)
+        src_op = conv.Conv(visitor, src_node, act_func=method)
         visitor.operators[node_name] = src_op
         return src_op
 
     if (not visitor.disable_fusion and
             src_node.op_type == 'Gemm' and len(visitor.consumers[src_name]) == 1):
 
-        src_op = gemm.Gemm(visitor, src_node, act_func=act_func)
+        src_op = gemm.Gemm(visitor, src_node, act_func=method)
         visitor.operators[node_name] = src_op
         return src_op
 
-    return basic._elementwise(act_func, visitor, node)
+    return basic._elementwise(method, visitor, node)
 
 
 def Relu(visitor, node):
-    return _act_func_base(operator.relu, visitor, node)
+    return _act_func(operator.relu, visitor, node)
 
 
 def LeakyRelu(visitor, node):
@@ -57,8 +57,8 @@ def LeakyRelu(visitor, node):
     rshift = 31
     slope = round(alpha * (2 ** 31))
     op = operator.get_leaky_relu_op(slope, rshift)
-    return _act_func_base(op, visitor, node)
+    return _act_func(op, visitor, node)
 
 
 def Sigmoid(visitor, node):
-    return _sigmoid(operator.sigmoid, visitor, node)
+    return _act_func(operator.sigmoid, visitor, node)
