@@ -322,7 +322,6 @@ class concat(bt._Operator):
         import nngen.verify as verify
 
         name = self.__class__.__name__
-        method = getattr(verify, name, None)
 
         values = [arg.eval(memo, input_dict)
                   for arg in self.args]
@@ -331,6 +330,7 @@ class concat(bt._Operator):
         kwargs['dtype'] = self.dtype
         kwargs['name'] = self.name
 
+        method = self.get_eval_method()
         ret = method(values, **kwargs)
         memo[id(self)] = ret
 

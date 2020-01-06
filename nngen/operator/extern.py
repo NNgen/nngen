@@ -88,7 +88,6 @@ class extern(bt._Operator):
         import nngen.verify as verify
 
         name = self.__class__.__name__
-        method = getattr(verify, name, None)
 
         args = [arg.eval(memo, input_dict)
                 for arg in self.args]
@@ -101,6 +100,7 @@ class extern(bt._Operator):
         kwargs['value_dtypes'] = [arg.dtype for arg in self.args]
         kwargs['func'] = self.func
 
+        method = self.get_eval_method()
         ret = method(values, opcode, **kwargs)
         memo[id(self)] = ret
 

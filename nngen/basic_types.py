@@ -406,7 +406,7 @@ class _Operator(_Numeric):
                 arg.output_chainable = False
                 arg.chain_head = False
 
-        self.shared_attrs = defaultdict(list)
+        self.shared_attrs = defaultdict(OrderedDict)
 
         self.input_rams = None
         self.output_rams = None
@@ -443,9 +443,17 @@ class _Operator(_Numeric):
         for attr in self.shared_attr_names:
             v = getattr(obj, attr)
             if v not in self.shared_attrs[attr]:
-                self.shared_attrs[attr].append(v)
+                key = v.get_stream_hash()
+                self.shared_attrs[attr][key] = v
 
         obj.shared_attrs = self.shared_attrs
+
+    def get_shared_attr_index(self, name, obj):
+        for index, key in enumerate(self.shared_attrs[name].keys()):
+            if key == obj.get_stream_hash():
+                return index
+
+        raise ValueError('no such object %s' % str(obj))
 
     def collect_numerics(self):
         ret = []
@@ -671,11 +679,11 @@ class _Operator(_Numeric):
     def to_local_control_param_name(self, index, name):
         return '_'.join(['local', str(index), name])
 
-    def collect_local_control_param_values(self):
+    def collect_local_control_param_values(self, index_offset=0):
         values = OrderedDict()
 
         for name, lparam in self.get_local_control_param_values().items():
-            signame = self.to_local_control_param_name(0, name)
+            signame = self.to_local_control_param_name(index_offset, name)
             values[signame] = lparam
 
         numerics = self.collect_arg_numerics()
@@ -685,7 +693,7 @@ class _Operator(_Numeric):
                 continue
 
             for name, lparam in arg.get_local_control_param_values().items():
-                signame = self.to_local_control_param_name(i + 1, name)
+                signame = self.to_local_control_param_name(index_offset + i + 1, name)
                 values[signame] = lparam
 
         return values
@@ -1053,9 +1061,9 @@ class _Operator(_Numeric):
         self.control_param_index_reg = obj.control_param_index_reg
         self.control_param_ram = obj.control_param_ram
 
-    def copy_local_control_params(self, obj):
+    def copy_local_control_params(self, obj, index_offset=0):
         for name, lparam in self.get_local_control_param_values().items():
-            signame = self.to_local_control_param_name(0, name)
+            signame = self.to_local_control_param_name(index_offset, name)
             if hasattr(obj, signame):
                 setattr(self, name, getattr(obj, signame))
 
@@ -1065,7 +1073,7 @@ class _Operator(_Numeric):
             if not isinstance(arg, _Operator):
                 continue
             for name, lparam in arg.get_local_control_param_values().items():
-                signame = self.to_local_control_param_name(i + 1, name)
+                signame = self.to_local_control_param_name(index_offset + i + 1, name)
                 if hasattr(obj, signame):
                     setattr(arg, name, getattr(obj, signame))
 
@@ -1096,6 +1104,13 @@ class _Operator(_Numeric):
 
         return None
 
+    def get_eval_method(self):
+        import nngen.verify as verify
+
+        name = self.__class__.__name__
+        method = getattr(verify, name, None)
+        return method
+
     def eval(self, memo, input_dict, **kwargs):
         if id(self) in memo:
             return memo[id(self)]
@@ -1103,7 +1118,6 @@ class _Operator(_Numeric):
         import nngen.verify as verify
 
         name = self.__class__.__name__
-        method = getattr(verify, name, None)
 
         args = [arg.eval(memo, input_dict)
                 for arg in self.args]
@@ -1112,6 +1126,7 @@ class _Operator(_Numeric):
         kwargs['name'] = self.name
         kwargs['par'] = self.par
 
+        method = self.get_eval_method()
         ret = method(*args, **kwargs)
         memo[id(self)] = ret
 
@@ -2008,6 +2023,12 @@ class _ReductionOperator(_StreamingOperator):
         kwargs['axis'] = self.axis
         kwargs['keep_dims'] = self.keep_dims
         return _StreamingOperator.eval(self, memo, input_dict, **kwargs)
+
+
+class _ActFuncOperator(_ElementwiseOperator):
+
+    def get_act_func(self):
+        return self.get_eval_method()
 
 
 class _View(_Operator):

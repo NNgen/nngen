@@ -2,10 +2,13 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
+import functools
+from collections import OrderedDict
+
 import nngen.basic_types as bt
 
 
-class relu(bt._ElementwiseOperator):
+class relu(bt._ActFuncOperator):
     """
     Applies the rectified linear unit function element-wise:
 
@@ -28,12 +31,12 @@ class relu(bt._ElementwiseOperator):
 
     def __init__(self, features, dtype=None, name=None, par=1):
         shape = None
-        bt._ElementwiseOperator.__init__(self, features,
-                                         dtype=dtype, shape=shape, name=name, par=par)
+        bt._ActFuncOperator.__init__(self, features,
+                                     dtype=dtype, shape=shape, name=name, par=par)
 
     def eval(self, memo, input_dict, **kwargs):
         kwargs['features_dtype'] = self.args[0].dtype
-        return bt._ElementwiseOperator.eval(self, memo, input_dict, **kwargs)
+        return bt._ActFuncOperator.eval(self, memo, input_dict, **kwargs)
 
 
 class relu6(relu):
@@ -50,8 +53,19 @@ class relu6(relu):
         par: The number of parallel operations (optional).
     """
 
-    @staticmethod
-    def op(strm, *args, **kwargs):
+    def get_local_control_param_values(self):
+        return OrderedDict([('max_val', round(self.args[0].scale_factor) * 6)])
+
+    def op(self, strm, *args, **kwargs):
         return strm.Mux(args[0] > strm.Int(0),
-                        strm.Mux(args[0] > strm.Int(6), strm.Int(6), args[0]),
+                        strm.Mux(args[0] > self.max_val, self.max_val, args[0]),
                         strm.Int(0))
+
+    def get_eval_method(self):
+        import nngen.verify as verify
+
+        name = self.__class__.__name__
+        method = getattr(verify, name, None)
+        method = functools.partial(method,
+                                   features_scale_factor=round(self.args[0].scale_factor))
+        return method

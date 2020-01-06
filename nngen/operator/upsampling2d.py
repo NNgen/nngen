@@ -407,7 +407,6 @@ class upsampling2d(bt._ElementwiseOperator):
         import nngen.verify as verify
 
         name = self.__class__.__name__
-        method = getattr(verify, name, None)
 
         args = [arg.eval(memo, input_dict)
                 for arg in self.args]
@@ -420,6 +419,7 @@ class upsampling2d(bt._ElementwiseOperator):
         kwargs['name'] = self.name
         kwargs['par'] = self.par
 
+        method = self.get_eval_method()
         ret = method(value, **kwargs)
         memo[id(self)] = ret
 

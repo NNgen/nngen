@@ -283,7 +283,6 @@ class matmul(conv2d.conv2d):
         import nngen.verify as verify
 
         name = self.__class__.__name__
-        method = getattr(verify, name, None)
 
         args = [arg.eval(memo, input_dict)
                 for arg in self.args]
@@ -324,6 +323,7 @@ class matmul(conv2d.conv2d):
         kwargs['bias_dtype'] = self.args[self.args_dict['bias']].dtype if self.has_bias else None
         kwargs['scale_dtype'] = self.args[self.args_dict['scale']].dtype if self.has_scale else None
 
+        method = self.get_eval_method()
         ret = method(input, filter, **kwargs)
         memo[id(self)] = ret
 

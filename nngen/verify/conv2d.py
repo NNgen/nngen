@@ -6,8 +6,6 @@ import numpy as np
 import math
 
 import nngen.util as util
-from nngen.operator.leaky_relu import leaky_relu_base
-from .leaky_relu import get_leaky_relu_op
 
 
 def conv2d(input, filter, strides,
@@ -208,11 +206,8 @@ def conv2d(input, filter, strides,
 
     if act_func is None:
         def act_op(x): return x
-    elif issubclass(act_func, leaky_relu_base):
-        act_op = get_leaky_relu_op(act_func.slope, act_func.rshift, dtype)
     else:
-        import nngen.verify as verify
-        act_op = getattr(verify, act_func.__name__)
+        act_op = act_func.get_act_func()
 
     for bat in range(shape[0]):
         w = filter.reshape([shape[3], -1])

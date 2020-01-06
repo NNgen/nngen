@@ -4,9 +4,7 @@ from __future__ import division
 
 import numpy as np
 
-import nngen as ng
 import nngen.util as util
-import nngen.verify
 
 
 def matmul(a, b,
@@ -162,12 +160,8 @@ def matmul(a, b,
 
     if act_func is None:
         def act_op(x): return x
-    elif issubclass(act_func, ng.leaky_relu_base):
-        act_op = nngen.verify.get_leaky_relu_op(act_func.slope,
-                                                act_func.rshift,
-                                                dtype)
     else:
-        act_op = getattr(nngen.verify, act_func.__name__)
+        act_op = act_func.get_act_func()
 
     sum = my_matmul(a, b)
 
