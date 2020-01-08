@@ -1272,7 +1272,7 @@ class _StreamingOperator(_Operator):
         out_page_dma_offset = self.m.Reg(self._name('out_page_dma_offset'),
                                          self.maxi.addrwidth, initval=0)
 
-        arg_page_size = self.output_rams[0].length // 2
+        arg_page_size = min(ram.length for ram in self.input_rams) // 2
         out_page_size = self.output_rams[0].length // 2
 
         skip_read = self.m.Reg(self._name('skip_read'), initval=0)
@@ -1454,7 +1454,7 @@ class _StreamingOperator(_Operator):
 
             fsm.If(vg.Not(arg_page), wrap_mode != 2)(
                 arg_page_comp_offset(arg_page_size),
-                arg_page_dma_offset(out_page_size),
+                arg_page_dma_offset(arg_page_size),
                 arg_page(1)
             )
             fsm.If(arg_page, wrap_mode != 2)(
@@ -1702,7 +1702,7 @@ class _ReductionOperator(_StreamingOperator):
         out_page_dma_offset = self.m.Reg(self._name('out_page_dma_offset'),
                                          self.maxi.addrwidth, initval=0)
 
-        arg_page_size = self.output_rams[0].length // 2
+        arg_page_size = min(ram.length for ram in self.input_rams) // 2
         out_page_size = self.output_rams[0].length // 2
 
         skip_read = self.m.Reg(self._name('skip_read'), initval=0)
@@ -1928,7 +1928,7 @@ class _ReductionOperator(_StreamingOperator):
 
             fsm.If(vg.Not(arg_page), wrap_mode != 2)(
                 arg_page_comp_offset(arg_page_size),
-                arg_page_dma_offset(out_page_size),
+                arg_page_dma_offset(arg_page_size),
                 arg_page(1)
             )
             fsm.If(arg_page, wrap_mode != 2)(
