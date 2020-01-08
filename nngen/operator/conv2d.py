@@ -503,7 +503,7 @@ class conv2d(bt._Operator):
         self.mul_dtype = mul_dtype
         self.sum_dtype = sum_dtype
 
-        self.act_func = act_func(self)
+        self.act_func = act_func(self) if act_func is not None else None
 
         # attribute
         self.par_ich = par_ich
