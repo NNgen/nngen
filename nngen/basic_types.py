@@ -439,17 +439,30 @@ class _Operator(_Numeric):
 
             self.add_alignment_request(self.par)
 
-    def set_shared_attrs(self, obj):
+    def merge_shared_attrs(self, obj):
+        """ merge obj's and self's shared_attrs. """
+
         for attr in self.shared_attr_names:
             v = getattr(obj, attr)
-            if v not in self.shared_attrs[attr]:
-                key = v.get_stream_hash()
+
+            if v is None:
+                self.shared_attrs[attr][None] = None
+                continue
+
+            key = v.get_stream_hash()
+            if key not in self.shared_attrs[attr]:
                 self.shared_attrs[attr][key] = v
 
         obj.shared_attrs = self.shared_attrs
 
     def get_shared_attr_index(self, name, obj):
         for index, key in enumerate(self.shared_attrs[name].keys()):
+            if key is None and obj is None:
+                return index
+            if key is None:
+                continue
+            if obj is None:
+                continue
             if key == obj.get_stream_hash():
                 return index
 
