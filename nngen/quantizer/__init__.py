@@ -8,6 +8,7 @@ import nngen.basic_types as bt
 
 from . import conv2d
 from . import matmul
+from . import sigmoid
 from . import normalize
 
 
@@ -15,6 +16,7 @@ from . import normalize
 func_map = {
     'conv2d': conv2d.conv2d,
     'matmul': matmul.matmul,
+    'sigmoid': sigmoid.sigmoid,
     'normalize': normalize.normalize,
     'scaled_add': normalize.scaled_add,
     'scaled_concat': normalize.scaled_concat,
