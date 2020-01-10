@@ -115,7 +115,7 @@ class matmul(conv2d.conv2d):
         cshamt_out = (' cshamt_out:%s' % self.cshamt_out
                       if self.cshamt_out is not None else '')
 
-        act_func = (' act_func:%s' % str(self.act_func.__name__)
+        act_func = (' act_func:%s' % str(self.act_func.__class__.__name__)
                     if self.act_func is not None else '')
         mul_dtype = (' mul_dtype:%s' % self.mul_dtype.to_str()
                      if self.mul_dtype is not None else '')
