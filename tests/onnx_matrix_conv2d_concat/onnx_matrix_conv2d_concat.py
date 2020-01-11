@@ -27,7 +27,7 @@ import veriloggen.types.axi as axi
 
 class MatrixConv2dConcat(nn.Module):
     def __init__(self, weight_shape, stride=1, padding=0,
-                 with_batchnorm=False, act_func='relu'):
+                 with_batchnorm=False, act_func='ReLU'):
 
         super(MatrixConv2dConcat, self).__init__()
 
@@ -39,10 +39,8 @@ class MatrixConv2dConcat(nn.Module):
         else:
             self.bn = None
 
-        if act_func == 'relu':
-            self.f = nn.ReLU(inplace=True)
-        elif act_func == 'leaky_relu':
-            self.f = nn.LeakyReLU(inplace=True)
+        if act_func is not None:
+            self.f = getattr(nn, act_func)(inplace=True)
         else:
             self.f = None
 
@@ -63,7 +61,7 @@ class MatrixConv2dConcat(nn.Module):
 def run(act_shape=(1, 7, 7, 15), weight_shape=(15, 3, 3, 15),
         act_dtype=ng.int32, weight_dtype=ng.int32,
         stride=1, padding=1,
-        with_batchnorm=False, act_func='relu', disable_fusion=False,
+        with_batchnorm=False, act_func='ReLU', disable_fusion=False,
         par_ich=1, par_och=1, par_col=1, par_row=1,
         concur_och=None, stationary='filter',
         chunk_size=64,

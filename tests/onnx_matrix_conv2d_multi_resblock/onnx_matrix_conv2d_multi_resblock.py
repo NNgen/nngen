@@ -27,7 +27,7 @@ import veriloggen.types.axi as axi
 
 class MatrixConv2dMultiResblock(nn.Module):
     def __init__(self, weight_shape, stride=1, padding=0,
-                 with_batchnorm=False, act_func='relu'):
+                 with_batchnorm=False, act_func='ReLU'):
 
         super(MatrixConv2dMultiResblock, self).__init__()
 
@@ -40,10 +40,8 @@ class MatrixConv2dMultiResblock(nn.Module):
         else:
             self.bn1 = None
 
-        if act_func == 'relu':
-            self.f1 = nn.ReLU(inplace=True)
-        elif act_func == 'leaky_relu':
-            self.f1 = nn.LeakyReLU(inplace=True)
+        if act_func is not None:
+            self.f1 = getattr(nn, act_func)(inplace=True)
         else:
             self.f1 = None
 
@@ -56,10 +54,8 @@ class MatrixConv2dMultiResblock(nn.Module):
         else:
             self.bn2 = None
 
-        if act_func == 'relu':
-            self.f2 = nn.ReLU(inplace=True)
-        elif act_func == 'leaky_relu':
-            self.f2 = nn.LeakyReLU(inplace=True)
+        if act_func is not None:
+            self.f2 = getattr(nn, act_func)(inplace=True)
         else:
             self.f2 = None
 
@@ -93,7 +89,7 @@ class MatrixConv2dMultiResblock(nn.Module):
 def run(act_shape=(1, 7, 7, 15), weight_shape=(15, 3, 3, 15),
         act_dtype=ng.int32, weight_dtype=ng.int32,
         stride=1, padding=1,
-        with_batchnorm=False, act_func='relu', disable_fusion=False,
+        with_batchnorm=False, act_func='ReLU', disable_fusion=False,
         par_ich=1, par_och=1, par_col=1, par_row=1,
         concur_och=None, stationary='filter',
         chunk_size=64,
