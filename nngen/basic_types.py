@@ -2041,7 +2041,9 @@ class _ReductionOperator(_StreamingOperator):
 class _ActFuncOperator(_ElementwiseOperator):
 
     def get_act_func(self):
-        return self.get_eval_method()
+        method = self.get_eval_method()
+        method = functools.partial(method, dtype=self.dtype)
+        return method
 
 
 class _View(_Operator):
