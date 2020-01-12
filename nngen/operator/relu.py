@@ -34,9 +34,14 @@ class relu(bt._ActFuncOperator):
         bt._ActFuncOperator.__init__(self, features,
                                      dtype=dtype, shape=shape, name=name, par=par)
 
-    def eval(self, memo, input_dict, **kwargs):
-        kwargs['features_dtype'] = self.args[0].dtype
-        return bt._ActFuncOperator.eval(self, memo, input_dict, **kwargs)
+    def get_eval_method(self):
+        import nngen.verify as verify
+
+        name = self.__class__.__name__
+        method = getattr(verify, name, None)
+        method = functools.partial(method,
+                                   features_dtype=self.args[0].dtype)
+        return method
 
 
 class relu6(relu):
@@ -67,5 +72,6 @@ class relu6(relu):
         name = self.__class__.__name__
         method = getattr(verify, name, None)
         method = functools.partial(method,
+                                   features_dtype=self.args[0].dtype,
                                    features_scale_factor=round(self.args[0].scale_factor))
         return method

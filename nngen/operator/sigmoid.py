@@ -14,10 +14,12 @@ from nngen.quantizer import util
 class sigmoid(bt._ActFuncOperator):
 
     def __init__(self, features,
-                 lut_addrwidth=8, lut_clip=6.0, range_rate=0.8,
+                 lut_addrwidth=8, lut_clip=6.0, range_rate=0.99,
                  dtype=None, name=None, par=1):
 
         shape = None
+        if features.dtype is not None and features.dtype.width < 8:
+            lut_addrwidth = features.dtype.width
         self.lut_addrwidth = lut_addrwidth
         self.lut_clip = lut_clip
         self.range_rate = range_rate
@@ -34,7 +36,7 @@ class sigmoid(bt._ActFuncOperator):
 
     def get_stream_hash(self):
         base = bt._ActFuncOperator.get_stream_hash(self)
-        return (base, self.lut_addrwidth, self.lut_clip)
+        return (base, self.lut_addrwidth, self.lut_clip, self.range_rate)
 
     def op(self, strm, *args, **kwargs):
         features_datawidth = self.args[0].get_op_width()
@@ -82,35 +84,30 @@ class sigmoid(bt._ActFuncOperator):
         elif out_point > 0:
             th_scale = out_scale >> out_point
         else:
-            th_scale = out_scale << -1 * out_point
+            th_scale = out_scale << (-1 * out_point)
 
         p = strm.Mux(sra > p_th, th_scale, lut)
-        n = strm.Mux(sra < n_th, -1 * th_scale, lut)
+        n = strm.Mux(sra < n_th, 0, lut)
         out = strm.Mux(sra >= 0, p, n)
 
         return out
-
-    def eval(self, memo, input_dict, **kwargs):
-        features_scale = ((2 ** math.ceil(math.log(self.args[0].scale_factor, 2))) /
-                          self.args[0].scale_factor)
-
-        q_features_scale, scale_factor = util.quantize_linear_scale(features_sca)
-        q_features_shamt = round(math.log(scale_factor, 2))
-
-        kwargs['lut_addrwidth'] = self.lut_addrwidth
-        kwargs['lut_clip'] = self.lut_clip
-        kwargs['range_rate'] = self.range_rate
-        kwargs['features_dtype'] = self.args[0].dtype
-        kwargs['features_scale'] = q_features_scale
-        kwargs['features_shamt'] = q_features_shamt
-        return bt._ActFuncOperator.eval(self, memo, input_dict, **kwargs)
 
     def get_eval_method(self):
         import nngen.verify as verify
 
         name = self.__class__.__name__
         method = getattr(verify, name, None)
+
+        features_scale = np.array([((2 ** math.ceil(math.log(self.args[0].scale_factor, 2))) /
+                                    self.args[0].scale_factor)])
+        q_features_scale, scale_factor = util.quantize_linear_scale(features_scale, 32)
+        q_features_shamt = round(math.log(scale_factor, 2))
+
         method = functools.partial(method,
                                    lut_addrwidth=self.lut_addrwidth,
-                                   lut_clip=self.lut_clip)
+                                   lut_clip=self.lut_clip,
+                                   range_rate=self.range_rate,
+                                   features_dtype=self.args[0].dtype,
+                                   features_scale=int(q_features_scale[0]),
+                                   features_shamt=q_features_shamt)
         return method

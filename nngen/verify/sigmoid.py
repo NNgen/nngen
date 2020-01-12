@@ -6,7 +6,7 @@ import numpy as np
 
 
 def sigmoid(features,
-            lut_addrwidth=8, lut_clip=6.0, range_rate=0.8,
+            lut_addrwidth=8, lut_clip=6.0, range_rate=0.99,
             dtype=None, name=None, par=1,
             features_dtype=None, features_scale=1, features_shamt=0):
 
@@ -16,8 +16,6 @@ def sigmoid(features,
 
     mul = features * features_scale
     sra = mul >> features_shamt
-
-    mask = 2 ** lut_addrwidth - 1
 
     if dtype is None:
         raise ValueError('sigmoid requires dtype to determine the value range.')
@@ -44,10 +42,10 @@ def sigmoid(features,
     elif out_point > 0:
         th_scale = out_scale >> out_point
     else:
-        th_scale = out_scale << -1 * out_point
+        th_scale = out_scale << (-1 * out_point)
 
     p = np.where(sra > p_th, th_scale, lut)
-    n = np.where(sra < n_th, -1 * th_scale, lut)
+    n = np.where(sra < n_th, 0, lut)
     out = np.where(sra >= 0, p, n)
 
     return out
