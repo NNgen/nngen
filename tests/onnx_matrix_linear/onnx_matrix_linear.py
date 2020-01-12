@@ -44,9 +44,9 @@ def run(act_shape=(1, 15), weight_shape=(13, 15),
         layers.append(nn.BatchNorm1d(weight_shape[0]))
 
     if act_func == 'ReLU':
-        layers.append(nn.ReLU(inplace=True))
+        layers.append(nn.ReLU())
     elif act_func == 'LeakyReLU':
-        layers.append(nn.LeakyReLU(inplace=True))
+        layers.append(nn.LeakyReLU())
 
     model = nn.Sequential(*layers)
 

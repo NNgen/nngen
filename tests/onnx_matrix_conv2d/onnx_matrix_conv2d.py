@@ -44,7 +44,7 @@ def run(act_shape=(1, 7, 7, 3), weight_shape=(9, 3, 3, 3),
         layers.append(nn.BatchNorm2d(weight_shape[0]))
 
     if act_func is not None:
-        layers.append(getattr(nn, act_func)(inplace=True))
+        layers.append(getattr(nn, act_func)())
 
     model = nn.Sequential(*layers)
 

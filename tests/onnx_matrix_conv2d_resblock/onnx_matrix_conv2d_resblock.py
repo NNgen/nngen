@@ -40,7 +40,7 @@ class MatrixConv2dResblock(nn.Module):
             self.bn = None
 
         if act_func is not None:
-            self.f = getattr(nn, act_func)(inplace=True)
+            self.f = getattr(nn, act_func)()
         else:
             self.f = None
 

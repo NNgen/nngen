@@ -48,7 +48,7 @@ def run(act_shape=(1, 7, 7, 3),
         layers.append(nn.BatchNorm2d(weight0_shape[0]))
 
     if act_func0 is not None:
-        layers.append(getattr(nn, act_func0)(inplace=True))
+        layers.append(getattr(nn, act_func0)())
 
     layers.append(nn.Conv2d(weight1_shape[3], weight1_shape[0], weight1_shape[1],
                             stride=stride1, padding=padding1))
@@ -57,7 +57,7 @@ def run(act_shape=(1, 7, 7, 3),
         layers.append(nn.BatchNorm2d(weight1_shape[0]))
 
     if act_func1 is not None:
-        layers.append(getattr(nn, act_func1)(inplace=True))
+        layers.append(getattr(nn, act_func1)())
 
     model = nn.Sequential(*layers)
 

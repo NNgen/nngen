@@ -41,7 +41,7 @@ class MatrixConv2dMultiResblock(nn.Module):
             self.bn1 = None
 
         if act_func is not None:
-            self.f1 = getattr(nn, act_func)(inplace=True)
+            self.f1 = getattr(nn, act_func)()
         else:
             self.f1 = None
 
@@ -55,7 +55,7 @@ class MatrixConv2dMultiResblock(nn.Module):
             self.bn2 = None
 
         if act_func is not None:
-            self.f2 = getattr(nn, act_func)(inplace=True)
+            self.f2 = getattr(nn, act_func)()
         else:
             self.f2 = None
 

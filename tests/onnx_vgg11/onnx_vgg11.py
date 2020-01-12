@@ -59,10 +59,10 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
     model.classifier = nn.Sequential(
         nn.Linear(in_features=512, out_features=1024, bias=True),
-        nn.ReLU(inplace=True),
+        nn.ReLU(),
         nn.Dropout(p=0.5),
         nn.Linear(in_features=1024, out_features=1024, bias=True),
-        nn.ReLU(inplace=True),
+        nn.ReLU(),
         nn.Dropout(p=0.5),
         nn.Linear(in_features=1024, out_features=10, bias=True),
     )
