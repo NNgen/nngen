@@ -29,8 +29,9 @@ def Transpose(visitor, node):
     transposed_layout = None
     transposed_onnx_layout = None
 
+    onnx_perm = perm
+
     if layout is not None and onnx_layout is not None:
-        onnx_perm = perm
         perm = util.convert_transpose_perm(perm, onnx_layout, layout)
 
         transposed_layout = ''.join([layout[p] for p in perm])
@@ -38,8 +39,8 @@ def Transpose(visitor, node):
 
         if layout == transposed_layout:
             v = operator.cast(input, input.dtype)
-            v.layout = input.layout
-            v.onnx_layout = input.layout
+            v.layout = input.get_layout()
+            v.onnx_layout = input.get_layout()
             return v
 
     kwargs = collections.OrderedDict()

@@ -2295,6 +2295,12 @@ class _Reshape(_Operator):
     def get_original_shape(self):
         return self.args[0].get_original_shape()
 
+    def get_layout(self):
+        return self.layout
+
+    def get_onnx_layout(self):
+        return self.onnx_layout
+
     def get_original_layout(self):
         return self.args[0].get_original_layout()
 

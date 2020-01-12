@@ -43,12 +43,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     imagenet_mean = np.array([0.485, 0.456, 0.406]).astype(np.float32)
     imagenet_std = np.array([0.229, 0.224, 0.225]).astype(np.float32)
 
-    # Download the pretrained Tiny-YOLO v3 model here file from ONNX Model Zoo.
-    # https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/tiny_yolov3/model/yolov3-tiny.onnx
     onnx_filename = 'yolov3-tiny.onnx'
-
-    if not os.path.exists(onnx_filename):
-        raise FileNotFoundError('Download the Tiny YOLO v3 model from ONNX Model Zoo.')
 
     # --------------------
     # (1) Represent a DNN model as a dataflow by NNgen operators
