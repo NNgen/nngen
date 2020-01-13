@@ -18,12 +18,15 @@ from . import batchnormalization
 from . import shape
 from . import reshape
 from . import flatten
+from . import upsample
 from . import transpose
 from . import concat
 from . import squeeze
 from . import gather
 from . import slice_
 from . import cast
+from . import ceil
+from . import floor
 from . import identity
 
 
@@ -46,6 +49,7 @@ func_map = {
     'Shape': shape.Shape,
     'Reshape': reshape.Reshape,
     'Flatten': flatten.Flatten,
+    'Upsample': upsample.Upsample,
     'Transpose': transpose.Transpose,
     'Concat': concat.Concat,
     'Squeeze': squeeze.Squeeze,
@@ -53,6 +57,8 @@ func_map = {
     'Gather': gather.Gather,
     'Slice': slice_.Slice,
     'Cast': cast.Cast,
+    'Ceil': ceil.Ceil,
+    'Floor': floor.Floor,
     'Identity': identity.Identity,
 }
 
