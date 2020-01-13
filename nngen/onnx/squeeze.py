@@ -79,7 +79,7 @@ def Unsqueeze(visitor, node):
         if isinstance(ret, (tuple, list)):
             ret = np.array(ret)
 
-        if isinstance(ret, np.ndarray):
+        if isinstance(ret, (np.ndarray, np.float, np.int, float, int)):
             ret = np.expand_dims(ret, axis + offset)
 
         else:
