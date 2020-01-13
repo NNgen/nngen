@@ -212,7 +212,7 @@ class slice_(bt._Operator):
             stream_local = self.begins[-2] * (act_num_ch // self.par) + self.begins[-1]
         else:
             stream_stride = 0
-            stream_local = 0
+            stream_local = self.begins[-1]
 
         return OrderedDict([('act_shape', act_shape),
                             ('out_shape', out_shape),
@@ -319,6 +319,8 @@ class slice_(bt._Operator):
             fsm(
                 out_offset(0)
             )
+
+        out_offset = out_base_offset
 
         # WriteOutput: double buffer control
         fsm(
