@@ -3,6 +3,7 @@ from __future__ import print_function
 from __future__ import division
 
 import collections
+import numpy as np
 
 import nngen.storage as storage
 import nngen.operator as operator
@@ -10,13 +11,24 @@ import nngen.operator as operator
 from . import util
 
 
-def _elementwise(method, visitor, node):
+def _elementwise(method, visitor, node, np_method=None):
 
     args = []
 
     for src in list(node.input):
         src_obj = visitor.visit(src)
         args.append(src_obj)
+
+    args = [util.optimize_to_raw_value(arg) for arg in args]
+
+    all_ndarray = True
+    for arg in args:
+        if not isinstance(arg, np.ndarray):
+            all_ndarray = False
+            break
+
+    if all_ndarray and np_method is not None:
+        return np_method(*args)
 
     kwargs = collections.OrderedDict()
 
@@ -29,7 +41,7 @@ def _elementwise(method, visitor, node):
     return method(*args, **kwargs)
 
 
-def _normalize_elementwise(method, pre_methods, visitor, node):
+def _normalize_elementwise(method, pre_methods, visitor, node, np_method=None):
 
     srcs = []
     all_placeholder = True
@@ -42,7 +54,18 @@ def _normalize_elementwise(method, pre_methods, visitor, node):
 
     # if all sources are placeholder, no scaling is required.
     if all_placeholder:
-        return _elementwise(method, visitor, node)
+        return _elementwise(method, visitor, node, np_method)
+
+    srcs = [util.optimize_to_raw_value(src) for src in srcs]
+
+    all_ndarray = True
+    for src in srcs:
+        if not isinstance(src, np.ndarray):
+            all_ndarray = False
+            break
+
+    if all_ndarray and np_method is not None:
+        return np_method(*srcs)
 
     name = util.get_name(node)
 
@@ -71,20 +94,20 @@ def _normalize_elementwise(method, pre_methods, visitor, node):
 
 def Add(visitor, node):
 
-    return _normalize_elementwise(operator.add, None, visitor, node)
+    return _normalize_elementwise(operator.add, None, visitor, node, np.add)
 
 
 def Sub(visitor, node):
 
     pre_methods = (None, operator.neg)
-    return _normalize_elementwise(operator.sub, pre_methods, visitor, node)
+    return _normalize_elementwise(operator.sub, pre_methods, visitor, node, np.subtract)
 
 
 def Mul(visitor, node):
 
-    return _elementwise(operator.multiply, visitor, node)
+    return _elementwise(operator.multiply, visitor, node, np.multiply)
 
 
 def Div(visitor, node):
 
-    return _elementwise(operator.div, visitor, node)
+    return _elementwise(operator.div, visitor, node, np.divide)
