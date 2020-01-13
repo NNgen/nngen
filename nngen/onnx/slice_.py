@@ -20,10 +20,29 @@ def Slice(visitor, node):
     srcs = [util.optimize_to_raw_value(src) for src in srcs]
 
     input = srcs[0]
-    starts = srcs[1]
-    ends = srcs[2]
-    axes = srcs[3]
-    steps = srcs[4]
+    if isinstance(input, (tuple, list)):
+        input = np.array(input)
+
+    shape = input.shape
+
+    starts = [0 for s in shape]
+    ends = [s for s in shape]
+    axes = [i for i in range(len(shape))]
+    steps = [1 for s in shape]
+
+    # for Slice-1 (Deprecated)
+    for attribute in node.attribute:
+        if attribute.name == 'starts':
+            starts = [v for v in attribute.ints]
+
+        elif attribute.name == 'ends':
+            ends = [v for v in attribute.ints]
+
+    if len(srcs) > 1:
+        starts = srcs[1]
+        ends = srcs[2]
+        axes = srcs[3]
+        steps = srcs[4]
 
     if isinstance(input, (tuple, list, np.ndarray)):
         input = np.array(input)
