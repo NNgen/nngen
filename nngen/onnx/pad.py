@@ -13,7 +13,7 @@ def Pad(visitor, node):
 
     mode = 'constant'
     pads = []
-    pad_value = 0
+    pad_value = 0.0
 
     all_pads_zero = True
 
@@ -22,7 +22,7 @@ def Pad(visitor, node):
             mode = attribute.s.decode()
 
         if attribute.name == 'value':
-            pad_value = int(attribute.f)
+            pad_value = attribute.f
 
         if attribute.name == 'pads':
             for pad in attribute.ints:
@@ -40,8 +40,10 @@ def Pad(visitor, node):
     if mode != 'constant':
         raise ValueError("not supported padding mode: '%s'" % mode)
 
-    if pad_value != 0:
+    if pad_value != 0.0:
         raise ValueError("not supported padding value: %d" % pad_value)
+
+    pad_value = round(pad_value)
 
     srcs = []
 
