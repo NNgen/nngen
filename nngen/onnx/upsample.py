@@ -24,10 +24,11 @@ def Upsample(visitor, node):
             scale_value = attribute.f
 
     if mode != 'nearest':
-        raise ValueError("not supported upsampling mode: '%s'" % mode)
+        raise ValueError("Upsampling mode must be 'nearest', not '%s'." % mode)
 
     if round(scale_value) != scale_value:
-        raise ValueError("not supported upsampling factor: %f" % scale)
+        raise ValueError("Upsampling factor must be a multiple of integer, not %f." %
+                         scale_value)
 
     scale_value = round(scale_value)
 
@@ -52,10 +53,14 @@ def Upsample(visitor, node):
     if len(srcs) > 1:
         factors = srcs[1]
         if not isinstance(factors, (np.ndarray, np.float, np.int, float, int)):
-            raise TypeError("Upsampling factor must be constant, not %s" % str(type(factors)))
+            raise TypeError("Upsampling factor must be constant, not %s." % str(type(factors)))
 
         if not isinstance(factors, np.ndarray):
             factors = np.array(factors)
+
+        if np.not_equal(np.round(factors), factors).any():
+            raise ValueError("Upsampling factor must be a multiple of integer, not %s." %
+                             str(factors))
 
         if len(factors) == 4:
             factors = [int(round(factors[visitor.onnx_input_layout.index(l)]))

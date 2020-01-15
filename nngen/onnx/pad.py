@@ -38,10 +38,10 @@ def Pad(visitor, node):
         return src_op
 
     if mode != 'constant':
-        raise ValueError("not supported padding mode: '%s'" % mode)
+        raise ValueError("Padding mode must be 'constant', not '%s'." % mode)
 
     if pad_value != 0.0:
-        raise ValueError("not supported padding value: %d" % pad_value)
+        raise ValueError("Padding value must be a multiple of integer, not %f." % pad_value)
 
     pad_value = round(pad_value)
 
