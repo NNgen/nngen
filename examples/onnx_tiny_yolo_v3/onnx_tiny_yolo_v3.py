@@ -51,7 +51,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
     # ONNX to NNgen
     dtypes = {}
-    shapes = {'input_1': (1, 3, 416, 416), 'image_shape': (1, 2)}
+    shapes = {}
     (outputs, placeholders, variables,
      constants, operators) = ng.from_onnx(onnx_filename,
                                           value_dtypes=dtypes,
@@ -73,9 +73,9 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     else:
         act_scale_factor = int(round(2 ** (act_dtype.width - 1) * 0.5))
 
-    input_scale_factors = {'input_1': act_scale_factor}
-    input_means = {'input_1': imagenet_mean * act_scale_factor}
-    input_stds = {'input_1': imagenet_std * act_scale_factor}
+    input_scale_factors = {'act': act_scale_factor}
+    input_means = {'act': imagenet_mean * act_scale_factor}
+    input_stds = {'act': imagenet_std * act_scale_factor}
 
     ng.quantize(outputs, input_scale_factors, input_means, input_stds)
 
