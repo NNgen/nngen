@@ -25,7 +25,7 @@ def Squeeze(visitor, node):
     axes = []
     for attribute in node.attribute:
         if attribute.name == 'axes':
-            axes = attribute.ints
+            axes = [i for i in attribute.ints]
 
     if len(axes) == 0:
         for i, s in enumerate(input.shape):
