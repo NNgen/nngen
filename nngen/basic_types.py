@@ -2125,8 +2125,12 @@ class _Reshape(_Operator):
 
         shape = tuple(shape)
 
-        _StreamingOperator.__init__(self, tensor,
-                                    dtype=dtype, shape=shape, name=name)
+        reshaped_length = functools.reduce(lambda x, y: x * y, shape, 1)
+        if length != reshaped_length:
+            raise ValueError('size mismatch: %d != %d' % (length, reshaped_length))
+
+        _Operator.__init__(self, tensor,
+                           dtype=dtype, shape=shape, name=name)
 
     def attribute(self):
         pass
