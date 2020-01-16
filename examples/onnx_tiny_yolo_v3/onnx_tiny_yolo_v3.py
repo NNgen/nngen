@@ -34,9 +34,9 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
         pool_par=1, elem_par=1,
         chunk_size=64, axi_datawidth=32, silent=False,
         filename=None,
-        simtype='iverilog',
+        # simtype='iverilog',
         # simtype='verilator',
-        # simtype=None,  # no RTL simulation
+        simtype=None,  # no RTL simulation
         outputfile=None):
 
     # input mean and standard deviation
@@ -119,25 +119,25 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     if act.perm is not None:
         model_input = np.transpose(model_input, act.reversed_perm)
 
-    model.eval()
-    model_out = model(torch.from_numpy(model_input)).detach().numpy()
-    if act.perm is not None and len(model_out.shape) == len(act.shape):
-        model_out = np.transpose(model_out, act.perm)
-    scaled_model_out = model_out * out.scale_factor
-
-    # software-based verification
-    vact = img * act_scale_factor
-    vact = np.clip(vact,
-                   -1.0 * (2 ** (act.dtype.width - 1) - 1),
-                   1.0 * (2 ** (act.dtype.width - 1) - 1))
-    vact = np.round(vact).astype(np.int64)
-
-    # compare prediction results
-    eval_outs = ng.eval([out], act=vact)
-    vout = eval_outs[0]
-
-    mean_square_error = np.sum((vout - scaled_model_out) ** 2) / vout.size
-    corrcoef = np.corrcoef(model_out.reshape([-1]), vout.reshape([-1]))
+#    model.eval()
+#    model_out = model(torch.from_numpy(model_input)).detach().numpy()
+#    if act.perm is not None and len(model_out.shape) == len(act.shape):
+#        model_out = np.transpose(model_out, act.perm)
+#    scaled_model_out = model_out * out.scale_factor
+#
+#    # software-based verification
+#    vact = img * act_scale_factor
+#    vact = np.clip(vact,
+#                   -1.0 * (2 ** (act.dtype.width - 1) - 1),
+#                   1.0 * (2 ** (act.dtype.width - 1) - 1))
+#    vact = np.round(vact).astype(np.int64)
+#
+#    # compare prediction results
+#    eval_outs = ng.eval([out], act=vact)
+#    vout = eval_outs[0]
+#
+#    mean_square_error = np.sum((vout - scaled_model_out) ** 2) / vout.size
+#    corrcoef = np.corrcoef(model_out.reshape([-1]), vout.reshape([-1]))
 
     # breakpoint()
 
@@ -146,15 +146,15 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     # --------------------
 
     # to Veriloggen object
-    # targ = ng.to_veriloggen([out], 'vgg11', silent=silent,
+    # targ = ng.to_veriloggen([out], 'yolov3tiny', silent=silent,
     #                        config={'maxi_datawidth': axi_datawidth})
 
     # to IP-XACT (the method returns Veriloggen object, as well as to_veriloggen)
-    targ = ng.to_ipxact([out], 'vgg11', silent=silent,
+    targ = ng.to_ipxact([out], 'yolov3tiny', silent=silent,
                         config={'maxi_datawidth': axi_datawidth})
 
     # to Verilog HDL RTL (the method returns a source code text)
-    # rtl = ng.to_verilog([out], 'vgg11', silent=silent,
+    # rtl = ng.to_verilog([out], 'yolov3tiny', silent=silent,
     #                    config={'maxi_datawidth': axi_datawidth})
 
     # --------------------
