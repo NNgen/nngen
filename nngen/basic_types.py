@@ -116,10 +116,15 @@ class _Numeric(_Node):
         aligned_shape = (' aligned_shape:%s' % str(tuple(self.get_aligned_shape()))
                          if isinstance(self.shape, (tuple, list)) and
                          self.maxi is not None else '()')
+        layout = (" layout:'%s'" % self.get_layout()
+                  if self.get_layout() is not None else '')
+        onnx_layout = (" onnx_layout:'%s'" % self.get_onnx_layout()
+                       if self.get_onnx_layout() is not None else '')
         scale_factor = ' scale_factor:%f' % self.scale_factor
-        return '<%s %s dtype:%s shape:%s%s%s%s%s%s%s%s>' % (
+        return '<%s %s dtype:%s shape:%s%s%s%s%s%s%s%s%s%s>' % (
             clsname, name, dtype, shape, sub_str,
-            default_addr, global_index, local_index, alignment, aligned_shape, scale_factor)
+            default_addr, global_index, local_index, alignment, aligned_shape,
+            layout, onnx_layout, scale_factor)
 
     def __sub_str__(self):
         return ''

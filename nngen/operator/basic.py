@@ -799,6 +799,12 @@ class transpose(bt._Operator):
     output_chainable = False
     thread_cachable = False
 
+    def __sub_str__(self):
+        perm = ' perm:%s' % str(tuple(self.transpose_perm))
+        onnx_perm = (' onnx_perm:%s' % str(tuple(self.transpose_onnx_perm))
+                     if self.transpose_onnx_perm is not None else '')
+        return '%s%s' % (perm, onnx_perm)
+
     def __init__(self, a, perm=None, dtype=None, name=None):
 
         if bt.get_rank(a.shape) == 1:
