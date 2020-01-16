@@ -24,11 +24,6 @@ def Reshape(visitor, node, no_transpose=False):
     if isinstance(shape, np.ndarray):
         shape = shape.tolist()
 
-    reshaped_length = functools.reduce(lambda x, y: x * y, shape, 1)
-    if input.get_length() != reshaped_length:
-        raise ValueError('size mismatch: %d != %d' %
-                         (input.get_length(), reshaped_length))
-
     if (not no_transpose and
         input.layout is not None and input.onnx_layout is not None and
             input.layout != input.onnx_layout):
