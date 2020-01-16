@@ -116,9 +116,9 @@ class _Numeric(_Node):
         aligned_shape = (' aligned_shape:%s' % str(tuple(self.get_aligned_shape()))
                          if isinstance(self.shape, (tuple, list)) and
                          self.maxi is not None else '()')
-        layout = (" layout:'%s'" % self.get_layout()
+        layout = (" layout:%s" % str(self.get_layout())
                   if self.get_layout() is not None else '')
-        onnx_layout = (" onnx_layout:'%s'" % self.get_onnx_layout()
+        onnx_layout = (" onnx_layout:%s" % str(self.get_onnx_layout())
                        if self.get_onnx_layout() is not None else '')
         scale_factor = ' scale_factor:%f' % self.scale_factor
         return '<%s %s dtype:%s shape:%s%s%s%s%s%s%s%s%s%s>' % (

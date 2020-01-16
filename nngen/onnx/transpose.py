@@ -34,8 +34,8 @@ def Transpose(visitor, node):
     if layout is not None and onnx_layout is not None:
         perm = util.convert_transpose_perm(perm, onnx_layout, layout)
 
-        transposed_layout = ''.join([layout[p] for p in perm])
-        transposed_onnx_layout = ''.join([onnx_layout[p] for p in onnx_perm])
+        transposed_layout = tuple([layout[p] for p in perm])
+        transposed_onnx_layout = tuple([onnx_layout[p] for p in onnx_perm])
 
         if layout == transposed_layout:
             v = operator.cast(input, input.dtype)

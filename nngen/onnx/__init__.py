@@ -76,8 +76,10 @@ class _OperatorVisitor(object):
                  default_placeholder_dtype, default_variable_dtype,
                  default_constant_dtype, default_operator_dtype,
                  default_scale_dtype, default_bias_dtype,
-                 onnx_input_layout='NCHW', onnx_filter_layout='OIHW',
-                 nngen_input_layout='NHWC', nngen_filter_layout='OHWI',
+                 onnx_input_layout=('N', 'C', 'H', 'W'),
+                 onnx_filter_layout=('O', 'I', 'H', 'W'),
+                 nngen_input_layout=('N', 'H', 'W', 'C'),
+                 nngen_filter_layout=('O', 'H', 'W', 'I'),
                  disable_fusion=False):
 
         self.model = model
@@ -141,8 +143,8 @@ def from_onnx(filename,
               default_operator_dtype=dtype_list.int32,
               default_scale_dtype=dtype_list.int32,
               default_bias_dtype=dtype_list.int32,
-              onnx_input_layout='NCHW',
-              onnx_filter_layout='OIHW',
+              onnx_input_layout=('N', 'C', 'H', 'W'),
+              onnx_filter_layout=('O', 'I', 'H', 'W'),
               disable_fusion=False):
     """
     Convert ONNX model to NNgen model
