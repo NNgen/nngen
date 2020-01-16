@@ -40,10 +40,10 @@ def to_shape(node, value_shapes):
 
 def transpose_layout(value, expected_layout, onnx_layout):
 
-    if value.layout == expected_layout:
+    if value.get_layout() == expected_layout:
         return value
 
-    if isinstance(value, bt._Storage) and value.layout is None and not value.consumers:
+    if isinstance(value, bt._Storage) and value.get_layout() is None and not value.consumers:
         if len(expected_layout) != len(onnx_layout):
             raise ValueError('layout format size mismatch: %d != %d' %
                              (len(expected_layout), len(onnx_layout)))

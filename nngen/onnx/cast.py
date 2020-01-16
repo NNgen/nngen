@@ -31,7 +31,7 @@ def Cast(visitor, node):
         dtype = visitor.default_operator_dtype
 
     c = operator.cast(input, dtype)
-    c.layout = input.layout
-    c.onnx_layout = input.onnx_layout
+    c.layout = input.get_layout()
+    c.onnx_layout = input.get_onnx_layout()
 
     return c
