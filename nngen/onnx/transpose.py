@@ -17,11 +17,12 @@ def Transpose(visitor, node):
         src_obj = visitor.visit(src)
         srcs.append(src_obj)
 
+    input = srcs[0]
+
+    perm = [i for i in range(len(input.shape))]
     for attribute in node.attribute:
         if attribute.name == 'perm':
             perm = [i for i in attribute.ints]
-
-    input = srcs[0]
 
     layout = input.get_layout()
     onnx_layout = input.get_onnx_layout()

@@ -17,6 +17,7 @@ def Concat(visitor, node):
         src_obj = visitor.visit(src)
         srcs.append(src_obj)
 
+    axis = None
     for attribute in node.attribute:
         if attribute.name == 'axis':
             axis = attribute.i
