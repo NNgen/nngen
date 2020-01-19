@@ -102,3 +102,28 @@ def optimize_to_raw_value(value):
         return value
 
     return value
+
+
+def infer_shape(shape, length):
+
+    if not isinstance(shape, list):
+        shape = list(shape)
+
+    use_minus_one = False
+    minus_one_index = 0
+    all_mul = 1
+
+    for i, s in enumerate(shape):
+        if s is None or s == -1:
+            use_minus_one = True
+            minus_one_index = i
+        elif s < 0:
+            raise ValueError('not supported value for shape: %d' % s)
+        else:
+            all_mul *= s
+
+    if use_minus_one:
+        shape[minus_one_index] = length // all_mul
+
+    shape = tuple(shape)
+    return shape
