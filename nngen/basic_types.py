@@ -2122,6 +2122,8 @@ class _Reshape(_Operator):
             if s is None or s == -1:
                 use_minus_one = True
                 minus_one_index = i
+            elif s < 0:
+                raise ValueError('not supported value for shape: %d' % s)
             else:
                 all_mul *= s
 
