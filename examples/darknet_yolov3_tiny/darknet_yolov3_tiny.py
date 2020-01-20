@@ -6,7 +6,6 @@ import sys
 import math
 import numpy as np
 import PIL
-import json
 
 import torch
 import torchvision
@@ -25,10 +24,12 @@ from veriloggen import *
 import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 
+import models
+
 
 def run(act_dtype=ng.int16, weight_dtype=ng.int16,
         bias_dtype=ng.int32, scale_dtype=ng.int16,
-        with_batchnorm=True, disable_fusion=False,
+        disable_fusion=False,
         conv2d_par_ich=1, conv2d_par_och=1, conv2d_par_col=1, conv2d_par_row=1,
         conv2d_concur_och=None, conv2d_stationary='filter',
         pool_par=1, elem_par=1,
@@ -43,7 +44,23 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     imagenet_mean = np.array([0.485, 0.456, 0.406]).astype(np.float32)
     imagenet_std = np.array([0.229, 0.224, 0.225]).astype(np.float32)
 
-    onnx_filename = 'yolov3-tiny.onnx'
+    img_size = (416, 416)
+    act_shape = (1, img_size[0], img_size[1], 3)
+
+    # pytorch model
+    cfg = 'darknet-yolov3-tiny.cfg'
+    weights = 'darknet-yolov3-tiny.weights'
+
+    model = models.Darknet(cfg, img_size).to('cpu')
+    models.load_darknet_weights(model, weights)
+
+    onnx_filename = 'darknet-yolov3-tiny.onnx'
+    dummy_input = torch.randn(*act_shape).transpose(1, 3)
+    input_names = ['act']
+    output_names = ['out']
+    model.eval()
+    torch.onnx.export(model, dummy_input, onnx_filename,
+                      input_names=input_names, output_names=output_names)
 
     # --------------------
     # (1) Represent a DNN model as a dataflow by NNgen operators
@@ -107,7 +124,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     out = outputs['out']
 
     # verification data
-    img = np.array(PIL.Image.open('car.png').convert('RGB')).astype(np.float32)
+    img = np.array(PIL.Image.open('car416x416.png').convert('RGB')).astype(np.float32)
     img = img.reshape([1] + list(img.shape))
 
     img = img / 255
@@ -119,27 +136,28 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     if act.perm is not None:
         model_input = np.transpose(model_input, act.reversed_perm)
 
-#    model.eval()
-#    model_out = model(torch.from_numpy(model_input)).detach().numpy()
-#    if act.perm is not None and len(model_out.shape) == len(act.shape):
-#        model_out = np.transpose(model_out, act.perm)
-#    scaled_model_out = model_out * out.scale_factor
-#
-#    # software-based verification
-#    vact = img * act_scale_factor
-#    vact = np.clip(vact,
-#                   -1.0 * (2 ** (act.dtype.width - 1) - 1),
-#                   1.0 * (2 ** (act.dtype.width - 1) - 1))
-#    vact = np.round(vact).astype(np.int64)
-#
-#    # compare prediction results
-#    eval_outs = ng.eval([out], act=vact)
-#    vout = eval_outs[0]
-#
-#    mean_square_error = np.sum((vout - scaled_model_out) ** 2) / vout.size
-#    corrcoef = np.corrcoef(model_out.reshape([-1]), vout.reshape([-1]))
+    model.eval()
+    model_outs = model(torch.from_numpy(model_input))
+    model_out = model_outs[0].detach().numpy()
+    if act.perm is not None and len(model_out.shape) == len(act.shape):
+        model_out = np.transpose(model_out, act.perm)
+    scaled_model_out = model_out * out.scale_factor
 
-    # breakpoint()
+    # software-based verification
+    vact = img * act_scale_factor
+    vact = np.clip(vact,
+                   -1.0 * (2 ** (act.dtype.width - 1) - 1),
+                   1.0 * (2 ** (act.dtype.width - 1) - 1))
+    vact = np.round(vact).astype(np.int64)
+
+    # compare prediction results
+    eval_outs = ng.eval([out], act=vact)
+    vout = eval_outs[0]
+
+    mean_square_error = np.sum((vout - scaled_model_out) ** 2) / vout.size
+    corrcoef = np.corrcoef(model_out.reshape([-1]), vout.reshape([-1]))
+
+    breakpoint()
 
     # --------------------
     # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)
