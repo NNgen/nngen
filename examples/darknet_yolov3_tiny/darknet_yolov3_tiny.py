@@ -6,6 +6,7 @@ import sys
 import math
 import numpy as np
 import PIL
+import urllib
 
 import torch
 import torchvision
@@ -24,8 +25,6 @@ from veriloggen import *
 import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 
-import models
-
 
 def run(act_dtype=ng.int16, weight_dtype=ng.int16,
         bias_dtype=ng.int32, scale_dtype=ng.int16,
@@ -38,7 +37,11 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
         # simtype='iverilog',
         # simtype='verilator',
         simtype=None,  # no RTL simulation
-        outputfile=None):
+        outputfile=None,
+
+        cfg_filename='yolov3-tiny.cfg',
+        weights_filename='yolov3-tiny.weights',
+        model_path='yolov3'):
 
     # input mean and standard deviation
     imagenet_mean = np.array([0.485, 0.456, 0.406]).astype(np.float32)
@@ -47,14 +50,32 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     img_size = (416, 416)
     act_shape = (1, img_size[0], img_size[1], 3)
 
+    # Darknet model definition and pretrained weights
+    cfg_url = "https://github.com/pjreddie/darknet/blob/master/cfg/yolov3-tiny.cfg"
+    weights_url = "https://pjreddie.com/media/files/yolov3-tiny.weights"
+
+    if not os.path.isfile(cfg_filename):
+        urllib.request.urlretrieve(cfg_url, cfg_filename)
+
+    if not os.path.isfile(weights_filename):
+        urllib.request.urlretrieve(weights_url, weights_filename)
+
     # pytorch model
-    cfg = 'darknet-yolov3-tiny.cfg'
-    weights = 'darknet-yolov3-tiny.weights'
+    model_url = "https://github.com/ultralytics/yolov3"
 
-    model = models.Darknet(cfg, img_size).to('cpu')
-    models.load_darknet_weights(model, weights)
+    if not os.path.isdir(model_path):
+        raise FileNotFoundError("Download the YOLOv3 model definition from "
+                                "'%s', then extract it, and rename it as '%s'" %
+                                (model_url, model_path))
 
-    onnx_filename = 'darknet-yolov3-tiny.onnx'
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + '/' + model_path)
+    import models
+
+    model = models.Darknet(cfg_filename, img_size).to('cpu')
+    models.load_darknet_weights(model, weights_filename)
+
+    # Pytorch to ONNX
+    onnx_filename = 'yolov3-tiny.onnx'
     dummy_input = torch.randn(*act_shape).transpose(1, 3)
     input_names = ['act']
     output_names = ['out']
@@ -157,7 +178,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     mean_square_error = np.sum((vout - scaled_model_out) ** 2) / vout.size
     corrcoef = np.corrcoef(model_out.reshape([-1]), vout.reshape([-1]))
 
-    breakpoint()
+    # breakpoint()
 
     # --------------------
     # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)
