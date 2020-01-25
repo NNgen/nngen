@@ -50,27 +50,24 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     img_size = (416, 416)
     act_shape = (1, img_size[0], img_size[1], 3)
 
-    # Darknet model definition and pretrained weights
-    cfg_url = "https://github.com/pjreddie/darknet/blob/master/cfg/yolov3-tiny.cfg"
-    weights_url = "https://pjreddie.com/media/files/yolov3-tiny.weights"
+    # pytorch model
+    model_url = "https://github.com/ultralytics/yolov3"
+    if not os.path.isdir(model_path):
+        raise FileNotFoundError("Download the YOLOv3 model using Pytorch, such as "
+                                "'%s'. Then extract it, and rename it as '%s'" %
+                                (model_url, model_path))
 
+    # Darknet model configuration and pretrained weights
+    cfg_url = "https://github.com/pjreddie/darknet/blob/master/cfg/yolov3-tiny.cfg"
     if not os.path.isfile(cfg_filename):
         urllib.request.urlretrieve(cfg_url, cfg_filename)
 
+    weights_url = "https://pjreddie.com/media/files/yolov3-tiny.weights"
     if not os.path.isfile(weights_filename):
         urllib.request.urlretrieve(weights_url, weights_filename)
 
-    # pytorch model
-    model_url = "https://github.com/ultralytics/yolov3"
-
-    if not os.path.isdir(model_path):
-        raise FileNotFoundError("Download the YOLOv3 model definition from "
-                                "'%s', then extract it, and rename it as '%s'" %
-                                (model_url, model_path))
-
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + '/' + model_path)
+    sys.path.insert(0, model_path)
     import models
-
     model = models.Darknet(cfg_filename, img_size).to('cpu')
     models.load_darknet_weights(model, weights_filename)
 
