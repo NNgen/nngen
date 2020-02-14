@@ -1509,44 +1509,45 @@ def disable_unused_ram_ports(ram_dict):
 
 def make_reg_map(config, global_map_info, header_info):
     reg_map = collections.OrderedDict()
+    reg_type = {'rw': 'RW', 'r': 'R ', 'w': ' W'}
 
     for i in range(num_header_regs):
         index = index_to_bytes(i)
-        reg_map[index] = ('O', header_info[i])
+        reg_map[index] = (reg_type['r'], header_info[i])
 
     index = index_to_bytes(control_reg_start)
-    reg_map[index] = ('I', "Start (set '1' to run)")
+    reg_map[index] = (reg_type['w'], "Start (set '1' to run)")
 
     index = index_to_bytes(control_reg_busy)
-    reg_map[index] = ('O', "Busy (returns '1' when running)")
+    reg_map[index] = (reg_type['r'], "Busy (returns '1' when running)")
 
     index = index_to_bytes(control_reg_reset)
-    reg_map[index] = ('I', "Reset (set '1' to initialize internal logic)")
+    reg_map[index] = (reg_type['w'], "Reset (set '1' to initialize internal logic)")
 
     index = index_to_bytes(control_reg_extern_send)
-    reg_map[index] = ('O', "Opcode from extern objects to SW (returns '0' when idle)")
+    reg_map[index] = (reg_type['r'], "Opcode from extern objects to SW (returns '0' when idle)")
 
     index = index_to_bytes(control_reg_extern_recv)
-    reg_map[index] = ('I', "Resume extern objects (set '1' to resume)")
+    reg_map[index] = (reg_type['w'], "Resume extern objects (set '1' to resume)")
 
     index = index_to_bytes(control_reg_global_offset)
     default_global_addr_offset = config['default_global_addr_offset']
-    reg_map[index] = ('I', 'Global address offset (default: %d)' % default_global_addr_offset)
+    reg_map[index] = (reg_type['rw'], 'Global address offset (default: %d)' % default_global_addr_offset)
 
     if config['use_map_ram']:
         index = index_to_bytes(control_reg_load_global_addr_map)
-        reg_map[index] = ('I', "Load global address map (set '1' to load)")
+        reg_map[index] = (reg_type['w'], "Load global address map (set '1' to load)")
 
         index = index_to_bytes(control_reg_busy_global_addr_map)
-        reg_map[index] = ('I', "Busy loading global address map (returns '1' when loading)")
+        reg_map[index] = (reg_type['r'], "Busy loading global address map (returns '1' when loading)")
 
         index = index_to_bytes(control_reg_addr_global_addr_map)
-        reg_map[index] = ('I', "Head address of global address map")
+        reg_map[index] = (reg_type['w'], "Head address of global address map")
 
     else:
         for gindex, info in sorted(global_map_info.items(), key=lambda x: x[0]):
             index = index_to_bytes(control_reg_global_addr + gindex)
-            reg_map[index] = ('I', 'Address of ' + info)
+            reg_map[index] = (reg_type['rw'], 'Address of ' + info)
 
     return reg_map
 
