@@ -1683,8 +1683,12 @@ def dump_register_map(reg_map):
     s = []
     s.append('[Register Map]')
 
+    maximum = sorted(reg_map.items(), key=lambda x: x[0], reverse=True)[0][0]
+    num_digits = max(int(math.ceil(math.log(maximum, 10))), 1)
+    fmt = ''.join(('  %', '%d' % num_digits, 'd (%s): %s'))
+
     for i, (direction, desc) in sorted(reg_map.items(), key=lambda x: x[0]):
-        s.append('  %2d (%s): %s' % (i, direction, desc))
+        s.append(fmt % (i, direction, desc))
 
     print('\n'.join(s))
 
