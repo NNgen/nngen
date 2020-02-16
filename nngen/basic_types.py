@@ -2565,40 +2565,54 @@ def max_shape(*args):
             arg_rank = get_rank(tuple(arg.shape))
 
             if ret_rank == arg_rank:
-                if ret_rank == 1 and ret[0] == 1:
-                    ret = tuple(arg.shape)
-                elif arg_rank == 1 and arg.shape[0] == 1:
-                    pass
-                else:
-                    raise ValueError('shape mismatch: %s != %s' %
-                                     (str(ret), str(tuple(arg.shape))))
-
-            if ret_rank > arg_rank:
-                if arg_rank == 1 and arg.shape[0] == 1:
-                    continue
-
-                for r, a in zip(ret[-arg_rank:], arg.shape):
-                    if r != a:
+                shape = []
+                for r, a in zip(ret, arg.shape):
+                    if r == a:
+                        shape.append(r)
+                    elif r != a and r == 1:
+                        shape.append(a)
+                    elif r != a and a == 1:
+                        shape.append(r)
+                    else:
                         raise ValueError('shape mismatch: %s != %s' %
                                          (str(ret), str(tuple(arg.shape))))
+                ret = tuple(shape)
+                continue
 
+            if ret_rank > arg_rank:
                 shape = []
                 for r in ret[:-arg_rank]:
                     shape.append(r)
-                shape.extend(arg.shape)
+
+                for r, a in zip(ret[-arg_rank:], arg.shape):
+                    if r == a:
+                        shape.append(r)
+                    elif r != a and r == 1:
+                        shape.append(a)
+                    elif r != a and a == 1:
+                        shape.append(r)
+                    else:
+                        raise ValueError('shape mismatch: %s != %s' %
+                                         (str(ret), str(tuple(arg.shape))))
+
                 ret = tuple(shape)
                 continue
 
             if arg_rank > ret_rank:
-                for a, r in zip(arg[-ret_rank:], ret.shape):
-                    if a != r:
-                        raise ValueError('shape mismatch: %s != %s' %
-                                         (str(arg), str(tuple(ret.shape))))
-
                 shape = []
-                for r in arg[:-ret_rank]:
-                    shape.append(r)
-                shape.extend(ret.shape)
+                for a in arg.shape[:-ret_rank]:
+                    shape.append(a)
+
+                for r, a in zip(ret, arg.shape[-ret_rank:]):
+                    if r == a:
+                        shape.append(r)
+                    elif r != a and r == 1:
+                        shape.append(a)
+                    elif r != a and a == 1:
+                        shape.append(r)
+                    else:
+                        raise ValueError('shape mismatch: %s != %s' %
+                                         (str(ret), str(tuple(arg.shape))))
                 ret = tuple(shape)
                 continue
 
