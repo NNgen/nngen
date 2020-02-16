@@ -38,6 +38,9 @@ def Slice(visitor, node):
         elif attribute.name == 'ends':
             ends = [v for v in attribute.ints]
 
+        elif attribute.name == 'axes':
+            axes = [v for v in attribute.ints]
+
     if len(srcs) > 1:
         starts = srcs[1]
         ends = srcs[2]
