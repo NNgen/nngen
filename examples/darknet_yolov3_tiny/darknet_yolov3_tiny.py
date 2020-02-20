@@ -69,6 +69,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     sys.path.insert(0, model_path)
     import models
     models.ONNX_EXPORT = True
+
     model = models.Darknet(cfg_filename, img_size).to('cpu')
     models.load_darknet_weights(model, weights_filename)
 
@@ -99,7 +100,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
                                           default_scale_dtype=scale_dtype,
                                           default_bias_dtype=bias_dtype,
                                           disable_fusion=disable_fusion,
-                                          verbose=True)
+                                          verbose=False)
 
     # --------------------
     # (2) Assign quantized weights to the NNgen operators
@@ -174,44 +175,46 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
                       if (isinstance(v, ng.conv2d) and
                           isinstance(v.act_func, ng.leaky_relu_base))]
     leaky_relu_ops = list(sorted(set(leaky_relu_ops), key=leaky_relu_ops.index))
-    conv2d_ops = [v for k, v in operators.items()
-                  if (isinstance(v, ng.conv2d) and v.act_func is None)]
-    conv2d_ops = list(sorted(set(conv2d_ops), key=conv2d_ops.index))
 
-    sub_ops = leaky_relu_ops + conv2d_ops
+    # conv2d_ops = [v for k, v in operators.items()
+    #              if (isinstance(v, ng.conv2d) and v.act_func is None)]
+    #conv2d_ops = list(sorted(set(conv2d_ops), key=conv2d_ops.index))
+
+    sub_ops = leaky_relu_ops[:9]
     sub_outs = ng.eval(sub_ops, act=vact)
-    sub_outs = [sub_out.transpose([0, 3, 1, 2]) for sub_out in sub_outs[:-1]] + sub_outs[-1:]
+    sub_outs = [sub_out.transpose([0, 3, 1, 2]) for sub_out in sub_outs]
     sub_scale_factors = [sub_op.scale_factor for sub_op in sub_ops]
 
     model.eval()
-    model_outs = []
-    model_outs.append(nn.Sequential(model.module_list[0])(
+    mouts = []
+    # all Conv2d-LeakyReLU layers before YOLOLayer
+    mouts.append(nn.Sequential(model.module_list[0])(
         torch.from_numpy(model_input)).detach().numpy())
-    model_outs.append(nn.Sequential(*model.module_list[0:3])(
+    mouts.append(nn.Sequential(*model.module_list[0:3])(
         torch.from_numpy(model_input)).detach().numpy())
-    model_outs.append(nn.Sequential(*model.module_list[0:5])(
+    mouts.append(nn.Sequential(*model.module_list[0:5])(
         torch.from_numpy(model_input)).detach().numpy())
-    model_outs.append(nn.Sequential(*model.module_list[0:7])(
+    mouts.append(nn.Sequential(*model.module_list[0:7])(
         torch.from_numpy(model_input)).detach().numpy())
-    model_outs.append(nn.Sequential(*model.module_list[0:9])(
+    mouts.append(nn.Sequential(*model.module_list[0:9])(
         torch.from_numpy(model_input)).detach().numpy())
-    model_outs.append(nn.Sequential(*model.module_list[0:11])(
+    mouts.append(nn.Sequential(*model.module_list[0:11])(
         torch.from_numpy(model_input)).detach().numpy())
-    model_outs.append(nn.Sequential(*model.module_list[0:13])(
+    mouts.append(nn.Sequential(*model.module_list[0:13])(
         torch.from_numpy(model_input)).detach().numpy())
-    model_outs.append(nn.Sequential(*model.module_list[0:14])(
+    mouts.append(nn.Sequential(*model.module_list[0:14])(
         torch.from_numpy(model_input)).detach().numpy())
-    model_outs.append(nn.Sequential(*model.module_list[0:15])(
+    mouts.append(nn.Sequential(*model.module_list[0:15])(
         torch.from_numpy(model_input)).detach().numpy())
-    model_outs.append(nn.Sequential(*model.module_list[0:16])(
+    mouts.append(nn.Sequential(*model.module_list[0:16])(
         torch.from_numpy(model_input)).detach().numpy())
 
-    scaled_outs = [model_out * scale_factor
-                   for model_out, scale_factor in zip(model_outs, sub_scale_factors)]
-    mean_square_errors = [np.sum((sub_out - model_out) ** 2) / sub_out.size
-                          for model_out, sub_out in zip(scaled_outs, sub_outs)]
-    corrcoefs = [np.corrcoef(model_out.reshape([-1]), sub_out.reshape([-1]))
-                 for model_out, sub_out in zip(model_outs, sub_outs)]
+    scaled_outs = [mout * scale_factor
+                   for mout, scale_factor in zip(mouts, sub_scale_factors)]
+    mean_square_errors = [np.sum((sub_out - mout) ** 2) / sub_out.size
+                          for mout, sub_out in zip(scaled_outs, sub_outs)]
+    corrcoefs = [np.corrcoef(mout.reshape([-1]), sub_out.reshape([-1]))
+                 for mout, sub_out in zip(mouts, sub_outs)]
 
     # compare prediction results
     eval_outs = ng.eval([out], act=vact)
@@ -220,7 +223,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     mean_square_error = np.sum((vout - scaled_model_out) ** 2) / vout.size
     corrcoef = np.corrcoef(model_out.reshape([-1]), vout.reshape([-1]))
 
-    breakpoint()
+    # breakpoint()
 
     # --------------------
     # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)
