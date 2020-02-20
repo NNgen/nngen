@@ -64,6 +64,8 @@ def Unsqueeze(visitor, node):
         arg_obj = visitor.visit(arg)
         args.append(arg_obj)
 
+    args = [util.optimize_to_raw_value(arg) for arg in args]
+
     input = args[0]
 
     for attribute in node.attribute:
