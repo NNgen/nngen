@@ -68,6 +68,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
     sys.path.insert(0, model_path)
     import models
+    models.ONNX_EXPORT = True
     model = models.Darknet(cfg_filename, img_size).to('cpu')
     models.load_darknet_weights(model, weights_filename)
 
@@ -97,7 +98,8 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
                                           default_operator_dtype=act_dtype,
                                           default_scale_dtype=scale_dtype,
                                           default_bias_dtype=bias_dtype,
-                                          disable_fusion=disable_fusion)
+                                          disable_fusion=disable_fusion,
+                                          verbose=True)
 
     # --------------------
     # (2) Assign quantized weights to the NNgen operators
@@ -155,8 +157,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
         model_input = np.transpose(model_input, act.reversed_perm)
 
     model.eval()
-    model_outs = model(torch.from_numpy(model_input))
-    model_out = model_outs[0].detach().numpy()
+    model_out = model(torch.from_numpy(model_input))[0].detach().numpy()
     if act.perm is not None and len(model_out.shape) == len(act.shape):
         model_out = np.transpose(model_out, act.perm)
     scaled_model_out = model_out * out.scale_factor
@@ -168,6 +169,50 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
                    1.0 * (2 ** (act.dtype.width - 1) - 1))
     vact = np.round(vact).astype(np.int64)
 
+    # compare outputs of hidden layers
+    leaky_relu_ops = [v for k, v in operators.items()
+                      if (isinstance(v, ng.conv2d) and
+                          isinstance(v.act_func, ng.leaky_relu_base))]
+    leaky_relu_ops = list(sorted(set(leaky_relu_ops), key=leaky_relu_ops.index))
+    conv2d_ops = [v for k, v in operators.items()
+                  if (isinstance(v, ng.conv2d) and v.act_func is None)]
+    conv2d_ops = list(sorted(set(conv2d_ops), key=conv2d_ops.index))
+
+    sub_ops = leaky_relu_ops + conv2d_ops
+    sub_outs = ng.eval(sub_ops, act=vact)
+    sub_outs = [sub_out.transpose([0, 3, 1, 2]) for sub_out in sub_outs[:-1]] + sub_outs[-1:]
+    sub_scale_factors = [sub_op.scale_factor for sub_op in sub_ops]
+
+    model.eval()
+    model_outs = []
+    model_outs.append(nn.Sequential(model.module_list[0])(
+        torch.from_numpy(model_input)).detach().numpy())
+    model_outs.append(nn.Sequential(*model.module_list[0:3])(
+        torch.from_numpy(model_input)).detach().numpy())
+    model_outs.append(nn.Sequential(*model.module_list[0:5])(
+        torch.from_numpy(model_input)).detach().numpy())
+    model_outs.append(nn.Sequential(*model.module_list[0:7])(
+        torch.from_numpy(model_input)).detach().numpy())
+    model_outs.append(nn.Sequential(*model.module_list[0:9])(
+        torch.from_numpy(model_input)).detach().numpy())
+    model_outs.append(nn.Sequential(*model.module_list[0:11])(
+        torch.from_numpy(model_input)).detach().numpy())
+    model_outs.append(nn.Sequential(*model.module_list[0:13])(
+        torch.from_numpy(model_input)).detach().numpy())
+    model_outs.append(nn.Sequential(*model.module_list[0:14])(
+        torch.from_numpy(model_input)).detach().numpy())
+    model_outs.append(nn.Sequential(*model.module_list[0:15])(
+        torch.from_numpy(model_input)).detach().numpy())
+    model_outs.append(nn.Sequential(*model.module_list[0:16])(
+        torch.from_numpy(model_input)).detach().numpy())
+
+    scaled_outs = [model_out * scale_factor
+                   for model_out, scale_factor in zip(model_outs, sub_scale_factors)]
+    mean_square_errors = [np.sum((sub_out - model_out) ** 2) / sub_out.size
+                          for model_out, sub_out in zip(scaled_outs, sub_outs)]
+    corrcoefs = [np.corrcoef(model_out.reshape([-1]), sub_out.reshape([-1]))
+                 for model_out, sub_out in zip(model_outs, sub_outs)]
+
     # compare prediction results
     eval_outs = ng.eval([out], act=vact)
     vout = eval_outs[0]
@@ -175,7 +220,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     mean_square_error = np.sum((vout - scaled_model_out) ** 2) / vout.size
     corrcoef = np.corrcoef(model_out.reshape([-1]), vout.reshape([-1]))
 
-    # breakpoint()
+    breakpoint()
 
     # --------------------
     # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)

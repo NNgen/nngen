@@ -97,8 +97,10 @@ def optimize_to_raw_value(value):
 
     if isinstance(value, storage.variable):
         value = value.value
-        if not value.shape:
-            value = np.reshape(value, (1,))
+        return value
+
+    if isinstance(value, storage.constant):
+        value = value.value
         return value
 
     return value

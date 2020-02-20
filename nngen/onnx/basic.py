@@ -19,16 +19,16 @@ def _elementwise(method, visitor, node, np_method=None):
         src_obj = visitor.visit(src)
         args.append(src_obj)
 
-    args = [util.optimize_to_raw_value(arg) for arg in args]
+    opt_args = [util.optimize_to_raw_value(arg) for arg in args]
 
     all_ndarray = True
-    for arg in args:
+    for arg in opt_args:
         if not isinstance(arg, np.ndarray):
             all_ndarray = False
             break
 
     if all_ndarray and np_method is not None:
-        return np_method(*args)
+        return np_method(*opt_args)
 
     kwargs = collections.OrderedDict()
 
@@ -56,16 +56,16 @@ def _normalize_elementwise(method, pre_methods, visitor, node, np_method=None):
     if all_placeholder:
         return _elementwise(method, visitor, node, np_method)
 
-    srcs = [util.optimize_to_raw_value(src) for src in srcs]
+    opt_srcs = [util.optimize_to_raw_value(src) for src in srcs]
 
     all_ndarray = True
-    for src in srcs:
+    for src in opt_srcs:
         if not isinstance(src, np.ndarray):
             all_ndarray = False
             break
 
     if all_ndarray and np_method is not None:
-        return np_method(*srcs)
+        return np_method(*opt_srcs)
 
     name = util.get_name(node)
 

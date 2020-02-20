@@ -19,14 +19,17 @@ def Reshape(visitor, node, no_transpose=False):
         src_obj = visitor.visit(src)
         srcs.append(src_obj)
 
+    srcs = [util.optimize_to_raw_value(src) for src in srcs]
+
     input = srcs[0]
     out_shape = srcs[1]
 
+    if not isinstance(out_shape, (tuple, list, np.ndarray)):
+        raise TypeError('shape must be tuple, list, or np.ndarray, not %s' %
+                        str(type(out_shape)))
+
     if isinstance(out_shape, np.ndarray):
         out_shape = out_shape.tolist()
-
-    if not isinstance(out_shape, (tuple, list)):
-        raise TypeError('shape must be tuple or list, not %s' % str(type(out_shape)))
 
     if isinstance(input, (tuple, list)):
         input = np.array(input)
