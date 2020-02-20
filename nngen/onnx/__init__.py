@@ -80,7 +80,7 @@ class _OperatorVisitor(object):
                  onnx_filter_layout=('O', 'I', 'H', 'W'),
                  nngen_input_layout=('N', 'H', 'W', 'C'),
                  nngen_filter_layout=('O', 'H', 'W', 'I'),
-                 disable_fusion=False):
+                 disable_fusion=False, verbose=False):
 
         self.model = model
 
@@ -109,18 +109,29 @@ class _OperatorVisitor(object):
 
         self.disable_fusion = disable_fusion
 
+        self.verbose = verbose
+
+    def _verbose_node(self, name, node_func, ret):
+        if self.verbose:
+            print('[onnx] {} {} -> {} {}'.format(name, node_func, type(ret), str(ret)))
+        return ret
+
     def visit(self, name):
         if name in self.placeholders:
-            return self.placeholders[name]
+            # return self.placeholders[name]
+            return self._verbose_node(name, None, self.placeholders[name])
 
         if name in self.variables:
-            return self.variables[name]
+            # return self.variables[name]
+            return self._verbose_node(name, None, self.variables[name])
 
         if name in self.constants:
-            return self.constants[name]
+            # return self.constants[name]
+            return self._verbose_node(name, None, self.constants[name])
 
         if name in self.operators:
-            return self.operators[name]
+            # return self.operators[name]
+            return self._verbose_node(name, None, self.operators[name])
 
         node = util.search_node_from_model(self.model, name)
 
@@ -131,7 +142,8 @@ class _OperatorVisitor(object):
         for output_name in output_names:
             self.operators[output_name] = node_op
 
-        return node_op
+        # return node_op
+        return self._verbose_node(name, node_func, node_op)
 
 
 def from_onnx(filename,
@@ -145,7 +157,7 @@ def from_onnx(filename,
               default_bias_dtype=dtype_list.int32,
               onnx_input_layout=('N', 'C', 'H', 'W'),
               onnx_filter_layout=('O', 'I', 'H', 'W'),
-              disable_fusion=False):
+              disable_fusion=False, verbose=False):
     """
     Convert ONNX model to NNgen model
 
@@ -267,14 +279,13 @@ def from_onnx(filename,
                               default_operator_dtype)
 
     # constants
-    # constants = _to_constants(input_nodes, output_nodes,
-    #                          variable_values, constant_values,
-    #                          value_dtypes, value_shapes,
-    #                          default_placeholder_dtype,
-    #                          default_variable_dtype,
-    #                          default_constant_dtype,
-    #                          default_operator_dtype)
-    constants = constant_values
+    constants = _to_constants(input_nodes, output_nodes,
+                              variable_values, constant_values,
+                              value_dtypes, value_shapes,
+                              default_placeholder_dtype,
+                              default_variable_dtype,
+                              default_constant_dtype,
+                              default_operator_dtype)
 
     # producer/consumer table
     producers = collections.defaultdict(list)
@@ -299,7 +310,7 @@ def from_onnx(filename,
                                default_constant_dtype, default_operator_dtype,
                                default_scale_dtype, default_bias_dtype,
                                onnx_input_layout, onnx_filter_layout,
-                               disable_fusion=disable_fusion)
+                               disable_fusion=disable_fusion, verbose=verbose)
 
     placeholders = visitor.placeholders
     variables = visitor.variables
