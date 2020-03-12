@@ -9,6 +9,7 @@ import nngen.dtype_list as dtype_list
 
 from . import util
 from . import basic
+from . import exp
 from . import conv
 from . import gemm
 from . import pool
@@ -36,6 +37,7 @@ func_map = {
     'Sub': basic.Sub,
     'Mul': basic.Mul,
     'Div': basic.Div,
+    'Exp': exp.Exp,
     'Conv': conv.Conv,
     'Gemm': gemm.Gemm,
     'AveragePool': pool.AveragePool,

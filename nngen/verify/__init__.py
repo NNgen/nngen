@@ -3,6 +3,7 @@ from __future__ import print_function
 from __future__ import division
 
 from .basic import *
+from .exp import exp
 from .relu import relu, relu6
 from .leaky_relu import leaky_relu, get_leaky_relu_op
 from .sigmoid import sigmoid

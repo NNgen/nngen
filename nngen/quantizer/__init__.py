@@ -10,6 +10,7 @@ from . import conv2d
 from . import matmul
 from . import normalize
 from . import sigmoid
+from . import exp
 
 
 # describe custom quantize methods here
@@ -20,6 +21,7 @@ func_map = {
     'scaled_add': normalize.scaled_add,
     'scaled_concat': normalize.scaled_concat,
     'sigmoid': sigmoid.sigmoid,
+    'exp': exp.exp,
 }
 
 
@@ -194,7 +196,7 @@ def generate_samples(node, input_scale_factors, input_means, input_stds, num_sam
 
     #v = np.random.normal(size=length).reshape(shape) * std + mean
 
-    width = 12.0 * std
+    width = np.sqrt(12.0) * std
     v = np.random.uniform(-0.5, 0.5, size=length).reshape(shape) * width + mean
     v = np.round(v).astype(np.int64)
 
