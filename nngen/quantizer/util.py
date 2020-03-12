@@ -52,7 +52,7 @@ def find_optimal_scale_scale_factor(scale_value, width, allowed_rate=0.01):
     scale_scale_factor = 1.0
 
     while True:
-        float_value = scale_value * scale_scale_factor
+        float_value = np.array(scale_value * scale_scale_factor)
         round_value = np.round(float_value)
 
         cont = False
