@@ -14,24 +14,34 @@ from nngen.quantizer import util
 class sigmoid(bt._ActFuncOperator):
 
     def __init__(self, features,
-                 lut_addrwidth=8, lut_clip=6.0, range_rate=0.99,
+                 lut_addrwidth=8, lut_clip=6.0, range_rate=0.95,
                  dtype=None, name=None, par=1):
 
         shape = None
         if features.dtype is not None and features.dtype.width < 8:
             lut_addrwidth = features.dtype.width
+
         self.lut_addrwidth = lut_addrwidth
         self.lut_clip = lut_clip
         self.range_rate = range_rate
         bt._ActFuncOperator.__init__(self, features,
                                      dtype=dtype, shape=shape, name=name, par=par)
 
-    def get_local_control_param_values(self):
-        features_scale = np.array([((2 ** math.ceil(math.log(self.args[0].scale_factor, 2))) /
-                                    self.args[0].scale_factor)])
+    def _get_expected_scale_factor(self):
+        return (2 ** (self.lut_addrwidth - 1)) / self.lut_clip
+
+    def _get_features_scale_shamt(self):
+        expected_scale_factor = self._get_expected_scale_factor()
+
+        features_scale = np.array([expected_scale_factor / self.args[0].scale_factor])
         q_features_scale, scale_factor = util.quantize_linear_scale(features_scale, 32)
+        q_features_scale = int(q_features_scale[0])
         q_features_shamt = round(math.log(scale_factor, 2))
-        return OrderedDict([('features_scale_cparam', int(q_features_scale[0])),
+        return q_features_scale, q_features_shamt
+
+    def get_local_control_param_values(self):
+        q_features_scale, q_features_shamt = self._get_features_scale_shamt()
+        return OrderedDict([('features_scale_cparam', q_features_scale),
                             ('features_shamt_cparam', q_features_shamt)])
 
     def get_stream_hash(self):
@@ -39,14 +49,13 @@ class sigmoid(bt._ActFuncOperator):
         return (base, self.lut_addrwidth, self.lut_clip, self.range_rate)
 
     def op(self, strm, *args, **kwargs):
-        features_datawidth = self.args[0].get_op_width()
-        features_point = self.args[0].get_op_point()
         features_signed = self.args[0].get_signed()
 
         features_scale = strm.ReinterpretCast(self.features_scale_cparam,
-                                              width=features_datawidth,
+                                              width=self.features_scale_cparam.width + 1,
                                               signed=features_signed)
         mul = strm.Times(args[0], features_scale)
+        mul.width = mul.width + features_scale.width
 
         features_shamt = strm.ReinterpretCast(self.features_shamt_cparam,
                                               width=self.features_shamt_cparam.width,
@@ -65,7 +74,7 @@ class sigmoid(bt._ActFuncOperator):
         def _sigmoid(x):
             return int(np.around((1 / (1 + np.exp(-x))) * out_scale).astype(np.int64))
 
-        addr_scale = self.lut_clip / (2 ** (self.lut_addrwidth - 1))
+        addr_scale = 1 / self._get_expected_scale_factor()
         patterns_p = [_sigmoid(i * addr_scale)
                       for i in range(2 ** (self.lut_addrwidth - 1))]
         patterns_n = [_sigmoid((-i - 1) * addr_scale)
@@ -98,16 +107,13 @@ class sigmoid(bt._ActFuncOperator):
         name = self.__class__.__name__
         method = getattr(verify, name, None)
 
-        features_scale = np.array([((2 ** math.ceil(math.log(self.args[0].scale_factor, 2))) /
-                                    self.args[0].scale_factor)])
-        q_features_scale, scale_factor = util.quantize_linear_scale(features_scale, 32)
-        q_features_shamt = round(math.log(scale_factor, 2))
+        features_scale, features_shamt = self._get_features_scale_shamt()
 
         method = functools.partial(method,
                                    lut_addrwidth=self.lut_addrwidth,
                                    lut_clip=self.lut_clip,
                                    range_rate=self.range_rate,
                                    features_dtype=self.args[0].dtype,
-                                   features_scale=int(q_features_scale[0]),
-                                   features_shamt=q_features_shamt)
+                                   features_scale=features_scale,
+                                   features_shamt=features_shamt)
         return method

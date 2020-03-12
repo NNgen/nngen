@@ -6,7 +6,7 @@ import numpy as np
 
 
 def sigmoid(features,
-            lut_addrwidth=8, lut_clip=6.0, range_rate=0.99,
+            lut_addrwidth=8, lut_clip=6.0, range_rate=0.95,
             dtype=None, name=None, par=1,
             features_dtype=None, features_scale=1, features_shamt=0):
 
