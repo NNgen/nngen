@@ -127,8 +127,10 @@ def run(act_shape=(1, 4, 4, 3),
 
     # verification data
     # random data
-    img = np.random.uniform(size=act.length).astype(np.float32).reshape(act.shape)
-    img = img * 12.0 * 0.2 + 0.5
+    std = 0.2
+    mean = 0.5
+    img = np.random.normal(size=act.length).astype(np.float32).reshape(act.shape)
+    img = img * std + mean
 
     # execution on pytorch
     model_input = img

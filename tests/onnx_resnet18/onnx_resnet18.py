@@ -125,10 +125,8 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
     # verification data
     # random data
-    img = np.random.uniform(size=act.length).astype(np.float32).reshape(act.shape)
-    img = img * 12.0 * cifar10_std + cifar10_mean
-    # img = np.random.normal(size=act.length).astype(np.float32).reshape(act.shape)
-    # img = img * cifar10_std + cifar10_mean
+    img = np.random.normal(size=act.length).astype(np.float32).reshape(act.shape)
+    img = img * cifar10_std + cifar10_mean
 
     # execution on pytorch
     model_input = img
