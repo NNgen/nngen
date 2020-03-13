@@ -66,9 +66,9 @@ class NNgenIP(object):
         self.base_ip.write(reg, 1)
 
     def wait(self):
-        reg = self.WORDSIZE_REG * (self.REG_START + self.num_headers)
+        reg = self.WORDSIZE_REG * (self.REG_BUSY + self.num_headers)
         busy = True
-        while True:
+        while busy:
             busy = self.base_ip.read(reg)
 
     def wait_extern(self):
