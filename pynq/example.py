@@ -18,7 +18,7 @@ input_data = np.load("../input_data.npy").astype("uint16")
 
 # padding for 
 input_data = np.append(input_data, np.zeros([1, input_data.shape[1], input_data.shape[2], 1]), axis = 3)
-input_data = np.reshape(input_data, [-1])
+input_data = np.reshape(input_data, [-1]).astype("uint16")
 
 def run_my_cnn(path, name, param_data, input_data):
     overlay = Overlay(path)
