@@ -156,11 +156,11 @@ class _QuantizeVisitor(object):
 
     def _verbose_node(self, node):
         if self.verbose:
-            print('[quantizer: done] {}'.format(str(node)))
+            print('[quantizer:done] {}'.format(str(node)))
 
     def _verbose_skip(self, node):
         if self.verbose:
-            print('[quantizer: skip] {}'.format(str(node)))
+            print('[quantizer:skip] {}'.format(str(node)))
 
 
 def generate_samples(node, input_scale_factors, input_means, input_stds, num_samples):
