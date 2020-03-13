@@ -9,6 +9,12 @@ from . import util
 
 def conv2d(visitor, node):
 
+    if node.act_func is not None and not hasattr(node, 'visited_before_act_func'):
+        node.visited_before_act_func = True
+        visitor.visit(node.act_func)
+        node.scale_factor = node.act_func.scale_factor
+        return
+
     threshold_norm_filter = 0.2
 
     input = node.args[0]

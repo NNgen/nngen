@@ -29,7 +29,7 @@ def run(act_shape=(1, 15), weight_shape=(13, 15),
         bias_shape=None, scale_shape=None,
         act_dtype=ng.int32, weight_dtype=ng.int32,
         bias_dtype=ng.int32, scale_dtype=ng.int32,
-        with_batchnorm=False, act_func='relu', disable_fusion=False,
+        with_batchnorm=False, act_func='ReLU', disable_fusion=False,
         par_left_col=1, par_left_row=1, par_out_col=1,
         concur_out_col=None, stationary='right',
         chunk_size=64,
@@ -43,10 +43,10 @@ def run(act_shape=(1, 15), weight_shape=(13, 15),
     if with_batchnorm:
         layers.append(nn.BatchNorm1d(weight_shape[0]))
 
-    if act_func == 'relu':
-        layers.append(nn.ReLU(inplace=True))
-    elif act_func == 'leaky_relu':
-        layers.append(nn.LeakyReLU(inplace=True))
+    if act_func == 'ReLU':
+        layers.append(nn.ReLU())
+    elif act_func == 'LeakyReLU':
+        layers.append(nn.LeakyReLU())
 
     model = nn.Sequential(*layers)
 
@@ -111,8 +111,10 @@ def run(act_shape=(1, 15), weight_shape=(13, 15),
 
     # verification data
     # random data
-    img = np.random.uniform(size=act.length).astype(np.float32).reshape(act.shape)
-    img = img * 12.0 * 0.2 + 0.5
+    std = 0.2
+    mean = 0.5
+    img = np.random.normal(size=act.length).astype(np.float32).reshape(act.shape)
+    img = img * std + mean
 
     # execution on pytorch
     model_input = img

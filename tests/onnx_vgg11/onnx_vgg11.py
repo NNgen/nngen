@@ -59,10 +59,10 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
     model.classifier = nn.Sequential(
         nn.Linear(in_features=512, out_features=1024, bias=True),
-        nn.ReLU(inplace=True),
+        nn.ReLU(),
         nn.Dropout(p=0.5),
         nn.Linear(in_features=1024, out_features=1024, bias=True),
-        nn.ReLU(inplace=True),
+        nn.ReLU(),
         nn.Dropout(p=0.5),
         nn.Linear(in_features=1024, out_features=10, bias=True),
     )
@@ -137,10 +137,8 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
     # verification data
     # random data
-    img = np.random.uniform(size=act.length).astype(np.float32).reshape(act.shape)
-    img = img * 12.0 * cifar10_std + cifar10_mean
-    # img = np.random.normal(size=act.length).astype(np.float32).reshape(act.shape)
-    # img = img * cifar10_std + cifar10_mean
+    img = np.random.normal(size=act.length).astype(np.float32).reshape(act.shape)
+    img = img * cifar10_std + cifar10_mean
 
     # execution on pytorch
     model_input = img

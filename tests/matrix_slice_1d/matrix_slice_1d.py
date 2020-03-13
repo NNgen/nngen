@@ -7,11 +7,6 @@ import functools
 import math
 import numpy as np
 
-if sys.version_info.major < 3:
-    from itertools import izip_longest as zip_longest
-else:
-    from itertools import zip_longest
-
 # the next line can be removed after installation
 sys.path.insert(0, os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
@@ -23,30 +18,31 @@ import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 
 
-def run(a_shape=(15, 15), b_shape=(15, 15),
-        a_dtype=ng.int32, b_dtype=ng.int32, c_dtype=ng.int32,
-        par=1, axi_datawidth=32, silent=False,
+def run(act_shape=(15,),
+        act_dtype=ng.int32, out_dtype=ng.int32,
+        begins=(2,), ends=(9,), strides=(1,),
+        par=1,
+        axi_datawidth=32, silent=False,
         filename=None, simtype='iverilog', outputfile=None):
 
     # create target hardware
-    a = ng.placeholder(a_dtype, shape=a_shape, name='a')
-    b = ng.placeholder(b_dtype, shape=b_shape, name='b')
-    t = ng.add(a, b, dtype=c_dtype, par=par)
-    c = ng.relu(t, dtype=c_dtype, par=par)
+    act = ng.placeholder(act_dtype, shape=act_shape, name='act')
+    out = ng.slice_(act, begins, ends, strides,
+                    dtype=out_dtype, name='out',
+                    par=par)
 
-    targ = ng.to_veriloggen([c], 'matrix_add_relu', silent=silent,
+    targ = ng.to_veriloggen([out], 'matrix_slice', silent=silent,
                             config={'maxi_datawidth': axi_datawidth})
 
     # verification data
-    va = np.arange(a.length, dtype=np.int64).reshape(a.shape) % [5] - [10]
-    vb = (np.arange(b.length, dtype=np.int64).reshape(b.shape) + [100]) % [6] - [10]
+    vact = np.arange(act.length, dtype=np.int64).reshape(act.shape)
 
-    eval_outs = ng.eval([c], a=va, b=vb)
-    vc = eval_outs[0]
+    eval_outs = ng.eval([out], act=vact)
+    vout = eval_outs[0]
 
     # to memory image
-    size_max = int(math.ceil(max(a.memory_size, b.memory_size, c.memory_size) / 4096)) * 4096
-    check_addr = max(a.addr, b.addr, c.addr) + size_max
+    size_max = int(math.ceil(max(act.memory_size, out.memory_size) / 4096)) * 4096
+    check_addr = max(act.addr, out.addr) + size_max
     size_check = size_max
     tmp_addr = check_addr + size_check
 
@@ -54,15 +50,12 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
     mem = np.zeros([1024 * 1024 * 8 // (memimg_datawidth // 8)], dtype=np.int64)
     mem = mem + [100]
 
-    axi.set_memory(mem, va, memimg_datawidth,
-                   a_dtype.width, a.addr,
-                   max(int(math.ceil(axi_datawidth / a_dtype.width)), par))
-    axi.set_memory(mem, vb, memimg_datawidth,
-                   b_dtype.width, b.addr,
-                   max(int(math.ceil(axi_datawidth / b_dtype.width)), par))
-    axi.set_memory(mem, vc, memimg_datawidth,
-                   c_dtype.width, check_addr,
-                   max(int(math.ceil(axi_datawidth / c_dtype.width)), par))
+    axi.set_memory(mem, vact, memimg_datawidth,
+                   act_dtype.width, act.addr,
+                   max(int(math.ceil(axi_datawidth / act_dtype.width)), par))
+    axi.set_memory(mem, vout, memimg_datawidth,
+                   out_dtype.width, check_addr,
+                   max(int(math.ceil(axi_datawidth / out_dtype.width)), par))
 
     # test controller
     m = Module('test')
@@ -73,7 +66,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
     rst = m.Wire('RST')
     rst.assign(Not(resetn))
 
-    # AXI memory model
+   # AXI memory model
     if outputfile is None:
         outputfile = os.path.splitext(os.path.basename(__file__))[0] + '.out'
 
@@ -96,8 +89,6 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
         time_counter.inc()
     )
 
-    num_rep = functools.reduce(lambda x, y: x * y, c.shape[:-1], 1)
-
     def ctrl():
         for i in range(100):
             pass
@@ -117,18 +108,19 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
 
         # verify
         ok = True
-        for i in range(num_rep):
-            for j in range(c.shape[-1]):
-                orig = memory.read_word(i * c.aligned_shape[-1] + j,
-                                        c.addr, c_dtype.width)
-                check = memory.read_word(i * c.aligned_shape[-1] + j,
-                                         check_addr, c_dtype.width)
+        for x in range(out.shape[0]):
+            orig = memory.read_word(x,
+                                    out.addr, out_dtype.width)
+            check = memory.read_word(x,
+                                     check_addr, out_dtype.width)
 
-                if vthread.verilog.NotEql(orig, check):
-                    print('NG', i, j, orig, check)
-                    ok = False
-                # else:
-                #    print('OK', i, j, orig, check)
+            if vthread.verilog.NotEql(orig, check):
+                print('NG (', x,
+                      ') orig: ', orig, ' check: ', check)
+                ok = False
+            # else:
+            #    print('OK (', x,
+            #          ') orig: ', orig, ' check: ', check)
 
         if ok:
             print('# verify: PASSED')

@@ -10,7 +10,7 @@ def upsampling2d(value, factors,
                  value_dtype=None):
 
     ret_shape = [s * f for s, f in zip(value.shape, factors)]
-    ret = np.zeros(ret_shape)
+    ret = np.zeros(ret_shape, dtype=np.int64)
 
     factor_col = factors[2]
     factor_row = factors[1]

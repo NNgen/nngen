@@ -31,7 +31,7 @@ def run(act_shape=(1, 7, 7, 3),
         stride0=1, stride1=1,
         padding0=0, padding1=0,
         with_batchnorm0=False, with_batchnorm1=False,
-        act_func0='relu', act_func1='relu',
+        act_func0='ReLU', act_func1='relu',
         disable_fusion=False,
         par_ich=1, par_och=1, par_col=1, par_row=1,
         concur_och=None, stationary='filter',
@@ -47,10 +47,8 @@ def run(act_shape=(1, 7, 7, 3),
     if with_batchnorm0:
         layers.append(nn.BatchNorm2d(weight0_shape[0]))
 
-    if act_func0 == 'relu':
-        layers.append(nn.ReLU(inplace=True))
-    elif act_func0 == 'leaky_relu':
-        layers.append(nn.LeakyReLU(inplace=True))
+    if act_func0 is not None:
+        layers.append(getattr(nn, act_func0)())
 
     layers.append(nn.Conv2d(weight1_shape[3], weight1_shape[0], weight1_shape[1],
                             stride=stride1, padding=padding1))
@@ -58,10 +56,8 @@ def run(act_shape=(1, 7, 7, 3),
     if with_batchnorm1:
         layers.append(nn.BatchNorm2d(weight1_shape[0]))
 
-    if act_func1 == 'relu':
-        layers.append(nn.ReLU(inplace=True))
-    elif act_func1 == 'leaky_relu':
-        layers.append(nn.LeakyReLU(inplace=True))
+    if act_func1 is not None:
+        layers.append(getattr(nn, act_func1)())
 
     model = nn.Sequential(*layers)
 
@@ -127,8 +123,10 @@ def run(act_shape=(1, 7, 7, 3),
 
     # verification data
     # random data
-    img = np.random.uniform(size=act.length).astype(np.float32).reshape(act.shape)
-    img = img * 12.0 * 0.2 + 0.5
+    std = 0.2
+    mean = 0.5
+    img = np.random.normal(size=act.length).astype(np.float32).reshape(act.shape)
+    img = img * std + mean
 
     # execution on pytorch
     model_input = img

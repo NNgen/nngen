@@ -3,7 +3,6 @@ from __future__ import print_function
 from __future__ import division
 
 import math
-import functools
 from collections import OrderedDict
 
 import veriloggen as vg
@@ -31,8 +30,8 @@ class scaled_add(bt._ElementwiseOperator):
         return ''.join(ret)
 
     def get_local_control_param_values(self):
-        return OrderedDict([('a_scale_cparam', self.a_scale),
-                            ('b_scale_cparam', self.b_scale),
+        return OrderedDict([('a_scale_cparam', int(self.a_scale)),
+                            ('b_scale_cparam', int(self.b_scale)),
                             ('shamt_cparam', self.shamt)])
 
     def op(self, strm, *args, **kwargs):
@@ -127,7 +126,7 @@ class scaled_concat(concat):
         return ret
 
     def get_local_control_param_values(self):
-        return OrderedDict([('scale_cparams', self.scales),
+        return OrderedDict([('scale_cparams', [int(scale) for scale in self.scales]),
                             ('shamt_cparam', self.shamt)])
 
     def __init__(self, values, scales, shamt, axis,

@@ -28,7 +28,7 @@ import veriloggen.types.axi as axi
 def run(act_shape=(1, 7, 7, 3), weight_shape=(9, 3, 3, 3),
         act_dtype=ng.int32, weight_dtype=ng.int32,
         stride=1, padding=0,
-        with_batchnorm=False, act_func='relu', disable_fusion=False,
+        with_batchnorm=False, act_func='ReLU', disable_fusion=False,
         par_ich=1, par_och=1, par_col=1, par_row=1,
         concur_och=None, stationary='filter',
         chunk_size=64,
@@ -43,10 +43,8 @@ def run(act_shape=(1, 7, 7, 3), weight_shape=(9, 3, 3, 3),
     if with_batchnorm:
         layers.append(nn.BatchNorm2d(weight_shape[0]))
 
-    if act_func == 'relu':
-        layers.append(nn.ReLU(inplace=True))
-    elif act_func == 'leaky_relu':
-        layers.append(nn.LeakyReLU(inplace=True))
+    if act_func is not None:
+        layers.append(getattr(nn, act_func)())
 
     model = nn.Sequential(*layers)
 
@@ -114,8 +112,10 @@ def run(act_shape=(1, 7, 7, 3), weight_shape=(9, 3, 3, 3),
 
     # verification data
     # random data
-    img = np.random.uniform(size=act.length).astype(np.float32).reshape(act.shape)
-    img = img * 12.0 * 0.2 + 0.5
+    std = 0.2
+    mean = 0.5
+    img = np.random.normal(size=act.length).astype(np.float32).reshape(act.shape)
+    img = img * std + mean
 
     # execution on pytorch
     model_input = img

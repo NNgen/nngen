@@ -395,7 +395,6 @@ class add_n(bt._ElementwiseOperator):
         import nngen.verify as verify
 
         name = self.__class__.__name__
-        method = getattr(verify, name, None)
 
         args = [arg.eval(memo, input_dict)
                 for arg in self.args]
@@ -406,6 +405,7 @@ class add_n(bt._ElementwiseOperator):
         kwargs['name'] = self.name
         kwargs['par'] = self.par
 
+        method = self.get_eval_method()
         ret = method(args, **kwargs)
         memo[id(self)] = ret
 
@@ -799,6 +799,12 @@ class transpose(bt._Operator):
     output_chainable = False
     thread_cachable = False
 
+    def __sub_str__(self):
+        perm = ' perm:%s' % str(tuple(self.transpose_perm))
+        onnx_perm = (' onnx_perm:%s' % str(tuple(self.transpose_onnx_perm))
+                     if self.transpose_onnx_perm is not None else '')
+        return '%s%s' % (perm, onnx_perm)
+
     def __init__(self, a, perm=None, dtype=None, name=None):
 
         if bt.get_rank(a.shape) == 1:
@@ -808,7 +814,9 @@ class transpose(bt._Operator):
 
         if perm is None:
             perm = tuple(reversed(range(bt.get_rank(a_shape))))
+
         self.transpose_perm = perm
+        self.transpose_onnx_perm = None
 
         shape = []
         for p in perm:
@@ -927,6 +935,19 @@ class transpose(bt._Operator):
             new_layout[i] = orig_layout[p]
         return ''.join(new_layout)
 
+    def get_onnx_layout(self):
+        if self.onnx_layout is not None:
+            return self.onnx_layout
+
+        orig_onnx_layout = self.args[0].get_onnx_layout()
+        if orig_onnx_layout is None:
+            return None
+
+        new_onnx_layout = [l for l in orig_onnx_layout]
+        for i, p in enumerate(self.transpose_onnx_perm):
+            new_onnx_layout[i] = orig_onnx_layout[p]
+        return ''.join(new_onnx_layout)
+
     def eval(self, memo, input_dict, **kwargs):
         if id(self) in memo:
             return memo[id(self)]
@@ -934,7 +955,6 @@ class transpose(bt._Operator):
         import nngen.verify as verify
 
         name = self.__class__.__name__
-        method = getattr(verify, name, None)
 
         args = [arg.eval(memo, input_dict)
                 for arg in self.args]
@@ -943,6 +963,7 @@ class transpose(bt._Operator):
         kwargs['dtype'] = self.dtype
         kwargs['name'] = self.name
 
+        method = self.get_eval_method()
         ret = method(*args, **kwargs)
         memo[id(self)] = ret
 

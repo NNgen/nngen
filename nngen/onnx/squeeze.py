@@ -17,6 +17,8 @@ def Squeeze(visitor, node):
         arg_obj = visitor.visit(arg)
         args.append(arg_obj)
 
+    args = [util.optimize_to_raw_value(arg) for arg in args]
+
     input = args[0]
 
     if isinstance(input, operator.matmul) and input.onnx_batchnorm is not None:
@@ -25,7 +27,7 @@ def Squeeze(visitor, node):
     axes = []
     for attribute in node.attribute:
         if attribute.name == 'axes':
-            axes = attribute.ints
+            axes = [i for i in attribute.ints]
 
     if len(axes) == 0:
         for i, s in enumerate(input.shape):
@@ -64,6 +66,8 @@ def Unsqueeze(visitor, node):
         arg_obj = visitor.visit(arg)
         args.append(arg_obj)
 
+    args = [util.optimize_to_raw_value(arg) for arg in args]
+
     input = args[0]
 
     for attribute in node.attribute:
@@ -79,7 +83,7 @@ def Unsqueeze(visitor, node):
         if isinstance(ret, (tuple, list)):
             ret = np.array(ret)
 
-        if isinstance(ret, np.ndarray):
+        if isinstance(ret, (np.ndarray, np.float, np.int, float, int)):
             ret = np.expand_dims(ret, axis + offset)
 
         else:

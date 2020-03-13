@@ -115,7 +115,7 @@ class matmul(conv2d.conv2d):
         cshamt_out = (' cshamt_out:%s' % self.cshamt_out
                       if self.cshamt_out is not None else '')
 
-        act_func = (' act_func:%s' % str(self.act_func.__name__)
+        act_func = (' act_func:%s' % str(self.act_func.__class__.__name__)
                     if self.act_func is not None else '')
         mul_dtype = (' mul_dtype:%s' % self.mul_dtype.to_str()
                      if self.mul_dtype is not None else '')
@@ -283,7 +283,6 @@ class matmul(conv2d.conv2d):
         import nngen.verify as verify
 
         name = self.__class__.__name__
-        method = getattr(verify, name, None)
 
         args = [arg.eval(memo, input_dict)
                 for arg in self.args]
@@ -324,6 +323,7 @@ class matmul(conv2d.conv2d):
         kwargs['bias_dtype'] = self.args[self.args_dict['bias']].dtype if self.has_bias else None
         kwargs['scale_dtype'] = self.args[self.args_dict['scale']].dtype if self.has_scale else None
 
+        method = self.get_eval_method()
         ret = method(input, filter, **kwargs)
         memo[id(self)] = ret
 

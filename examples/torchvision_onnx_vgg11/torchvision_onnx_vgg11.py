@@ -34,9 +34,9 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
         pool_par=1, elem_par=1,
         chunk_size=64, axi_datawidth=32, silent=False,
         filename=None,
-        simtype='iverilog',
+        # simtype='iverilog',
         # simtype='verilator',
-        # simtype=None,  # no RTL simulation
+        simtype=None,  # no RTL simulation
         outputfile=None):
 
     # input mean and standard deviation
@@ -205,6 +205,9 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
     # compare prediction results
     eval_outs = ng.eval([out], act=vact)
     vout = eval_outs[0]
+
+    mean_square_error = np.sum((vout - scaled_model_out) ** 2) / vout.size
+    corrcoef = np.corrcoef(model_out.reshape([-1]), vout.reshape([-1]))
 
     class_index = json.load(open('imagenet_class_index.json', 'r'))
     labels = {int(key): value for (key, value) in class_index.items()}

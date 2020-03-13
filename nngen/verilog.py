@@ -332,7 +332,7 @@ def make_header_addr_map(config, saxi):
 
 def allocate(config, m, clk, rst, maxi, saxi, objs, schedule_table):
     set_storage_name(objs)
-    set_shared_attrs(objs)
+    merge_shared_attrs(objs)
 
     max_stream_rams = calc_max_stream_rams(config, schedule_table)
     ram_dict = make_rams(config, m, clk, rst, maxi, schedule_table, max_stream_rams)
@@ -380,7 +380,7 @@ def set_storage_name(objs):
             tmp_output += 1
 
 
-def set_shared_attrs(objs):
+def merge_shared_attrs(objs):
     repr_obj_dict = collections.OrderedDict()
 
     for obj in objs:
@@ -389,12 +389,12 @@ def set_shared_attrs(objs):
 
         stream_hash = obj.get_stream_hash()
         if stream_hash not in repr_obj_dict:
-            obj.set_shared_attrs(obj)
+            obj.merge_shared_attrs(obj)
             repr_obj_dict[stream_hash] = obj
             continue
 
         orig = repr_obj_dict[stream_hash]
-        orig.set_shared_attrs(obj)
+        orig.merge_shared_attrs(obj)
 
 
 def calc_max_stream_rams(config, schedule_table):

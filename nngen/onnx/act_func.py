@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
+import functools
+
 import nngen.operator as operator
 
 from . import util
@@ -11,7 +13,7 @@ from . import conv
 from . import gemm
 
 
-def _relu(act_func, visitor, node):
+def _act_func(method, visitor, node):
 
     node_name = util.get_name(node)
 
@@ -19,33 +21,36 @@ def _relu(act_func, visitor, node):
     src_node = util.search_node_from_model(visitor.model, src_name)
 
     if (not visitor.disable_fusion and
+        src_node is not None and
         src_node.op_type == 'BatchNormalization' and
             len(visitor.consumers[src_name]) == 1):
 
         src_op = batchnormalization.BatchNormalization(visitor, src_node,
-                                                       act_func=act_func)
+                                                       act_func=method)
         visitor.operators[node_name] = src_op
         return src_op
 
     if (not visitor.disable_fusion and
+        src_node is not None and
             src_node.op_type == 'Conv' and len(visitor.consumers[src_name]) == 1):
 
-        src_op = conv.Conv(visitor, src_node, act_func=act_func)
+        src_op = conv.Conv(visitor, src_node, act_func=method)
         visitor.operators[node_name] = src_op
         return src_op
 
     if (not visitor.disable_fusion and
+        src_node is not None and
             src_node.op_type == 'Gemm' and len(visitor.consumers[src_name]) == 1):
 
-        src_op = gemm.Gemm(visitor, src_node, act_func=act_func)
+        src_op = gemm.Gemm(visitor, src_node, act_func=method)
         visitor.operators[node_name] = src_op
         return src_op
 
-    return basic._elementwise(act_func, visitor, node)
+    return basic._elementwise(method, visitor, node)
 
 
 def Relu(visitor, node):
-    return _relu(operator.relu, visitor, node)
+    return _act_func(operator.relu, visitor, node)
 
 
 def LeakyRelu(visitor, node):
@@ -57,4 +62,8 @@ def LeakyRelu(visitor, node):
     rshift = 31
     slope = round(alpha * (2 ** 31))
     op = operator.get_leaky_relu_op(slope, rshift)
-    return _relu(op, visitor, node)
+    return _act_func(op, visitor, node)
+
+
+def Sigmoid(visitor, node):
+    return _act_func(operator.sigmoid, visitor, node)

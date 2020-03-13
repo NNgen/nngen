@@ -11,15 +11,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(
 import nngen as ng
 import veriloggen
 
-import matrix_add_relu
+import onnx_matrix_pad
 
 
-a_shape = (15, 15)
-b_shape = (15, 15)
-a_dtype = ng.int32
-b_dtype = ng.int32
-c_dtype = ng.int32
+act_shape = (1, 7, 7, 3)
+act_dtype = ng.int32
+padding = 2
 par = 1
+chunk_size = 64
 axi_datawidth = 32
 
 
@@ -28,9 +27,11 @@ def test(request, silent=True):
 
     simtype = request.config.getoption('--sim')
 
-    rslt = matrix_add_relu.run(a_shape, b_shape,
-                               a_dtype, b_dtype, c_dtype,
-                               par, axi_datawidth, silent,
+    rslt = onnx_matrix_pad.run(act_shape, act_dtype,
+                               padding,
+                               par,
+                               chunk_size,
+                               axi_datawidth, silent,
                                filename=None, simtype=simtype,
                                outputfile=os.path.splitext(os.path.basename(__file__))[0] + '.out')
 
@@ -39,9 +40,11 @@ def test(request, silent=True):
 
 
 if __name__ == '__main__':
-    rslt = matrix_add_relu.run(a_shape, b_shape,
-                               a_dtype, b_dtype, c_dtype,
-                               par, axi_datawidth, silent=False,
+    rslt = onnx_matrix_pad.run(act_shape, act_dtype,
+                               padding,
+                               par,
+                               chunk_size,
+                               axi_datawidth, silent=False,
                                filename='tmp.v',
                                outputfile=os.path.splitext(os.path.basename(__file__))[0] + '.out')
     print(rslt)
