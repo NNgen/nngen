@@ -706,7 +706,7 @@ class _reduce_op(bt._ReductionOperator):
 
 class reduce_sum(_reduce_op):
     """
-    Computes the sum of elements across dimensions of a tensor. (deprecated arguments)
+    Computes the sum of elements across dimensions of a tensor.
 
     Args:
         input_tensor: A tensor.
@@ -724,6 +724,85 @@ class reduce_sum(_reduce_op):
     @staticmethod
     def carry_op(strm, *args, **kwargs):
         return strm.Add(*args)
+
+
+class reduce_max(_reduce_op):
+    """
+    Returns the maximum value of elements across dimensions of a tensor.
+
+    Args:
+        input_tensor: A tensor.
+        axis: The dimensions to reduce (optional).
+        keep_dims: If true, retains reduced dimensions with length 1 (optional).
+        dtype: Output data type (optional).
+        name: A name for the operation (optional).
+        par: The number of parallel operations (optional).
+    """
+
+    def reduce_op(self, strm, *args, **kwargs):
+        kwargs['initval'] = self.default_value
+        return strm.ReduceMaxValid(*args, **kwargs)
+
+    @staticmethod
+    def carry_op(strm, *args, **kwargs):
+        return strm.Max(*args)
+
+    def __init__(self, input_tensor,
+                 dtype=None, shape=None, name=None,
+                 axis=None, keep_dims=False, par=1):
+
+        _reduce_op.__init__(self, input_tensor,
+                            axis=axis, keep_dims=keep_dims, dtype=dtype, name=name, par=par)
+
+        if self.get_signed():
+            point = self.get_op_point()
+            if point > 0:
+                self.default_value = -1 * ((2 ** (self.dtype.width - 1)) >> point)
+            else:
+                self.default_value = -1 * ((2 ** (self.dtype.width - 1)) << -point)
+        else:
+            self.default_value = 0
+
+
+class reduce_min(_reduce_op):
+    """
+    Returns the minimum value of elements across dimensions of a tensor.
+
+    Args:
+        input_tensor: A tensor.
+        axis: The dimensions to reduce (optional).
+        keep_dims: If true, retains reduced dimensions with length 1 (optional).
+        dtype: Output data type (optional).
+        name: A name for the operation (optional).
+        par: The number of parallel operations (optional).
+    """
+
+    def reduce_op(self, strm, *args, **kwargs):
+        kwargs['initval'] = self.default_value
+        return strm.ReduceMinValid(*args, **kwargs)
+
+    @staticmethod
+    def carry_op(strm, *args, **kwargs):
+        return strm.Min(*args)
+
+    def __init__(self, input_tensor,
+                 dtype=None, shape=None, name=None,
+                 axis=None, keep_dims=False, par=1):
+
+        _reduce_op.__init__(self, input_tensor,
+                            axis=axis, keep_dims=keep_dims, dtype=dtype, name=name, par=par)
+
+        if self.get_signed():
+            point = self.get_op_point()
+            if point > 0:
+                self.default_value = (2 ** (self.dtype.width - 1) - 1) >> point
+            else:
+                self.default_value = (2 ** (self.dtype.width - 1) - 1) << -point
+        else:
+            if point > 0:
+                self.default_value = (2 ** self.dtype.width - 1) >> point
+            else:
+                self.default_value = (2 ** self.dtype.width - 1) << -point
 
 
 class _reshape(bt._Reshape):
@@ -759,7 +838,7 @@ def cast(x, dtype, name=None):
 
 def expand_dims(input, axis, name=None):
     """
-    Inserts a dimension of 1 into a tensor's shape. (deprecated arguments)
+    Inserts a dimension of 1 into a tensor's shape.
 
     Given a tensor input, this operation inserts a dimension \
     of 1 at the dimension index axis of input's shape. \

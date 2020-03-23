@@ -513,6 +513,54 @@ def reduce_sum(input_tensor,
     return ret
 
 
+def reduce_max(input_tensor,
+               axis=None, keep_dims=False, dtype=None, name=None, par=1,
+               input_tensor_dtype=None):
+
+    input_tensor_point = 0 if input_tensor_dtype is None else input_tensor_dtype.point
+    out_point = input_tensor_point if dtype is None else dtype.point
+    out_shift = out_point - input_tensor_point
+
+    out_op = ((lambda x: x << out_shift) if out_shift >= 0 else
+              (lambda x: x >> -out_shift))
+
+    if axis is None:
+        input_tensor = input_tensor.reshape([-1])
+
+    ret = np.max(input_tensor, axis=axis)
+
+    if not isinstance(ret, np.ndarray):
+        ret = np.array([ret])
+
+    ret = out_op(ret)
+
+    return ret
+
+
+def reduce_min(input_tensor,
+               axis=None, keep_dims=False, dtype=None, name=None, par=1,
+               input_tensor_dtype=None):
+
+    input_tensor_point = 0 if input_tensor_dtype is None else input_tensor_dtype.point
+    out_point = input_tensor_point if dtype is None else dtype.point
+    out_shift = out_point - input_tensor_point
+
+    out_op = ((lambda x: x << out_shift) if out_shift >= 0 else
+              (lambda x: x >> -out_shift))
+
+    if axis is None:
+        input_tensor = input_tensor.reshape([-1])
+
+    ret = np.min(input_tensor, axis=axis)
+
+    if not isinstance(ret, np.ndarray):
+        ret = np.array([ret])
+
+    ret = out_op(ret)
+
+    return ret
+
+
 def _reshape(tensor, shape, dtype=None, name=None, tensor_dtype=None):
     return np.reshape(tensor, shape)
 
