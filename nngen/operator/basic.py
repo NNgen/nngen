@@ -89,6 +89,24 @@ class neg(bt._ElementwiseOperator):
         return bt._ElementwiseOperator.eval(self, memo, input_dict, **kwargs)
 
 
+class abs(bt._ElementwiseOperator):
+    input_chainable = True
+    output_chainable = True
+
+    @staticmethod
+    def op(strm, *args, **kwargs):
+        return strm.Abs(*args)
+
+    def __init__(self, x, dtype=None, name=None, par=1):
+        shape = None
+        bt._ElementwiseOperator.__init__(self, x,
+                                         dtype=dtype, shape=shape, name=name, par=par)
+
+    def eval(self, memo, input_dict, **kwargs):
+        kwargs['x_dtype'] = self.args[0].dtype
+        return bt._ElementwiseOperator.eval(self, memo, input_dict, **kwargs)
+
+
 class zeros_imm(bt._ElementwiseOperator):
     input_chainable = True
     output_chainable = True

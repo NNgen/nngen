@@ -64,6 +64,23 @@ def neg(x, dtype=None, name=None, par=1,
     return ret
 
 
+def abs(x, dtype=None, name=None, par=1,
+        x_dtype=None):
+
+    x_point = 0 if x_dtype is None else x_dtype.point
+    out_point = x_point if dtype is None else dtype.point
+    out_shift = out_point - x_point
+
+    x = x << (out_point - x_point)
+
+    out_op = ((lambda x: x << out_shift) if out_shift >= 0 else
+              (lambda x: x >> -out_shift))
+
+    ret = out_op(np.abs(x))
+
+    return ret
+
+
 def zeros_imm(shape, dtype=None, name=None, par=1):
 
     out_point = x_point if dtype is None else dtype.point
