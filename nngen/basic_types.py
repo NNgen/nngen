@@ -1650,17 +1650,24 @@ class _ReductionOperator(_StreamingOperator):
     input_chainable = True
     output_chainable = False
 
-    default_value = 0
+    carry_default_values = (0,)
 
     @staticmethod
-    def reduce_op(strm, *args, **kwargs):
-        # return strm.ReduceAddValid(*args, **kwargs)
+    def reduce_op(strm, value, size, par_offset, **kwargs):
+        # data, valid = strm.ReduceAddValid(value, size, **kwargs)
+        # return (data,), valid
         raise NotImplementedError()
 
     @staticmethod
     def carry_op(strm, *args, **kwargs):
         # return strm.Plus(*args)
         raise NotImplementedError()
+
+    def gather_op(self, strm, args, **kwargs):
+        carry_func = functools.partial(self.carry_op, strm)
+        data = strm.op_tree(carry_func,
+                            strm.Int(self.carry_default_values[0]), None, *args)
+        return (data,)
 
     def __init__(self, arg,
                  dtype=None, shape=None, name=None,
@@ -1695,23 +1702,48 @@ class _ReductionOperator(_StreamingOperator):
         min_size = shape[-1] * 2
         output_width = self.get_ram_width()
 
-        outputs = [(output_width, min_size)]
+        outputs = [(output_width, min_size)] * len(self.carry_default_values)
 
         return inputs, outputs, temps
 
     def get_stream_func(self):
         def func(strm):
-            data, valid = self.get_stream_reduce_value(strm)
-            strm.sink(data, when=valid)
+            values, valid = self.get_stream_reduce_value(strm)
+            for value in values:
+                strm.sink(value, when=valid)
 
         return func
+
+    def get_stream_reduce_output(self, strm, width, point, signed, values, omits, size):
+        carry_vars = [strm.constant(datawidth=width, point=point, signed=signed)
+                      for carry_default_value in self.carry_default_values]
+
+        data_list = [[] for carry_default_value in self.carry_default_values]
+        for par_offset, (value, omit) in enumerate(zip(values, omits)):
+            if self.par > 1:
+                value = strm.Mux(omit, strm.Int(self.carry_default_values[0]), value)
+
+            out_values, valid = self.reduce_op(strm, value, size, par_offset,
+                                               width=width, signed=signed)
+            out_values = [out_rcast(strm, out_value, width, point, signed)
+                          for out_value in out_values]
+            for lst, out_value in zip(data_list, out_values):
+                lst.append(out_value)
+
+        for lst, carry_var in zip(data_list, carry_vars):
+            lst.append(carry_var)
+
+        out_values = self.gather_op(strm, *data_list)
+        out_values = [out_rcast(strm, out_value, width, point, signed)
+                      for out_value in out_values]
+
+        return out_values, valid
 
     def get_stream_reduce_value(self, strm):
         arg = self.args[0]
 
         if are_chainable_operators(self, arg):
             values = arg.get_stream_values(strm)
-            vars.append(values)
 
         else:
             datawidth = arg.get_op_width()
@@ -1740,26 +1772,8 @@ class _ReductionOperator(_StreamingOperator):
         omits = [strm.Ands(b, omit_counter == size - 1)
                  for b in omit_mask]
 
-        carry = strm.constant(datawidth=width, point=point, signed=signed)
-
-        data_list = []
-        for value, omit in zip(values, omits):
-            if self.par > 1:
-                value = strm.Mux(omit, strm.Int(self.default_value), value)
-
-            data, valid = self.reduce_op(strm, value, size,
-                                         width=width, signed=signed)
-            data = out_rcast(strm, data, width, point, signed)
-            data_list.append(data)
-
-        data_list.append(carry)
-
-        carry_func = functools.partial(self.carry_op, strm)
-        data = strm.op_tree(carry_func,
-                            strm.Int(self.default_value), None, *data_list)
-        data = out_rcast(strm, data, width, point, signed)
-
-        return data, valid
+        return self.get_stream_reduce_output(strm, width, point, signed,
+                                             values, omits, size)
 
     def get_control_param_values(self):
         aligned_shape = self.args[0].get_aligned_shape()
@@ -1907,9 +1921,10 @@ class _ReductionOperator(_StreamingOperator):
         skip_write = self.m.Reg(self._name('skip_write'), initval=0)
 
         skip_carry_read = self.m.Reg(self._name('skip_carry_read'), initval=0)
-        carry = self.m.Reg(self._name('carry'),
-                           self.get_op_width(), initval=self.default_value,
-                           signed=self.get_signed())
+        carry_vars = [self.m.Reg(self._name('carry_var_%d' % i),
+                                 self.get_op_width(), initval=carry_default_value,
+                                 signed=self.get_signed())
+                      for i, carry_default_value in enumerate(self.carry_default_values)]
 
         reduce_op_count = self.m.Reg(self._name('reduce_op_count'),
                                      self.maxi.addrwidth, initval=0)
@@ -1961,7 +1976,8 @@ class _ReductionOperator(_StreamingOperator):
 
         fsm(
             skip_carry_read(1),
-            carry(self.default_value)
+            [carry_var(carry_default_value)
+             for carry_var, carry_default_value in zip(carry_vars, self.carry_default_values)]
         )
 
         fsm(
@@ -2021,17 +2037,20 @@ class _ReductionOperator(_StreamingOperator):
 
         self.stream.source_join(fsm)
 
-        # update carry
+        # update carry_vars
         laddr = out_page_comp_offset + out_op_count
-        ram_value = self.output_rams[0].read(fsm, laddr)
+        ram_values = []
+        for output_ram in self.output_rams:
+            ram_values.append(output_ram.read(fsm, laddr))
 
         fsm.If(vg.Not(skip_carry_read))(
-            carry(ram_value)
+            [carry_var(ram_value) for carry_var, ram_value in zip(carry_vars, ram_values)]
         )
 
         # set_constant (carry)
-        name = list(self.stream.constants.keys())[len(self.stream.sources) + 2]
-        self.stream.set_constant(fsm, name, carry)
+        for name, carry_var in zip(
+                list(self.stream.constants.keys())[len(self.stream.sources) + 2:], carry_vars):
+            self.stream.set_constant(fsm, name, carry_var)
 
         # set_source, set_constant (dup)
         for (ram, source_name, dup_name,
@@ -2069,8 +2088,9 @@ class _ReductionOperator(_StreamingOperator):
         self.stream.set_constant(fsm, name, self.stream_omit_mask)
 
         # set_constant (carry)
-        name = list(self.stream.constants.keys())[len(self.stream.sources) + 2]
-        self.stream.set_constant(fsm, name, carry)
+        for name, carry_var in zip(
+                list(self.stream.constants.keys())[len(self.stream.sources) + 2:], carry_vars):
+            self.stream.set_constant(fsm, name, carry_var)
 
         fsm.goto_next()
 
@@ -2212,7 +2232,9 @@ class _ReductionOperator(_StreamingOperator):
         )
 
         fsm.If(reduce_op_count == self.max_reduce_op_count)(
-            carry(self.default_value),
+            [carry_var(carry_default_value)
+             for carry_var, carry_default_value in zip(carry_vars,
+                                                       self.carry_default_values)],
             skip_carry_read(1),
             out_op_count.inc()
         )
