@@ -279,7 +279,7 @@ def scaled_multiply(visitor, node):
 
 
 def find_optimal_shamt_scaled_multiply(visitor, node,
-                                       allowed_rate=0.0, range_rate=0.5,
+                                       allowed_rate=0.0, range_rate=0.3,
                                        init_shamt=0):
 
     shamt = init_shamt
