@@ -11,14 +11,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(
 import nngen as ng
 import veriloggen
 
-import matrix_argmax
+import matrix_argmin
 
 
 a_shape = (15, 15)
-axis = None
+axis = -1
 keep_dims = False
-a_dtype = ng.int32
-b_dtype = ng.int32
+a_dtype = ng.int16
+b_dtype = ng.int16
 par = 1
 axi_datawidth = 32
 
@@ -28,7 +28,7 @@ def test(request, silent=True):
 
     simtype = request.config.getoption('--sim')
 
-    rslt = matrix_argmax.run(a_shape,
+    rslt = matrix_argmin.run(a_shape,
                              axis, keep_dims,
                              a_dtype, b_dtype,
                              par, axi_datawidth, silent,
@@ -40,7 +40,7 @@ def test(request, silent=True):
 
 
 if __name__ == '__main__':
-    rslt = matrix_argmax.run(a_shape,
+    rslt = matrix_argmin.run(a_shape,
                              axis, keep_dims,
                              a_dtype, b_dtype,
                              par, axi_datawidth, silent=False,

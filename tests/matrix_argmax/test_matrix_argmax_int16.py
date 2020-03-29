@@ -15,10 +15,10 @@ import matrix_argmax
 
 
 a_shape = (15, 15)
-axis = None
+axis = -1
 keep_dims = False
-a_dtype = ng.int32
-b_dtype = ng.int32
+a_dtype = ng.int16
+b_dtype = ng.int16
 par = 1
 axi_datawidth = 32
 

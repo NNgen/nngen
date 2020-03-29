@@ -14,7 +14,7 @@ import veriloggen
 import matrix_argmin
 
 
-a_shape = (6, 6)
+a_shape = (15, 15)
 axis = None
 keep_dims = False
 a_dtype = ng.int32

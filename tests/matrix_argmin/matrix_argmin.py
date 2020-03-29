@@ -37,7 +37,7 @@ def run(a_shape=(15, 15),
                             config={'maxi_datawidth': axi_datawidth})
 
     # verification data
-    va = np.abs(np.arange(a.length, dtype=np.int64).reshape(a.shape) % [17] - [10]) - [4]
+    va = np.arange(a.length, dtype=np.int64).reshape(a.shape) % [150] - [100]
 
     eval_outs = ng.eval([b], a=va)
     vb = eval_outs[0]

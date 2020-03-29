@@ -42,6 +42,8 @@ func_map = {
     'ReduceSum': reduce.ReduceSum,
     'ReduceMax': reduce.ReduceMax,
     'ReduceMin': reduce.ReduceMin,
+    'ArgMax': reduce.ArgMax,
+    'ArgMin': reduce.ArgMin,
     'Conv': conv.Conv,
     'Gemm': gemm.Gemm,
     'AveragePool': pool.AveragePool,
