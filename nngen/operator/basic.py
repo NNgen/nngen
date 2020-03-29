@@ -838,10 +838,13 @@ class _arg_op(_reduce_op):
     def __init__(self, input_tensor,
                  axis=None, keep_dims=False, dtype=None, name=None, par=1):
 
+        if isinstance(axis, (tuple, list)) and len(axis) > 1:
+            raise ValueError('size of axis must be 1.')
+
         # Because get_stream_reduce_output() cannot calculate
         # the flatten index value for a unflatten value,
         # input value must be flatten when axis is None.
-        if axis is None:
+        if axis is None and len(input_tensor.shape) > 1:
             input_tensor = reshape(input_tensor, [-1])
 
         _reduce_op.__init__(self, input_tensor,
