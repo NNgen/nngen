@@ -520,7 +520,7 @@ def reduce_sum(input_tensor,
     if axis is None:
         input_tensor = input_tensor.reshape([-1])
 
-    ret = np.add.reduce(input_tensor, axis)
+    ret = np.sum(input_tensor, axis)
 
     if not isinstance(ret, np.ndarray):
         ret = np.array([ret])
