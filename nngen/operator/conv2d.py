@@ -201,8 +201,8 @@ class conv2d(bt._Operator):
         if hasattr(self, 'pad_col_left_value') and self.padding == 'SAME':
             padding = ("'%s'-(%d, %d, %d, %d)" %
                        (self.padding,
-                        self.pad_col_left_value, self.pad_col_right_value,
-                        self.pad_row_top_value, self.pad_row_bottom_value))
+                        self.pad_row_top_value, self.pad_row_bottom_value,
+                        self.pad_col_left_value, self.pad_col_right_value))
         else:
             padding = self.padding
 
