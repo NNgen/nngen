@@ -36,6 +36,12 @@ def Gather(visitor, node):
         if attribute.name == 'axis':
             axis = attribute.i
 
+    # layout = input.get_layout()
+    # onnx_layout = input.get_onnx_layout()
+    #
+    # if layout is not None and onnx_layout is not None:
+    #     axis = layout.index(onnx_layout[axis])
+
     c = _gather(input, axis, indices)
 
     return c
