@@ -212,9 +212,9 @@ def generate_samples(node, input_scale_factors, input_means, input_stds, num_sam
     else:
         std = np.array(input_stds[node.name]).astype(np.float32)
 
-    width = np.sqrt(12.0) * std
-    v = np.random.uniform(-0.5, 0.5, size=length).reshape(shape) * width + mean
-    # v = np.random.normal(siez=length).reshape(shape) * std + mean
+    # width = np.sqrt(12.0) * std / 2.0
+    # v = np.random.uniform(-0.5, 0.5, size=length).reshape(shape) * width + mean
+    v = np.random.normal(size=length).reshape(shape) * std + mean
     v = np.round(v).astype(np.int64)
 
     if node.dtype.signed:
