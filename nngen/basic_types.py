@@ -1269,6 +1269,7 @@ class _StreamingOperator(_Operator):
         total_size = int(math.ceil(aligned_length / self.par))
 
         dma_size = int(math.ceil(aligned_shape[-1] / self.par))
+
         num_comp = int(math.ceil(total_size / dma_size))
         addr_inc = to_byte(align_word(self.shape[-1], self.get_word_alignment()) *
                            self.get_ram_width())
@@ -1763,7 +1764,7 @@ class _ReductionOperator(_StreamingOperator):
         point = self.get_op_point()
         signed = self.get_signed()
 
-        size = strm.constant(datawidth=self.read_dma_size.bit_length(),
+        size = strm.constant(datawidth=self.reduce_size.bit_length(),
                              signed=False)
 
         omit_mask = strm.constant(datawidth=self.par, signed=False)
@@ -1775,11 +1776,15 @@ class _ReductionOperator(_StreamingOperator):
                                              values, omits, size)
 
     def get_control_param_values(self):
+        shape = self.args[0].shape
         aligned_shape = self.args[0].get_aligned_shape()
         aligned_length = self.args[0].get_aligned_length()
         total_size = int(math.ceil(aligned_length / self.par))
+
         read_dma_size = int(math.ceil(aligned_shape[-1] / self.par))
         write_dma_size = self.shape[-1]
+        reduce_size = int(math.ceil(shape[-1] / self.par))
+
         num_comp = int(math.ceil(total_size / read_dma_size))
 
         addr_inc = to_byte(align_word(self.shape[-1], self.get_word_alignment()) *
@@ -1851,6 +1856,7 @@ class _ReductionOperator(_StreamingOperator):
 
         return OrderedDict([('read_dma_size', read_dma_size),
                             ('write_dma_size', write_dma_size),
+                            ('reduce_size', reduce_size),
                             ('num_comp', num_comp),
                             ('addr_inc', addr_inc),
                             ('arg_addr_incs', arg_addr_incs),
@@ -2061,7 +2067,7 @@ class _ReductionOperator(_StreamingOperator):
                                                    self.arg_stride_zeros, self.arg_omit_dmas):
 
             read_laddr = arg_page_comp_offset
-            read_size = self.read_dma_size
+            read_size = self.reduce_size
             stride = vg.Mux(arg_stride_zero, 0, 1)
             dup = vg.Mux(arg_stride_zero, 1, 0)
             self.stream.set_constant(fsm, dup_name, dup)
@@ -2080,7 +2086,7 @@ class _ReductionOperator(_StreamingOperator):
 
         # set_constant (size)
         name = list(self.stream.constants.keys())[len(self.stream.sources)]
-        self.stream.set_constant(fsm, name, self.read_dma_size)
+        self.stream.set_constant(fsm, name, self.reduce_size)
 
         # set_constant (omit_mask)
         name = list(self.stream.constants.keys())[len(self.stream.sources) + 1]
