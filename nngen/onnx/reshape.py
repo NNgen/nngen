@@ -107,7 +107,7 @@ def make_layout(src_shape, dst_shape, src_layout, prefix='X'):
 
         if src_size == dst_size:
             ss = src_shape[si] if si < len(src_shape) else 1
-            ds = dst_shape[si] if di < len(dst_shape) else 1
+            ds = dst_shape[di] if di < len(dst_shape) else 1
             if ss == ds:
                 if si < len(src_shape):
                     dst_layout.append(src_layout[si])
