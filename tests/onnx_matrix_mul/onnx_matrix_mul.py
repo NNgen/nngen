@@ -25,12 +25,12 @@ import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 
 
-class MatrixAdd(nn.Module):
+class MatrixMul(nn.Module):
     def __init__(self):
-        super(MatrixAdd, self).__init__()
+        super(MatrixMul, self).__init__()
 
     def forward(self, x, y):
-        z = torch.add(x, y)
+        z = torch.mul(x, y)
         return z
 
 
@@ -40,10 +40,10 @@ def run(a_shape=(7, 15), b_shape=(7, 15),
         filename=None, simtype='iverilog', outputfile=None):
 
     # pytorch model
-    model = MatrixAdd()
+    model = MatrixMul()
 
     # Pytorch to ONNX
-    onnx_filename = 'onnx_matrix_add.onnx'
+    onnx_filename = 'onnx_matrix_mul.onnx'
     dummy_a = torch.randn(*a_shape)
     dummy_b = torch.randn(*b_shape)
     dummy_inputs = (dummy_a, dummy_b)
@@ -86,7 +86,7 @@ def run(a_shape=(7, 15), b_shape=(7, 15),
     # --------------------
 
     for op in operators.values():
-        if isinstance(op, ng.add):
+        if isinstance(op, ng.scaled_multiply):
             op.attribute(par=par)
 
     # --------------------
@@ -141,7 +141,7 @@ def run(a_shape=(7, 15), b_shape=(7, 15),
     # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)
     # --------------------
 
-    targ = ng.to_veriloggen([c], 'onnx_matrix_add', silent=silent,
+    targ = ng.to_veriloggen([c], 'onnx_matrix_mul', silent=silent,
                             config={'maxi_datawidth': axi_datawidth})
 
     # --------------------

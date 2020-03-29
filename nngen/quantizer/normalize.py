@@ -264,3 +264,125 @@ def try_shamt_scaled_concat(node, values, scales, shamt):
     kwargs['name'] = node.name
 
     return method(values, scales, shamt, **kwargs)
+
+
+def scaled_multiply(visitor, node):
+    a = node.args[0]
+    b = node.args[1]
+
+    visitor.visit(a)
+    visitor.visit(b)
+
+    q_shamt = find_optimal_shamt_scaled_multiply(visitor, node)
+    node.shamt = q_shamt
+    node.scale_factor = a.scale_factor * b.scale_factor / (2 ** q_shamt)
+
+
+def find_optimal_shamt_scaled_multiply(visitor, node,
+                                       allowed_rate=0.0, range_rate=0.95,
+                                       init_shamt=0):
+
+    shamt = init_shamt
+
+    a_input = node.args[0].eval(visitor.memo, visitor.input_dict)
+    b_input = node.args[1].eval(visitor.memo, visitor.input_dict)
+
+    if node.dtype.signed:
+        _range = round((2 ** (node.dtype.width - 1)) * range_rate)
+    else:
+        _range = round((2 ** node.dtype.width) * range_rate)
+
+    while True:
+        rslt = try_shamt_scaled_multiply(node, a_input, b_input, shamt)
+        neg_overflow = np.where(rslt <= - _range,
+                                np.ones_like(rslt), np.zeros_like(rslt))
+        pos_overflow = np.where(rslt >= _range,
+                                np.ones_like(rslt), np.zeros_like(rslt))
+        num_overflow = np.sum(neg_overflow + pos_overflow)
+
+        rate = num_overflow / rslt.size
+        if rate <= allowed_rate:
+            break
+
+        shamt += 1
+
+    visitor.memo[id(node)] = rslt
+
+    return shamt
+
+
+def try_shamt_scaled_multiply(node, a, b, shamt):
+
+    import nngen.verify as verify
+
+    name = node.__class__.__name__
+    method = getattr(verify, name, None)
+
+    kwargs = {}
+    kwargs['dtype'] = node.dtype
+    kwargs['mul_dtype'] = node.mul_dtype
+    kwargs['name'] = node.name
+    kwargs['par'] = node.par
+
+    return method(a, b, shamt, **kwargs)
+
+
+def scaled_div(visitor, node):
+    a = node.args[0]
+    b = node.args[1]
+
+    visitor.visit(a)
+    visitor.visit(b)
+
+    q_shamt = find_optimal_shamt_scaled_div(visitor, node)
+    node.shamt = q_shamt
+    node.scale_factor = a.scale_factor / b.scale_factor * (2 ** q_shamt)
+
+
+def find_optimal_shamt_scaled_div(visitor, node,
+                                  allowed_rate=0.0, range_rate=0.95,
+                                  init_shamt=0):
+
+    shamt = init_shamt
+
+    a_input = node.args[0].eval(visitor.memo, visitor.input_dict)
+    b_input = node.args[1].eval(visitor.memo, visitor.input_dict)
+
+    if node.dtype.signed:
+        _range = round((2 ** (node.dtype.width - 1)) * range_rate)
+    else:
+        _range = round((2 ** node.dtype.width) * range_rate)
+
+    while True:
+        rslt = try_shamt_scaled_div(node, a_input, b_input, shamt)
+        neg_overflow = np.where(rslt <= - _range,
+                                np.ones_like(rslt), np.zeros_like(rslt))
+        pos_overflow = np.where(rslt >= _range,
+                                np.ones_like(rslt), np.zeros_like(rslt))
+        num_overflow = np.sum(neg_overflow + pos_overflow)
+
+        rate = num_overflow / rslt.size
+        if rate <= allowed_rate:
+            break
+
+        shamt += 1
+
+    visitor.memo[id(node)] = rslt
+
+    return shamt
+
+
+def try_shamt_scaled_div(node, a, b, shamt):
+
+    import nngen.verify as verify
+
+    name = node.__class__.__name__
+    method = getattr(verify, name, None)
+
+    kwargs = {}
+    kwargs['dtype'] = node.dtype
+    kwargs['div_dtype'] = node.div_dtype
+    kwargs['name'] = node.name
+    kwargs['par'] = node.par
+
+    return method(a, b, shamt, **kwargs)

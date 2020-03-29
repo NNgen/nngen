@@ -396,3 +396,127 @@ class scaled_concat(concat):
         kwargs['shamt'] = self.shamt
         kwargs['mul_dtype'] = self.mul_dtype
         return concat.eval(self, memo, input_dict, **kwargs)
+
+
+class scaled_multiply(bt._ElementwiseOperator):
+
+    input_chainable = True
+    output_chainable = True
+
+    def __sub_str__(self):
+        shamt = ' shamt:%d' % self.shamt
+        ret = [shamt]
+        return ''.join(ret)
+
+    def get_local_control_param_values(self):
+        return OrderedDict([('shamt_cparam', self.shamt)])
+
+    def op(self, strm, *args, **kwargs):
+        a_datawidth = self.args[0].get_op_width()
+        a_point = self.args[0].get_op_point()
+        a_signed = self.args[0].get_signed()
+        b_datawidth = self.args[1].get_op_width()
+        b_point = self.args[1].get_op_point()
+        b_signed = self.args[1].get_signed()
+
+        mul = strm.Times(args[0], args[1])
+
+        if self.mul_dtype is not None:
+            mul.width = self.mul_dtype.width
+            mul.signed = self.mul_dtype.signed
+        else:
+            mul.width = a_datawidth + b_datawidth
+            mul.signed = self.dtype.signed
+
+        if self.mul_dtype is not None and mul.point != self.mul_dtype.point:
+            mul = strm.Cast(mul, point=self.mul_dtype.point)
+
+        shamt = strm.ReinterpretCast(self.shamt_cparam,
+                                     width=self.shamt_cparam.width,
+                                     signed=False)
+        sra = strm.Sra(mul, shamt)
+
+        width = self.dtype.width
+        p_th = (1 << (width - 1)) - 1
+        n_th = -1 * p_th
+
+        p = strm.Mux(sra > p_th, p_th, sra)
+        n = strm.Mux(sra < n_th, n_th, sra)
+        return strm.Mux(sra >= 0, p, n)
+
+    def __init__(self, a, b, shamt,
+                 dtype=None, mul_dtype=None, name=None, par=1):
+
+        shape = None
+        self.shamt = shamt
+        bt._ElementwiseOperator.__init__(self, a, b,
+                                         dtype=dtype, shape=shape, name=name, par=par)
+        self.mul_dtype = mul_dtype
+
+    def eval(self, memo, input_dict, **kwargs):
+        kwargs['shamt'] = self.shamt
+        kwargs['a_dtype'] = self.args[0].dtype
+        kwargs['b_dtype'] = self.args[1].dtype
+        return bt._ElementwiseOperator.eval(self, memo, input_dict, **kwargs)
+
+
+class scaled_div(bt._ElementwiseOperator):
+
+    input_chainable = True
+    output_chainable = True
+
+    def __sub_str__(self):
+        shamt = ' shamt:%d' % self.shamt
+        ret = [shamt]
+        return ''.join(ret)
+
+    def get_local_control_param_values(self):
+        return OrderedDict([('shamt_cparam', self.shamt)])
+
+    def op(self, strm, *args, **kwargs):
+        a_datawidth = self.args[0].get_op_width()
+        a_point = self.args[0].get_op_point()
+        a_signed = self.args[0].get_signed()
+        b_datawidth = self.args[1].get_op_width()
+        b_point = self.args[1].get_op_point()
+        b_signed = self.args[1].get_signed()
+
+        div = strm.Div(args[0], args[1])
+
+        if self.div_dtype is not None:
+            div.width = self.div_dtype.width
+            div.signed = self.div_dtype.signed
+        else:
+            div.width = max(a_datawidth, b_datawidth)
+            div.signed = self.dtype.signed
+
+        if self.div_dtype is not None and div.point != self.div_dtype.point:
+            div = strm.Cast(div, point=self.div_dtype.point)
+
+        shamt = strm.ReinterpretCast(self.shamt_cparam,
+                                     width=self.shamt_cparam.width,
+                                     signed=False)
+        sll = strm.Sll(div, shamt)
+
+        width = self.dtype.width
+        p_th = (1 << (width - 1)) - 1
+        n_th = -1 * p_th
+
+        p = strm.Mux(sra > p_th, p_th, sra)
+        n = strm.Mux(sra < n_th, n_th, sra)
+        return strm.Mux(sra >= 0, p, n)
+
+    def __init__(self, a, b, shamt,
+                 dtype=None, div_dtype=None, name=None, par=1):
+
+        shape = None
+        self.shamt = shamt
+        bt._ElementwiseOperator.__init__(self, a, b,
+                                         dtype=dtype, shape=shape, name=name, par=par)
+        self.div_dtype = div_dtype
+
+    def eval(self, memo, input_dict, **kwargs):
+        kwargs['shamt'] = self.shamt
+        kwargs['a_dtype'] = self.args[0].dtype
+        kwargs['b_dtype'] = self.args[1].dtype
+        return bt._ElementwiseOperator.eval(self, memo, input_dict, **kwargs)

@@ -23,6 +23,8 @@ func_map = {
     'normalize': normalize.normalize,
     'scaled_add': normalize.scaled_add,
     'scaled_concat': normalize.scaled_concat,
+    'scaled_multiply': normalize.scaled_multiply,
+    'scaled_div': normalize.scaled_div,
     'sigmoid': sigmoid.sigmoid,
     'exp': exp.exp,
     'argmax': reduce.argmax,
