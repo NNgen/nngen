@@ -101,6 +101,7 @@ class scaled_add(bt._ElementwiseOperator):
         kwargs['a_scale'] = self.a_scale
         kwargs['b_scale'] = self.b_scale
         kwargs['shamt'] = self.shamt
+        kwargs['sum_dtype'] = self.sum_dtype
         kwargs['a_dtype'] = self.args[0].dtype
         kwargs['b_dtype'] = self.args[1].dtype
         return bt._ElementwiseOperator.eval(self, memo, input_dict, **kwargs)
@@ -455,6 +456,7 @@ class scaled_multiply(bt._ElementwiseOperator):
 
     def eval(self, memo, input_dict, **kwargs):
         kwargs['shamt'] = self.shamt
+        kwargs['mul_dtype'] = self.mul_dtype
         kwargs['a_dtype'] = self.args[0].dtype
         kwargs['b_dtype'] = self.args[1].dtype
         return bt._ElementwiseOperator.eval(self, memo, input_dict, **kwargs)
@@ -517,6 +519,7 @@ class scaled_div(bt._ElementwiseOperator):
 
     def eval(self, memo, input_dict, **kwargs):
         kwargs['shamt'] = self.shamt
+        kwargs['div_dtype'] = self.div_dtype
         kwargs['a_dtype'] = self.args[0].dtype
         kwargs['b_dtype'] = self.args[1].dtype
         return bt._ElementwiseOperator.eval(self, memo, input_dict, **kwargs)
