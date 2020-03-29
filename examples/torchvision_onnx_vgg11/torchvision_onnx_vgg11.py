@@ -127,7 +127,7 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
     img = (img - imagenet_mean) / imagenet_std
 
     # execution on pytorch
-    model_input = img
+    model_input = np.broadcast_to(img, act_shape)
 
     if act.perm is not None:
         model_input = np.transpose(model_input, act.reversed_perm)
@@ -144,6 +144,7 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
                    -1.0 * (2 ** (act.dtype.width - 1) - 1),
                    1.0 * (2 ** (act.dtype.width - 1) - 1))
     vact = np.round(vact).astype(np.int64)
+    vact = np.broadcast_to(vact, act_shape)
 
     # compare outputs of hidden layers
     features_ops = [v for k, v in operators.items()
