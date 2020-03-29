@@ -98,8 +98,8 @@ def run(a_shape=(7, 15), b_shape=(7, 15),
     c = outputs['c']
 
     # verification data
-    input_a = np.arange(a.length, dtype=np.int64).reshape(a.shape) % [5]
-    input_b = (np.arange(b.length, dtype=np.int64).reshape(b.shape) + [100]) % [6]
+    input_a = np.arange(a.length, dtype=np.int64).reshape(a.shape) % [17]
+    input_b = (np.arange(b.length, dtype=np.int64).reshape(b.shape) + [100]) % [13]
 
     # execution on pytorch
     model_a = input_a.astype(np.float32)
