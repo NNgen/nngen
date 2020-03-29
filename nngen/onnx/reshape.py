@@ -99,13 +99,23 @@ def make_layout(src_shape, dst_shape, src_layout, prefix='X'):
         src_size = functools.reduce(lambda x, y: x * y, src_shape[:si], 1)
         dst_size = functools.reduce(lambda x, y: x * y, dst_shape[:di], 1)
 
+        if len(dst_layout) == len(dst_shape):
+            break
+
         if si >= len(src_shape) and di >= len(dst_shape):
             break
 
         if src_size == dst_size:
-            if src_shape[si] == dst_shape[di]:
-                dst_layout.append(src_layout[si])
-                si += 1
+            ss = src_shape[si] if si < len(src_shape) else 1
+            ds = dst_shape[si] if di < len(dst_shape) else 1
+            if ss == ds:
+                if si < len(src_shape):
+                    dst_layout.append(src_layout[si])
+                    si += 1
+                else:
+                    dst_layout.append('%s%d' % (prefix, tmp))
+                    tmp += 1
+
                 di += 1
             else:
                 si += 1
@@ -145,9 +155,16 @@ def layout_matching(src_shape, dst_shape, src_layout, dst_layout):
                 value = []
 
             key.append(src_layout[si])
-            value.append(dst_layout[di])
             si += 1
+            while si < len(src_shape) and src_shape[si] == 1:
+                key.append(src_layout[si])
+                si += 1
+
+            value.append(dst_layout[di])
             di += 1
+            while di < len(dst_shape) and dst_shape[di] == 1:
+                value.append(dst_layout[di])
+                di += 1
 
         elif src_size > dst_size:
             value.append(dst_layout[di])
