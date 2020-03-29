@@ -13,6 +13,7 @@ from . import matmul
 from . import normalize
 from . import sigmoid
 from . import exp
+from . import reduce
 
 
 # describe custom quantize methods here
@@ -24,6 +25,8 @@ func_map = {
     'scaled_concat': normalize.scaled_concat,
     'sigmoid': sigmoid.sigmoid,
     'exp': exp.exp,
+    'argmax': reduce.argmax,
+    'argmin': reduce.argmin,
 }
 
 

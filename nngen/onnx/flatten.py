@@ -35,6 +35,12 @@ def Flatten(visitor, node, no_transpose=False):
 
         input.layout = input.get_onnx_layout()
 
+    layout = input.get_layout()
+    onnx_layout = input.get_onnx_layout()
+
+    if layout is not None and onnx_layout is not None:
+        axis = layout.index(onnx_layout[axis])
+
     name = util.get_name(node)
 
     if axis == 0:

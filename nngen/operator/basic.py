@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
+import math
 from collections import OrderedDict
 
 import veriloggen as vg
@@ -78,6 +79,24 @@ class neg(bt._ElementwiseOperator):
     @staticmethod
     def op(strm, *args, **kwargs):
         return strm.Uminus(*args)
+
+    def __init__(self, x, dtype=None, name=None, par=1):
+        shape = None
+        bt._ElementwiseOperator.__init__(self, x,
+                                         dtype=dtype, shape=shape, name=name, par=par)
+
+    def eval(self, memo, input_dict, **kwargs):
+        kwargs['x_dtype'] = self.args[0].dtype
+        return bt._ElementwiseOperator.eval(self, memo, input_dict, **kwargs)
+
+
+class abs(bt._ElementwiseOperator):
+    input_chainable = True
+    output_chainable = True
+
+    @staticmethod
+    def op(strm, *args, **kwargs):
+        return strm.Abs(*args)
 
     def __init__(self, x, dtype=None, name=None, par=1):
         shape = None
@@ -706,7 +725,7 @@ class _reduce_op(bt._ReductionOperator):
 
 class reduce_sum(_reduce_op):
     """
-    Computes the sum of elements across dimensions of a tensor. (deprecated arguments)
+    Computes the sum of elements across dimensions of a tensor.
 
     Args:
         input_tensor: A tensor.
@@ -718,12 +737,223 @@ class reduce_sum(_reduce_op):
     """
 
     @staticmethod
-    def reduce_op(strm, *args, **kwargs):
-        return strm.ReduceAddValid(*args, **kwargs)
+    def reduce_op(strm, value, size, par_offset, **kwargs):
+        data, valid = strm.ReduceAddValid(value, size, **kwargs)
+        return (data,), valid
 
     @staticmethod
     def carry_op(strm, *args, **kwargs):
         return strm.Add(*args)
+
+
+class reduce_max(_reduce_op):
+    """
+    Returns the maximum value of elements across dimensions of a tensor.
+
+    Args:
+        input_tensor: A tensor.
+        axis: The dimensions to reduce (optional).
+        keep_dims: If true, retains reduced dimensions with length 1 (optional).
+        dtype: Output data type (optional).
+        name: A name for the operation (optional).
+        par: The number of parallel operations (optional).
+    """
+
+    def reduce_op(self, strm, value, size, par_offset, **kwargs):
+        kwargs['initval'] = self.carry_default_values[0]
+        data, valid = strm.ReduceMaxValid(value, size, **kwargs)
+        return (data,), valid
+
+    @staticmethod
+    def carry_op(strm, *args, **kwargs):
+        return strm.Max(*args)
+
+    def __init__(self, input_tensor,
+                 dtype=None, shape=None, name=None,
+                 axis=None, keep_dims=False, par=1):
+
+        _reduce_op.__init__(self, input_tensor,
+                            axis=axis, keep_dims=keep_dims, dtype=dtype, name=name, par=par)
+
+        if self.get_signed():
+            point = self.get_op_point()
+            if point > 0:
+                default_value = -1 * ((2 ** (self.dtype.width - 1)) >> point)
+            else:
+                default_value = -1 * ((2 ** (self.dtype.width - 1)) << -point)
+        else:
+            default_value = 0
+
+        self.carry_default_values = [default_value]
+
+
+class reduce_min(_reduce_op):
+    """
+    Returns the minimum value of elements across dimensions of a tensor.
+
+    Args:
+        input_tensor: A tensor.
+        axis: The dimensions to reduce (optional).
+        keep_dims: If true, retains reduced dimensions with length 1 (optional).
+        dtype: Output data type (optional).
+        name: A name for the operation (optional).
+        par: The number of parallel operations (optional).
+    """
+
+    def reduce_op(self, strm, value, size, par_offset, **kwargs):
+        kwargs['initval'] = self.carry_default_values[0]
+        data, valid = strm.ReduceMinValid(value, size, **kwargs)
+        return (data,), valid
+
+    @staticmethod
+    def carry_op(strm, *args, **kwargs):
+        return strm.Min(*args)
+
+    def __init__(self, input_tensor,
+                 dtype=None, shape=None, name=None,
+                 axis=None, keep_dims=False, par=1):
+
+        _reduce_op.__init__(self, input_tensor,
+                            axis=axis, keep_dims=keep_dims, dtype=dtype, name=name, par=par)
+
+        if self.get_signed():
+            point = self.get_op_point()
+            if point > 0:
+                default_value = (2 ** (self.dtype.width - 1) - 1) >> point
+            else:
+                default_value = (2 ** (self.dtype.width - 1) - 1) << -point
+        else:
+            if point > 0:
+                default_value = (2 ** self.dtype.width - 1) >> point
+            else:
+                default_value = (2 ** self.dtype.width - 1) << -point
+
+        self.carry_default_values = (default_value,)
+
+
+class _arg_op(_reduce_op):
+
+    carry_default_values = (0, 0)
+
+    def __init__(self, input_tensor,
+                 axis=None, keep_dims=False, dtype=None, name=None, par=1):
+
+        if isinstance(axis, (tuple, list)) and len(axis) > 1:
+            raise ValueError('size of axis must be 1.')
+
+        # Because get_stream_reduce_output() cannot calculate
+        # the flatten index value for a unflatten value,
+        # input value must be flatten when axis is None.
+        if axis is None and len(input_tensor.shape) > 1:
+            input_tensor = reshape(input_tensor, [-1])
+
+        _reduce_op.__init__(self, input_tensor,
+                            axis=axis, keep_dims=keep_dims, dtype=dtype, par=par)
+
+
+class argmax(_arg_op):
+    """
+    Returns the index of the maximum value of elements across dimensions of a tensor.
+
+    Args:
+        input_tensor: A tensor.
+        axis: The dimensions to reduce (optional).
+        keep_dims: If true, retains reduced dimensions with length 1 (optional).
+        dtype: Output data type (optional).
+        name: A name for the operation (optional).
+        par: The number of parallel operations (optional).
+    """
+
+    def reduce_op(self, strm, value, size, par_offset, **kwargs):
+        kwargs['initval'] = self.carry_default_values[1]
+        index, data, valid = strm.ReduceArgMaxValid(value, size, **kwargs)
+        shamt = math.ceil(math.log2(self.par))
+        index = index << shamt
+        index.latency = 0
+        index = index + par_offset
+        index.latency = 0
+        return (index, data), valid
+
+    def gather_op(self, strm, indexes, values, **kwargs):
+        ret_index = indexes[0]
+        ret_value = values[0]
+        for index, value in zip(indexes[1:], values[1:]):
+            ret_index = strm.Mux(ret_value < value, index, ret_index)
+            ret_index.latency = 0
+            ret_value = strm.Mux(ret_value < value, value, ret_value)
+            ret_value.latency = 0
+        return ret_index, ret_value
+
+    def __init__(self, input_tensor,
+                 axis=None, keep_dims=False, dtype=None, name=None, par=1):
+
+        _arg_op.__init__(self, input_tensor,
+                         axis=axis, keep_dims=keep_dims, dtype=dtype, name=name, par=par)
+
+        if self.get_signed():
+            point = self.get_op_point()
+            if point > 0:
+                default_value = -1 * ((2 ** (self.dtype.width - 1)) >> point)
+            else:
+                default_value = -1 * ((2 ** (self.dtype.width - 1)) << -point)
+        else:
+            default_value = 0
+
+        self.carry_default_values = (0, default_value)
+
+
+class argmin(_arg_op):
+    """
+    Returns the index of the minimum value of elements across dimensions of a tensor.
+
+    Args:
+        input_tensor: A tensor.
+        axis: The dimensions to reduce (optional).
+        keep_dims: If true, retains reduced dimensions with length 1 (optional).
+        dtype: Output data type (optional).
+        name: A name for the operation (optional).
+        par: The number of parallel operations (optional).
+    """
+
+    def reduce_op(self, strm, value, size, par_offset, **kwargs):
+        kwargs['initval'] = self.carry_default_values[1]
+        index, data, valid = strm.ReduceArgMinValid(value, size, **kwargs)
+        shamt = math.ceil(math.log2(self.par))
+        index = index << shamt
+        index.latency = 0
+        index = index + par_offset
+        index.latency = 0
+        return (index, data), valid
+
+    def gather_op(self, strm, indexes, values, **kwargs):
+        ret_index = indexes[0]
+        ret_value = values[0]
+        for index, value in zip(indexes[1:], values[1:]):
+            ret_index = strm.Mux(ret_value < value, ret_index, index)
+            ret_index.latency = 0
+            ret_value = strm.Mux(ret_value < value, ret_value, value)
+            ret_value.latency = 0
+        return ret_index, ret_value
+
+    def __init__(self, input_tensor,
+                 axis=None, keep_dims=False, dtype=None, name=None, par=1):
+
+        _arg_op.__init__(self, input_tensor,
+                         axis=axis, keep_dims=keep_dims, dtype=dtype, name=name, par=par)
+
+        if self.get_signed():
+            point = self.get_op_point()
+            if point > 0:
+                default_value = (2 ** (self.dtype.width - 1) - 1) >> point
+            else:
+                default_value = (2 ** (self.dtype.width - 1) - 1) << -point
+        else:
+            if point > 0:
+                default_value = (2 ** self.dtype.width - 1) >> point
+            else:
+                default_value = (2 ** self.dtype.width - 1) << -point
+
+        self.carry_default_values = (0, default_value)
 
 
 class _reshape(bt._Reshape):
@@ -759,7 +989,7 @@ def cast(x, dtype, name=None):
 
 def expand_dims(input, axis, name=None):
     """
-    Inserts a dimension of 1 into a tensor's shape. (deprecated arguments)
+    Inserts a dimension of 1 into a tensor's shape.
 
     Given a tensor input, this operation inserts a dimension \
     of 1 at the dimension index axis of input's shape. \

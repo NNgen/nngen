@@ -47,6 +47,13 @@ def Squeeze(visitor, node):
 
         return ret
 
+    layout = input.get_layout()
+    onnx_layout = input.get_onnx_layout()
+
+    if layout is not None and onnx_layout is not None:
+        axes = [layout.index(onnx_layout[axis]) for axis in axes]
+        axes = axes.sort()
+
     name = util.get_name(node)
 
     new_shape = input.shape[:]
