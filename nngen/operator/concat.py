@@ -17,9 +17,10 @@ class concat(bt._Operator):
     output_chainable = False
 
     def __sub_str__(self):
+        axis = ' axis:%d' % self.axis
         buffered = (' buffered'
                     if hasattr(self, 'buffered_value') and self.buffered_value else '')
-        return ''.join([buffered])
+        return ''.join([axis, buffered])
 
     def __init__(self, values, axis, dtype=None, name=None):
         rank = bt.get_rank(values[0].shape)
