@@ -522,24 +522,24 @@ class _Operator(_Numeric):
         """
         @return 3 tuples of (width, length)
         """
-
-        shape = self.get_aligned_shape()
-        min_size = int(math.ceil(shape[-1] / self.par)) * 2
-        input_widths = [arg.get_ram_width() * self.par for arg in self.args]
-        output_width = self.get_ram_width() * self.par
-
         inputs = []
         temps = []
 
-        for arg, width in zip(self.args, input_widths):
+        for arg in self.args:
             if are_chainable_operators(self, arg):
                 arg_input_rams, arg_output_rams, arg_temp_rams = arg.get_required_rams()
                 inputs.extend(arg_input_rams)
                 temps.extend(arg_temp_rams)
             else:
-                arg_ram = [(width, min_size)]
+                input_width = arg.get_ram_width() * self.par
+                input_shape = arg.get_aligned_shape()
+                min_size = int(math.ceil(input_shape[-1] / self.par)) * 2
+                arg_ram = [(input_width, min_size)]
                 inputs.extend(arg_ram)
 
+        output_width = self.get_ram_width() * self.par
+        shape = self.get_aligned_shape()
+        min_size = int(math.ceil(shape[-1] / self.par)) * 2
         outputs = [(output_width, min_size)]
 
         return inputs, outputs, temps
@@ -1694,14 +1694,13 @@ class _ReductionOperator(_StreamingOperator):
         self.keep_dims = keep_dims
 
     def get_required_rams(self):
-        inputs, _, temps = _Operator.get_required_rams(self)
+        inputs, _, temps = _StreamingOperator.get_required_rams(self)
 
         outputs = []
 
+        output_width = self.get_ram_width()
         shape = self.get_aligned_shape()
         min_size = shape[-1] * 2
-        output_width = self.get_ram_width()
-
         outputs = [(output_width, min_size)] * len(self.carry_default_values)
 
         return inputs, outputs, temps
@@ -1721,7 +1720,7 @@ class _ReductionOperator(_StreamingOperator):
         data_list = [[] for carry_default_value in self.carry_default_values]
         for par_offset, (value, omit) in enumerate(zip(values, omits)):
             if self.par > 1:
-                value = strm.Mux(omit, strm.Int(self.carry_default_values[0]), value)
+                value = strm.Mux(omit, strm.Int(self.carry_default_values[-1]), value)
 
             out_values, valid = self.reduce_op(strm, value, size, par_offset,
                                                width=width, signed=signed)
