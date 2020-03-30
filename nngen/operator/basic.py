@@ -1055,6 +1055,7 @@ class transpose(bt._Operator):
 
         bt._Operator.__init__(self, a,
                               dtype=dtype, shape=shape, name=name)
+        self.implicit = False
 
     def attribute(self):
         pass

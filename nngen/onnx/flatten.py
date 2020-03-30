@@ -32,6 +32,7 @@ def Flatten(visitor, node, no_transpose=False):
         onnx_perm = [i for i, l in enumerate(input.get_onnx_layout())]
 
         input = operator.transpose(input, perm)
+        input.implicit = True
         input.transpose_onnx_perm = onnx_perm
 
         input.layout = input.get_onnx_layout()
