@@ -57,7 +57,7 @@ def Slice(visitor, node):
 
     if layout is not None and onnx_layout is not None:
         axes = [layout.index(onnx_layout[axis]) for axis in axes]
-        axes = axes.sort()
+        axes.sort()
 
     starts, ends, steps = extract_slices(input, starts, ends, axes, steps)
     return operator.slice_(input, starts, ends, steps)
