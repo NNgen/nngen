@@ -237,15 +237,15 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     # --------------------
 
     # to Veriloggen object
-    # targ = ng.to_veriloggen([out], 'yolov3tiny', silent=silent,
+    # targ = ng.to_veriloggen(outs, 'yolov3tiny', silent=silent,
     #                        config={'maxi_datawidth': axi_datawidth})
 
     # to IP-XACT (the method returns Veriloggen object, as well as to_veriloggen)
-    targ = ng.to_ipxact([out], 'yolov3tiny', silent=silent,
+    targ = ng.to_ipxact(outs, 'yolov3tiny', silent=silent,
                         config={'maxi_datawidth': axi_datawidth})
 
     # to Verilog HDL RTL (the method returns a source code text)
-    # rtl = ng.to_verilog([out], 'yolov3tiny', silent=silent,
+    # rtl = ng.to_verilog(outs, 'yolov3tiny', silent=silent,
     #                    config={'maxi_datawidth': axi_datawidth})
 
     # --------------------
@@ -256,12 +256,13 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
         sys.exit()
 
     # to memory image
-    param_data = ng.export_ndarray([out], chunk_size)
+    param_data = ng.export_ndarray(outs, chunk_size)
     param_bytes = len(param_data)
 
     variable_addr = int(math.ceil((act.addr + act.memory_size) / chunk_size)) * chunk_size
-    check_addr = int(math.ceil((variable_addr + param_bytes) / chunk_size)) * chunk_size
-    tmp_addr = int(math.ceil((check_addr + out.memory_size) / chunk_size)) * chunk_size
+    check0_addr = int(math.ceil((variable_addr + param_bytes) / chunk_size)) * chunk_size
+    check1_addr = int(math.ceil((check0_addr + outs[0].memory_size) / chunk_size)) * chunk_size
+    tmp_addr = int(math.ceil((check1_addr + outs[1].memory_size) / chunk_size)) * chunk_size
 
     memimg_datawidth = 32
     # mem = np.zeros([1024 * 1024 * 256 // (memimg_datawidth // 8)], dtype=np.int64)
@@ -278,8 +279,11 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
                    8, variable_addr)
 
     # verification data
-    axi.set_memory(mem, vout, memimg_datawidth,
-                   act_dtype.width, check_addr,
+    axi.set_memory(mem, vouts[0], memimg_datawidth,
+                   act_dtype.width, check0_addr,
+                   max(int(math.ceil(axi_datawidth / act_dtype.width)), conv2d_par_och))
+    axi.set_memory(mem, vouts[1], memimg_datawidth,
+                   act_dtype.width, check1_addr,
                    max(int(math.ceil(axi_datawidth / act_dtype.width)), conv2d_par_och))
 
     # test controller
@@ -333,20 +337,35 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
         # verify
         ok = True
-        for bat in range(out.shape[0]):
-            for x in range(out.shape[1]):
-                orig = memory.read_word(bat * out.aligned_shape[1] + x,
-                                        out.addr, act_dtype.width)
-                check = memory.read_word(bat * out.aligned_shape[1] + x,
-                                         check_addr, act_dtype.width)
+        for bat in range(out[0].shape[0]):
+            for x in range(out[0].shape[1]):
+                orig = memory.read_word(bat * out[0].aligned_shape[1] + x,
+                                        out[0].addr, act_dtype.width)
+                check = memory.read_word(bat * out[0].aligned_shape[1] + x,
+                                         check0_addr, act_dtype.width)
 
                 if vthread.verilog.NotEql(orig, check):
                     print('NG (', bat, x,
                           ') orig: ', orig, ' check: ', check)
                     ok = False
-                else:
-                    print('OK (', bat, x,
+                # else:
+                #    print('OK (', bat, x,
+                #          ') orig: ', orig, ' check: ', check)
+
+        for bat in range(out[1].shape[0]):
+            for x in range(out[1].shape[1]):
+                orig = memory.read_word(bat * out[1].aligned_shape[1] + x,
+                                        out[1].addr, act_dtype.width)
+                check = memory.read_word(bat * out[1].aligned_shape[1] + x,
+                                         check1_addr, act_dtype.width)
+
+                if vthread.verilog.NotEql(orig, check):
+                    print('NG (', bat, x,
                           ') orig: ', orig, ' check: ', check)
+                    ok = False
+                # else:
+                #    print('OK (', bat, x,
+                #          ') orig: ', orig, ' check: ', check)
 
         if ok:
             print('# verify: PASSED')
