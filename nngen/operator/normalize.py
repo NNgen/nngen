@@ -483,30 +483,30 @@ class scaled_div(bt._ElementwiseOperator):
         b_point = self.args[1].get_op_point()
         b_signed = self.args[1].get_signed()
 
-        div = strm.Div(args[0], args[1])
+        shamt = strm.ReinterpretCast(self.shamt_cparam,
+                                     width=self.shamt_cparam.width,
+                                     signed=False)
+
+        sll = strm.Sll(args[0], shamt)
+        sll.width = a_datawidth + b_datawidth
+        div = strm.Div(sll, args[1])
 
         if self.div_dtype is not None:
             div.width = self.div_dtype.width
             div.signed = self.div_dtype.signed
         else:
-            div.width = max(a_datawidth, b_datawidth)
             div.signed = self.dtype.signed
 
         if self.div_dtype is not None and div.point != self.div_dtype.point:
             div = strm.Cast(div, point=self.div_dtype.point)
 
-        shamt = strm.ReinterpretCast(self.shamt_cparam,
-                                     width=self.shamt_cparam.width,
-                                     signed=False)
-        sll = strm.Sll(div, shamt)
-
         width = self.dtype.width
         p_th = (1 << (width - 1)) - 1
         n_th = -1 * p_th
 
-        p = strm.Mux(sra > p_th, p_th, sra)
-        n = strm.Mux(sra < n_th, n_th, sra)
-        return strm.Mux(sra >= 0, p, n)
+        p = strm.Mux(div > p_th, p_th, div)
+        n = strm.Mux(div < n_th, n_th, div)
+        return strm.Mux(div >= 0, p, n)
 
     def __init__(self, a, b, shamt,
                  dtype=None, div_dtype=None, name=None, par=1):
