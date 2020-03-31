@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
+import math
 import numpy as np
 
 from . import util
@@ -105,7 +106,12 @@ def conv2d(visitor, node):
         (rshift_sum is None or isinstance(rshift_sum, int)) and
             (rshift_out is None or isinstance(rshift_out, int))):
 
-        init_rshift_out = max(int(np.mean(np.abs(q_filter_value))).bit_length() - 1, 0)
+        init_rshift_out = max(math.ceil(
+            math.log(np.mean(np.abs(q_filter_value)) + 0.0001, 2)) - 1, 0)
+        if scale is not None:
+            init_rshift_out += max(math.ceil(
+                math.log(np.mean(np.abs(q_scale_value)) + 0.0001, 2)), 0)
+
         q_rshift_mul, q_rshift_sum, q_rshift_out = find_optimal_rshift(
             visitor, node, q_filter_value, q_bias_value, q_scale_value,
             init_rshift_mul=0,
