@@ -106,11 +106,9 @@ def conv2d(visitor, node):
         (rshift_sum is None or isinstance(rshift_sum, int)) and
             (rshift_out is None or isinstance(rshift_out, int))):
 
-        init_rshift_out = max(math.ceil(
-            math.log(np.mean(np.abs(q_filter_value)) + 0.0001, 2)) - 1, 0)
+        init_rshift_out = max(math.ceil(math.log(np.mean(np.abs(q_filter_value)) * 2.0, 2)), 0)
         if scale is not None:
-            init_rshift_out += max(math.ceil(
-                math.log(np.mean(np.abs(q_scale_value)) + 0.0001, 2)), 0)
+            init_rshift_out += max(math.ceil(math.log(np.mean(np.abs(q_scale_value)) * 2.0, 2)), 0)
 
         q_rshift_mul, q_rshift_sum, q_rshift_out = find_optimal_rshift(
             visitor, node, q_filter_value, q_bias_value, q_scale_value,
