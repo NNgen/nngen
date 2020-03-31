@@ -16,9 +16,9 @@ import onnx_matrix_mul
 
 a_shape = (15, 15)
 b_shape = (15, 15)
-a_dtype = ng.int16
-b_dtype = ng.int16
-c_dtype = ng.int16
+a_dtype = ng.int8
+b_dtype = ng.int8
+c_dtype = ng.int8
 par = 1
 axi_datawidth = 32
 
