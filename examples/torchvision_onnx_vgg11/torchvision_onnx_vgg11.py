@@ -26,7 +26,7 @@ import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 
 
-def run(act_dtype=ng.int8, weight_dtype=ng.int8,
+def run(act_dtype=ng.int16, weight_dtype=ng.int8,
         bias_dtype=ng.int32, scale_dtype=ng.int8,
         with_batchnorm=True, disable_fusion=False,
         conv2d_par_ich=1, conv2d_par_och=1, conv2d_par_col=1, conv2d_par_row=1,
