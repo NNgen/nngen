@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
+import math
 import numpy as np
 
 from . import util
@@ -36,13 +37,15 @@ def normalize(visitor, node):
     bias.set_value(q_bias_value)
     bias.scale_factor = input.scale_factor * scale_scale_factor
 
-    q_shamt = find_optimal_shamt_normalize(visitor, node, q_scale_value, q_bias_value)
+    init_shamt = max(math.ceil(math.log(np.mean(np.abs(q_scale_value)) * 1.0, 2)), 0)
+    q_shamt = find_optimal_shamt_normalize(visitor, node, q_scale_value, q_bias_value,
+                                           init_shamt=init_shamt)
     shamt.fill_value = q_shamt
     node.scale_factor = input.scale_factor * scale.scale_factor / (2 ** q_shamt)
 
 
 def find_optimal_shamt_normalize(visitor, node, scale, bias,
-                                 allowed_rate=0.0, range_rate=0.95,
+                                 allowed_rate=0.0, range_rate=0.66,
                                  init_shamt=0):
 
     shamt = init_shamt
@@ -116,14 +119,17 @@ def scaled_add(visitor, node):
     node.a_scale = int(q_a_scale_value)
     node.b_scale = int(q_b_scale_value)
 
-    q_shamt = find_optimal_shamt_scaled_add(visitor, node, q_a_scale_value, q_b_scale_value)
+    init_shamt = max(max(math.ceil(math.log(np.abs(q_a_scale_value) * 1.0, 2)),
+                         math.ceil(math.log(np.abs(q_b_scale_value) * 1.0, 2))), 0)
+    q_shamt = find_optimal_shamt_scaled_add(visitor, node, q_a_scale_value, q_b_scale_value,
+                                            init_shamt=init_shamt)
     node.shamt = q_shamt
     node.scale_factor = max(a.scale_factor * a_scale_scale_factor,
                             b.scale_factor * b_scale_scale_factor) / (2 ** q_shamt)
 
 
 def find_optimal_shamt_scaled_add(visitor, node, a_scale, b_scale,
-                                  allowed_rate=0.0, range_rate=0.95,
+                                  allowed_rate=0.0, range_rate=0.66,
                                   init_shamt=0):
 
     shamt = init_shamt
@@ -211,7 +217,10 @@ def scaled_concat(visitor, node):
 
     node.scales = new_scales
 
-    q_shamt = find_optimal_shamt_scaled_concat(visitor, node, new_scales)
+    init_shamt = max(max(*[math.ceil(math.log(np.abs(new_scale), 2))
+                           for new_scale in new_scales]), 0)
+    q_shamt = find_optimal_shamt_scaled_concat(visitor, node, new_scales,
+                                               init_shamt=init_shamt)
     node.shamt = q_shamt
     node.scale_factor = max(*[value.scale_factor * scale_scale_factor
                               for value, scale_scale_factor in zip(
@@ -219,7 +228,7 @@ def scaled_concat(visitor, node):
 
 
 def find_optimal_shamt_scaled_concat(visitor, node, scales,
-                                     allowed_rate=0.0, range_rate=0.95,
+                                     allowed_rate=0.0, range_rate=0.66,
                                      init_shamt=0):
 
     shamt = init_shamt
@@ -273,13 +282,15 @@ def scaled_multiply(visitor, node):
     visitor.visit(a)
     visitor.visit(b)
 
-    q_shamt = find_optimal_shamt_scaled_multiply(visitor, node)
+    init_shamt = max(a.dtype.width + b.dtype.width - node.dtype.width - 1, 0)
+    q_shamt = find_optimal_shamt_scaled_multiply(visitor, node,
+                                                 init_shamt=init_shamt)
     node.shamt = q_shamt
     node.scale_factor = a.scale_factor * b.scale_factor / (2 ** q_shamt)
 
 
 def find_optimal_shamt_scaled_multiply(visitor, node,
-                                       allowed_rate=0.0, range_rate=0.5,
+                                       allowed_rate=0.0, range_rate=0.33,
                                        init_shamt=0):
 
     shamt = init_shamt
@@ -334,7 +345,9 @@ def scaled_div(visitor, node):
     visitor.visit(a)
     visitor.visit(b)
 
-    q_shamt = find_optimal_shamt_scaled_div(visitor, node)
+    init_shamt = b.dtype.width
+    q_shamt = find_optimal_shamt_scaled_div(visitor, node,
+                                            init_shamt=init_shamt)
     node.shamt = q_shamt
     node.scale_factor = a.scale_factor / b.scale_factor * (2 ** q_shamt)
 
@@ -347,6 +360,7 @@ def find_optimal_shamt_scaled_div(visitor, node,
 
     a_input = node.args[0].eval(visitor.memo, visitor.input_dict)
     b_input = node.args[1].eval(visitor.memo, visitor.input_dict)
+    b_input = np.where(b_input == 0, 1, b_input)
 
     if node.dtype.signed:
         _range = round((2 ** (node.dtype.width - 1)) * range_rate)
@@ -365,7 +379,11 @@ def find_optimal_shamt_scaled_div(visitor, node,
         if rate <= allowed_rate:
             break
 
-        shamt += 1
+        shamt -= 1
+
+        if shamt < 0:
+            shamt = 0
+            break
 
     visitor.memo[id(node)] = rslt
 

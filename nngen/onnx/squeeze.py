@@ -52,7 +52,7 @@ def Squeeze(visitor, node):
 
     if layout is not None and onnx_layout is not None:
         axes = [layout.index(onnx_layout[axis]) for axis in axes]
-        axes = axes.sort()
+        axes.sort()
 
     name = util.get_name(node)
 

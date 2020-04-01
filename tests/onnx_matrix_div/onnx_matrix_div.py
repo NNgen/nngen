@@ -25,12 +25,12 @@ import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 
 
-class MatrixMul(nn.Module):
+class MatrixDiv(nn.Module):
     def __init__(self):
-        super(MatrixMul, self).__init__()
+        super(MatrixDiv, self).__init__()
 
     def forward(self, x, y):
-        z = torch.mul(x, y)
+        z = torch.div(x, y)
         return z
 
 
@@ -40,10 +40,10 @@ def run(a_shape=(7, 15), b_shape=(7, 15),
         filename=None, simtype='iverilog', outputfile=None):
 
     # pytorch model
-    model = MatrixMul()
+    model = MatrixDiv()
 
     # Pytorch to ONNX
-    onnx_filename = 'onnx_matrix_mul.onnx'
+    onnx_filename = 'onnx_matrix_div.onnx'
     dummy_a = torch.randn(*a_shape)
     dummy_b = torch.randn(*b_shape)
     dummy_inputs = (dummy_a, dummy_b)
@@ -86,7 +86,7 @@ def run(a_shape=(7, 15), b_shape=(7, 15),
     # --------------------
 
     for op in operators.values():
-        if isinstance(op, ng.scaled_multiply):
+        if isinstance(op, ng.scaled_div):
             op.attribute(par=par)
 
     # --------------------
@@ -98,8 +98,10 @@ def run(a_shape=(7, 15), b_shape=(7, 15),
     c = outputs['c']
 
     # verification data
-    input_a = np.arange(a.length, dtype=np.int64).reshape(a.shape) % [17]
+    input_a = np.arange(a.length, dtype=np.int64).reshape(a.shape) % [19]
+    input_a = np.where(input_a == 0, 1, input_a)
     input_b = (np.arange(b.length, dtype=np.int64).reshape(b.shape) + [100]) % [13]
+    input_b = np.where(input_b == 0, 1, input_b)
 
     # execution on pytorch
     model_a = input_a.astype(np.float32)
@@ -141,7 +143,7 @@ def run(a_shape=(7, 15), b_shape=(7, 15),
     # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)
     # --------------------
 
-    targ = ng.to_veriloggen([c], 'onnx_matrix_mul', silent=silent,
+    targ = ng.to_veriloggen([c], 'onnx_matrix_div', silent=silent,
                             config={'maxi_datawidth': axi_datawidth})
 
     # --------------------

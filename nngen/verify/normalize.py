@@ -62,9 +62,9 @@ def scaled_div(a, b, shamt,
                dtype=None, div_dtype=None, name=None, par=1,
                a_dtype=None, b_dtype=None):
 
+    a = basic.lshift(a, shamt, dtype=div_dtype, par=par,
+                     x_dtype=a_dtype)
     v = basic.div(a, b, dtype=div_dtype, par=par,
                   x_dtype=a_dtype, y_dtype=b_dtype)
-    v = basic.lshift(v, shamt, dtype=div_dtype, par=par,
-                     x_dtype=div_dtype)
     return basic.clip(v, dtype=dtype, par=par,
                       x_dtype=div_dtype)

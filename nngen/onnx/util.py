@@ -72,6 +72,7 @@ def transpose_layout(value, expected_layout, onnx_layout):
     perm = tuple([current_layout.index(e) for e in expected_layout])
 
     value = operator.transpose(value, perm)
+    value.implicit = True
     value.layout = expected_layout
     value.onnx_layout = onnx_layout
 

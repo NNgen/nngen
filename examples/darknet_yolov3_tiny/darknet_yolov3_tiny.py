@@ -77,7 +77,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     onnx_filename = 'yolov3-tiny.onnx'
     dummy_input = torch.randn(*act_shape).transpose(1, 3)
     input_names = ['act']
-    output_names = ['out']
+    output_names = ['scores', 'boxes']
     model.eval()
     torch.onnx.export(model, dummy_input, onnx_filename,
                       input_names=input_names, output_names=output_names)
@@ -142,7 +142,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     # --------------------
 
     act = placeholders['act']
-    out = outputs['out']
+    outs = (outputs['scores'], outputs['boxes'])
 
     # verification data
     img = np.array(PIL.Image.open('car416x416.png').convert('RGB')).astype(np.float32)
@@ -158,10 +158,14 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
         model_input = np.transpose(model_input, act.reversed_perm)
 
     model.eval()
-    model_out = model(torch.from_numpy(model_input))[0].detach().numpy()
-    if act.perm is not None and len(model_out.shape) == len(act.shape):
-        model_out = np.transpose(model_out, act.perm)
-    scaled_model_out = model_out * out.scale_factor
+    model_rslts = model(torch.from_numpy(model_input))
+    model_outs = [rslt.detach().numpy() for rslt in model_rslts]
+    model_outs = [(np.transpose(model_out, act.perm)
+                   if act.perm is not None and len(model_out.shape) == len(act.shape)
+                   else model_out)
+                  for model_out in model_outs]
+    scaled_model_outs = [model_out * out.scale_factor
+                         for model_out, out in zip(model_outs, outs)]
 
     # software-based verification
     vact = img * act_scale_factor
@@ -176,11 +180,12 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
                           isinstance(v.act_func, ng.leaky_relu_base))]
     leaky_relu_ops = list(sorted(set(leaky_relu_ops), key=leaky_relu_ops.index))
 
-    # conv2d_ops = [v for k, v in operators.items()
-    #              if (isinstance(v, ng.conv2d) and v.act_func is None)]
-    #conv2d_ops = list(sorted(set(conv2d_ops), key=conv2d_ops.index))
+    conv2d_ops = [v for k, v in operators.items()
+                  if (isinstance(v, ng.conv2d) and v.act_func is None)]
+    conv2d_ops = list(sorted(set(conv2d_ops), key=conv2d_ops.index))
 
-    sub_ops = leaky_relu_ops[:9]
+    # only 1st output
+    sub_ops = leaky_relu_ops[:9] + conv2d_ops[:1]
     sub_outs = ng.eval(sub_ops, act=vact)
     sub_outs = [sub_out.transpose([0, 3, 1, 2]) for sub_out in sub_outs]
     sub_scale_factors = [sub_op.scale_factor for sub_op in sub_ops]
@@ -209,19 +214,21 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     mouts.append(nn.Sequential(*model.module_list[0:16])(
         torch.from_numpy(model_input)).detach().numpy())
 
-    scaled_outs = [mout * scale_factor
-                   for mout, scale_factor in zip(mouts, sub_scale_factors)]
-    mean_square_errors = [np.sum((sub_out - mout) ** 2) / sub_out.size
-                          for mout, sub_out in zip(scaled_outs, sub_outs)]
-    corrcoefs = [np.corrcoef(mout.reshape([-1]), sub_out.reshape([-1]))
-                 for mout, sub_out in zip(mouts, sub_outs)]
+    scaled_mouts = [mout * scale_factor
+                    for mout, scale_factor in zip(mouts, sub_scale_factors)]
+
+    sub_mean_square_errors = [np.sum((sub_out - mout) ** 2) / sub_out.size
+                              for mout, sub_out in zip(scaled_mouts, sub_outs)]
+    sub_corrcoefs = [np.corrcoef(mout.reshape([-1]), sub_out.reshape([-1]))
+                     for mout, sub_out in zip(mouts, sub_outs)]
 
     # compare prediction results
-    eval_outs = ng.eval([out], act=vact)
-    vout = eval_outs[0]
+    vouts = ng.eval(outs, act=vact)
 
-    mean_square_error = np.sum((vout - scaled_model_out) ** 2) / vout.size
-    corrcoef = np.corrcoef(model_out.reshape([-1]), vout.reshape([-1]))
+    mean_square_errors = [np.sum((vout - scaled_model_out) ** 2) / vout.size
+                          for vout, scaled_model_out in zip(vouts, scaled_model_outs)]
+    corrcoefs = [np.corrcoef(model_out.reshape([-1]), vout.reshape([-1]))
+                 for model_out, vout in zip(model_outs, vouts)]
 
     # breakpoint()
 
@@ -230,15 +237,15 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     # --------------------
 
     # to Veriloggen object
-    # targ = ng.to_veriloggen([out], 'yolov3tiny', silent=silent,
+    # targ = ng.to_veriloggen(outs, 'yolov3tiny', silent=silent,
     #                        config={'maxi_datawidth': axi_datawidth})
 
     # to IP-XACT (the method returns Veriloggen object, as well as to_veriloggen)
-    targ = ng.to_ipxact([out], 'yolov3tiny', silent=silent,
+    targ = ng.to_ipxact(outs, 'yolov3tiny', silent=silent,
                         config={'maxi_datawidth': axi_datawidth})
 
     # to Verilog HDL RTL (the method returns a source code text)
-    # rtl = ng.to_verilog([out], 'yolov3tiny', silent=silent,
+    # rtl = ng.to_verilog(outs, 'yolov3tiny', silent=silent,
     #                    config={'maxi_datawidth': axi_datawidth})
 
     # --------------------
@@ -249,12 +256,13 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
         sys.exit()
 
     # to memory image
-    param_data = ng.export_ndarray([out], chunk_size)
+    param_data = ng.export_ndarray(outs, chunk_size)
     param_bytes = len(param_data)
 
     variable_addr = int(math.ceil((act.addr + act.memory_size) / chunk_size)) * chunk_size
-    check_addr = int(math.ceil((variable_addr + param_bytes) / chunk_size)) * chunk_size
-    tmp_addr = int(math.ceil((check_addr + out.memory_size) / chunk_size)) * chunk_size
+    check0_addr = int(math.ceil((variable_addr + param_bytes) / chunk_size)) * chunk_size
+    check1_addr = int(math.ceil((check0_addr + outs[0].memory_size) / chunk_size)) * chunk_size
+    tmp_addr = int(math.ceil((check1_addr + outs[1].memory_size) / chunk_size)) * chunk_size
 
     memimg_datawidth = 32
     # mem = np.zeros([1024 * 1024 * 256 // (memimg_datawidth // 8)], dtype=np.int64)
@@ -271,8 +279,11 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
                    8, variable_addr)
 
     # verification data
-    axi.set_memory(mem, vout, memimg_datawidth,
-                   act_dtype.width, check_addr,
+    axi.set_memory(mem, vouts[0], memimg_datawidth,
+                   act_dtype.width, check0_addr,
+                   max(int(math.ceil(axi_datawidth / act_dtype.width)), conv2d_par_och))
+    axi.set_memory(mem, vouts[1], memimg_datawidth,
+                   act_dtype.width, check1_addr,
                    max(int(math.ceil(axi_datawidth / act_dtype.width)), conv2d_par_och))
 
     # test controller
@@ -326,20 +337,35 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
         # verify
         ok = True
-        for bat in range(out.shape[0]):
-            for x in range(out.shape[1]):
-                orig = memory.read_word(bat * out.aligned_shape[1] + x,
-                                        out.addr, act_dtype.width)
-                check = memory.read_word(bat * out.aligned_shape[1] + x,
-                                         check_addr, act_dtype.width)
+        for bat in range(out[0].shape[0]):
+            for x in range(out[0].shape[1]):
+                orig = memory.read_word(bat * out[0].aligned_shape[1] + x,
+                                        out[0].addr, act_dtype.width)
+                check = memory.read_word(bat * out[0].aligned_shape[1] + x,
+                                         check0_addr, act_dtype.width)
 
                 if vthread.verilog.NotEql(orig, check):
                     print('NG (', bat, x,
                           ') orig: ', orig, ' check: ', check)
                     ok = False
-                else:
-                    print('OK (', bat, x,
+                # else:
+                #    print('OK (', bat, x,
+                #          ') orig: ', orig, ' check: ', check)
+
+        for bat in range(out[1].shape[0]):
+            for x in range(out[1].shape[1]):
+                orig = memory.read_word(bat * out[1].aligned_shape[1] + x,
+                                        out[1].addr, act_dtype.width)
+                check = memory.read_word(bat * out[1].aligned_shape[1] + x,
+                                         check1_addr, act_dtype.width)
+
+                if vthread.verilog.NotEql(orig, check):
+                    print('NG (', bat, x,
                           ') orig: ', orig, ' check: ', check)
+                    ok = False
+                # else:
+                #    print('OK (', bat, x,
+                #          ') orig: ', orig, ' check: ', check)
 
         if ok:
             print('# verify: PASSED')

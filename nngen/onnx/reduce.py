@@ -54,7 +54,7 @@ def _reduce(method, visitor, node, np_method=None):
 
     if layout is not None and onnx_layout is not None and axes is not None:
         axes = [layout.index(onnx_layout[axis]) for axis in axes]
-        axes = axes.sort()
+        axes.sort()
 
     kwargs = collections.OrderedDict()
 

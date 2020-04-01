@@ -52,7 +52,7 @@ def Reshape(visitor, node, no_transpose=False):
         out_onnx_layout = make_layout(onnx_shape, out_shape, onnx_layout)
 
         if no_transpose or input.get_layout() == input.get_onnx_layout():
-            pass
+            out_layout = out_onnx_layout
 
         elif is_split_reshape(onnx_shape, out_shape, onnx_layout, out_onnx_layout):
             # keep the original input layout as possible
@@ -75,6 +75,7 @@ def Reshape(visitor, node, no_transpose=False):
             onnx_perm = [i for i, l in enumerate(input.get_onnx_layout())]
 
             input = operator.transpose(input, perm)
+            input.implicit = True
             input.transpose_onnx_perm = onnx_perm
 
             input.layout = input.get_onnx_layout()
