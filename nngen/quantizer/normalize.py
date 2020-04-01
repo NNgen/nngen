@@ -37,7 +37,7 @@ def normalize(visitor, node):
     bias.set_value(q_bias_value)
     bias.scale_factor = input.scale_factor * scale_scale_factor
 
-    init_shamt = max(math.ceil(math.log(np.mean(np.abs(q_scale_value)) * 2.0, 2)), 0)
+    init_shamt = max(math.ceil(math.log(np.mean(np.abs(q_scale_value)) * 1.0, 2)), 0)
     q_shamt = find_optimal_shamt_normalize(visitor, node, q_scale_value, q_bias_value,
                                            init_shamt=init_shamt)
     shamt.fill_value = q_shamt
@@ -45,7 +45,7 @@ def normalize(visitor, node):
 
 
 def find_optimal_shamt_normalize(visitor, node, scale, bias,
-                                 allowed_rate=0.0, range_rate=0.95,
+                                 allowed_rate=0.0, range_rate=0.66,
                                  init_shamt=0):
 
     shamt = init_shamt
@@ -119,8 +119,8 @@ def scaled_add(visitor, node):
     node.a_scale = int(q_a_scale_value)
     node.b_scale = int(q_b_scale_value)
 
-    init_shamt = max(max(math.ceil(math.log(np.abs(q_a_scale_value) * 1.5, 2)),
-                         math.ceil(math.log(np.abs(q_b_scale_value) * 1.5, 2))), 0)
+    init_shamt = max(max(math.ceil(math.log(np.abs(q_a_scale_value) * 1.0, 2)),
+                         math.ceil(math.log(np.abs(q_b_scale_value) * 1.0, 2))), 0)
     q_shamt = find_optimal_shamt_scaled_add(visitor, node, q_a_scale_value, q_b_scale_value,
                                             init_shamt=init_shamt)
     node.shamt = q_shamt
@@ -129,7 +129,7 @@ def scaled_add(visitor, node):
 
 
 def find_optimal_shamt_scaled_add(visitor, node, a_scale, b_scale,
-                                  allowed_rate=0.0, range_rate=0.95,
+                                  allowed_rate=0.0, range_rate=0.66,
                                   init_shamt=0):
 
     shamt = init_shamt
@@ -228,7 +228,7 @@ def scaled_concat(visitor, node):
 
 
 def find_optimal_shamt_scaled_concat(visitor, node, scales,
-                                     allowed_rate=0.0, range_rate=0.95,
+                                     allowed_rate=0.0, range_rate=0.66,
                                      init_shamt=0):
 
     shamt = init_shamt
@@ -290,7 +290,7 @@ def scaled_multiply(visitor, node):
 
 
 def find_optimal_shamt_scaled_multiply(visitor, node,
-                                       allowed_rate=0.0, range_rate=0.3,
+                                       allowed_rate=0.0, range_rate=0.33,
                                        init_shamt=0):
 
     shamt = init_shamt
