@@ -16,17 +16,17 @@ def exp(visitor, node):
     out_point = node.dtype.point
     out_signed = node.dtype.signed
     if out_signed:
-        out_scale = round((2 ** (out_width - 1)) * node.range_rate /
-                          np.exp(2 ** (node.lut_addrwidth - 1) * addr_scale + node.lut_bias))
+        out_scale = ((2 ** (out_width - 1)) * node.range_rate /
+                     np.exp(2 ** (node.lut_addrwidth - 1) * addr_scale + node.lut_bias))
     else:
-        out_scale = round((2 ** out_width) * node.range_rate /
-                          np.exp(2 ** (node.lut_addrwidth - 1) * addr_scale + node.lut_bias))
+        out_scale = ((2 ** out_width) * node.range_rate /
+                     np.exp(2 ** (node.lut_addrwidth - 1) * addr_scale + node.lut_bias))
 
     if out_point == 0:
-        th_scale = out_scale
+        out_scale = out_scale
     elif out_point > 0:
-        th_scale = out_scale >> out_point
+        out_scale = out_scale / (2 ** out_point)
     else:
-        th_scale = out_scale << -1 * out_point
+        out_scale = out_scale * (2 ** (-1 * out_point))
 
-    node.scale_factor = float(th_scale)
+    node.scale_factor = out_scale
