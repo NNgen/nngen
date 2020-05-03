@@ -90,7 +90,7 @@ python3 setup.py install
 テストのための追加要求ソフトウェア
 --------------------
 
-**tests** と **examples** にいくつかのテストコードがあり、これらを実行するためには以下のソフトウェアが必要になります。
+**tests** にいくつかのテストコードがあり、これらを実行するためには以下のソフトウェアが必要になります。
 
 - pytest: 3.2 or later
 - pytest-pythonpath: 0.7 or later

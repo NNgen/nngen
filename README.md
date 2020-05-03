@@ -93,7 +93,7 @@ python3 setup.py install
 Optional requirements for testing
 --------------------
 
-These are required for automatic testing of **tests** and **examples**.
+These are required for automatic testing of **tests**.
 We recommend to install these testing library to verify experimental features.
 
 - pytest: 3.2 or later
