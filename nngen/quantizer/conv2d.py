@@ -2,12 +2,21 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
+import math
 import numpy as np
 
 from . import util
 
 
 def conv2d(visitor, node):
+
+    if node.act_func is not None and not hasattr(node, 'visited_before_act_func'):
+        node.visited_before_act_func = True
+        visitor.visit(node.act_func)
+        node.scale_factor = node.act_func.scale_factor
+        return
+
+    threshold_norm_filter = 0.2
 
     input = node.args[0]
     filter = node.args[1]
@@ -39,6 +48,30 @@ def conv2d(visitor, node):
 
     if rshift_out is not None:
         visitor.visit(rshift_out)
+
+    # normalize filter vaules for each output channel
+    if (scale is not None and scale.shape[-1] == node.shape[-1] and
+          scale.dtype.width >= filter.dtype.width * 4 and
+            (bias is None or bias.shape[-1] == node.shape[-1])):
+
+        out_scale_value = np.abs(filter.value)
+        for _ in range(len(filter.value.shape) - 1):
+            out_scale_value = out_scale_value.max(axis=1)
+
+        out_scale_value = np.clip(out_scale_value, threshold_norm_filter, None)
+        filter.value = (filter.value /
+                        out_scale_value.reshape([-1] + [1] * (len(filter.value.shape) - 1)))
+
+        scale_value = scale.value
+        if isinstance(scale_value, (tuple, list)):
+            scale_value = np.array(scale_value)
+        scale.value = scale_value * out_scale_value
+
+        if bias is not None:
+            bias_value = bias.value
+            if isinstance(bias_value, (tuple, list)):
+                bias_value = np.array(bias_value)
+            bias.value = bias_value / out_scale_value
 
     q_filter_value, filter_scale_factor = util.quantize_linear(filter.value, filter.dtype.width)
     filter.set_value(q_filter_value)
@@ -73,7 +106,10 @@ def conv2d(visitor, node):
         (rshift_sum is None or isinstance(rshift_sum, int)) and
             (rshift_out is None or isinstance(rshift_out, int))):
 
-        init_rshift_out = max(int(np.mean(np.abs(q_filter_value))).bit_length() - 1, 0)
+        init_rshift_out = max(math.ceil(math.log(np.mean(np.abs(q_filter_value)) * 2.0, 2)), 0)
+        if scale is not None:
+            init_rshift_out += max(math.ceil(math.log(np.mean(np.abs(q_scale_value)) * 2.0, 2)), 0)
+
         q_rshift_mul, q_rshift_sum, q_rshift_out = find_optimal_rshift(
             visitor, node, q_filter_value, q_bias_value, q_scale_value,
             init_rshift_mul=0,
@@ -112,7 +148,7 @@ def conv2d(visitor, node):
 
 
 def find_optimal_rshift(visitor, node, filter, bias, scale,
-                        allowed_rate=0.0, range_rate=0.95,
+                        allowed_rate=0.0, range_rate=0.33,
                         init_rshift_mul=0, init_rshift_sum=0, init_rshift_out=0):
 
     rshift_mul = init_rshift_mul

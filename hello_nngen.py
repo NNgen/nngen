@@ -34,10 +34,11 @@ act_dtype = ng.int16
 weight_dtype = ng.int16
 bias_dtype = ng.int16
 scale_dtype = ng.int16
+batchsize = 1
 
 # input
 input_layer = ng.placeholder(dtype=act_dtype,
-                             shape=(1, 32, 32, 3),  # N, H, W, C
+                             shape=(batchsize, 32, 32, 3),  # N, H, W, C
                              name='input_layer')
 
 # layer 0: conv2d (with bias and scale (= batchnorm)), relu, max_pool
@@ -78,7 +79,7 @@ a1 = ng.conv2d(a0p, w1,
                act_func=ng.relu,
                sum_dtype=ng.int64)
 
-a1r = ng.reshape(a1, [1, -1])
+a1r = ng.reshape(a1, [batchsize, -1])
 
 # layer 2: full-connection, relu
 w2 = ng.variable(weight_dtype,

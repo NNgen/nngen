@@ -17,9 +17,10 @@ class concat(bt._Operator):
     output_chainable = False
 
     def __sub_str__(self):
+        axis = ' axis:%d' % self.axis
         buffered = (' buffered'
                     if hasattr(self, 'buffered_value') and self.buffered_value else '')
-        return ''.join([buffered])
+        return ''.join([axis, buffered])
 
     def __init__(self, values, axis, dtype=None, name=None):
         rank = bt.get_rank(values[0].shape)
@@ -322,7 +323,6 @@ class concat(bt._Operator):
         import nngen.verify as verify
 
         name = self.__class__.__name__
-        method = getattr(verify, name, None)
 
         values = [arg.eval(memo, input_dict)
                   for arg in self.args]
@@ -331,6 +331,7 @@ class concat(bt._Operator):
         kwargs['dtype'] = self.dtype
         kwargs['name'] = self.name
 
+        method = self.get_eval_method()
         ret = method(values, **kwargs)
         memo[id(self)] = ret
 

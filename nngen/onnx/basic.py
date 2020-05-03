@@ -3,47 +3,33 @@ from __future__ import print_function
 from __future__ import division
 
 import collections
+import numpy as np
+import functools
 
 import nngen.storage as storage
 import nngen.operator as operator
-import nngen.dtype_list as dtype_list
 
 from . import util
 
 
-def _elementwise(method, visitor, node):
-
-    args = []
-
-    for src in list(node.input):
-        src_obj = visitor.visit(src)
-        args.append(src_obj)
-
-    kwargs = collections.OrderedDict()
-
-    name = util.get_name(node)
-    kwargs['name'] = name
-
-    if name in visitor.value_dtypes:
-        kwargs['dtype'] = visitor.value_dtypes[name]
-
-    return method(*args, **kwargs)
-
-
-def _normalize_elementwise(method, pre_methods, visitor, node):
+def _normalize_elementwise(method, pre_methods, visitor, node, np_method=None):
 
     srcs = []
-    all_placeholder = True
 
     for src in list(node.input):
         src_obj = visitor.visit(src)
         srcs.append(src_obj)
-        if not isinstance(src_obj, storage.placeholder):
-            all_placeholder = False
 
-    # if all sources are placeholder, no scaling is required.
-    if all_placeholder:
-        return _elementwise(method, visitor, node)
+    opt_srcs = [util.optimize_to_raw_value(src) for src in srcs]
+
+    all_ndarray = True
+    for src in opt_srcs:
+        if not isinstance(src, np.ndarray):
+            all_ndarray = False
+            break
+
+    if all_ndarray and np_method is not None:
+        return np_method(*opt_srcs)
 
     name = util.get_name(node)
 
@@ -64,28 +50,59 @@ def _normalize_elementwise(method, pre_methods, visitor, node):
         scale = 1
         args.append(scale)
 
-    shamt = 0
-    args.append(shamt)
+    return method(*args)
 
-    return operator.scaled_add(*args)
+
+def _elementwise(method, visitor, node, np_method=None):
+
+    args = []
+
+    for src in list(node.input):
+        src_obj = visitor.visit(src)
+        args.append(src_obj)
+
+    opt_args = [util.optimize_to_raw_value(arg) for arg in args]
+
+    all_ndarray = True
+    for arg in opt_args:
+        if not isinstance(arg, np.ndarray):
+            all_ndarray = False
+            break
+
+    if all_ndarray and np_method is not None:
+        return np_method(*opt_args)
+
+    kwargs = collections.OrderedDict()
+
+    name = util.get_name(node)
+    kwargs['name'] = name
+
+    if name in visitor.value_dtypes:
+        kwargs['dtype'] = visitor.value_dtypes[name]
+
+    return method(*args, **kwargs)
 
 
 def Add(visitor, node):
 
-    return _normalize_elementwise(operator.add, None, visitor, node)
+    method = functools.partial(operator.scaled_add, shamt=0)
+    return _normalize_elementwise(method, None, visitor, node, np.add)
 
 
-def Sub(node, visitor):
+def Sub(visitor, node):
 
+    method = functools.partial(operator.scaled_add, shamt=0)
     pre_methods = (None, operator.neg)
-    return _normalize_elementwise(operator.sub, pre_methods, visitor, node)
+    return _normalize_elementwise(method, pre_methods, visitor, node, np.subtract)
 
 
 def Mul(visitor, node):
 
-    return _elementwise(operator.multiply, visitor, node)
+    method = functools.partial(operator.scaled_multiply, shamt=0)
+    return _elementwise(method, visitor, node, np.multiply)
 
 
 def Div(visitor, node):
 
-    return _elementwise(operator.div, visitor, node)
+    method = functools.partial(operator.scaled_div, shamt=0)
+    return _elementwise(method, visitor, node, np.divide)

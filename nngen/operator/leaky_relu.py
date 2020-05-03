@@ -3,11 +3,12 @@ from __future__ import print_function
 from __future__ import division
 
 import math
+import functools
 
 import nngen.basic_types as bt
 
 
-class leaky_relu_base(bt._ElementwiseOperator):
+class leaky_relu_base(bt._ActFuncOperator):
     input_chainable = True
     output_chainable = True
     slope = None
@@ -15,8 +16,17 @@ class leaky_relu_base(bt._ElementwiseOperator):
 
     def __init__(self, features, dtype=None, name=None, par=1):
         shape = None
-        bt._ElementwiseOperator.__init__(self, features,
-                                         dtype=dtype, shape=shape, name=name, par=par)
+        bt._ActFuncOperator.__init__(self, features,
+                                     dtype=dtype, shape=shape, name=name, par=par)
+
+    @classmethod
+    def get_eval_method(cls):
+        import nngen.verify as verify
+
+        name = 'leaky_relu'
+        method = getattr(verify, name, None)
+        method = functools.partial(method, slope=cls.slope, rshift=cls.rshift)
+        return method
 
     def eval(self, memo, input_dict, **kwargs):
         if id(self) in memo:
@@ -25,7 +35,6 @@ class leaky_relu_base(bt._ElementwiseOperator):
         import nngen.verify as verify
 
         name = 'leaky_relu'
-        method = getattr(verify, name, None)
 
         args = [arg.eval(memo, input_dict)
                 for arg in self.args]
@@ -36,6 +45,7 @@ class leaky_relu_base(bt._ElementwiseOperator):
         kwargs['name'] = self.name
         kwargs['par'] = self.par
 
+        method = self.get_eval_method()
         ret = method(*args, **kwargs)
         memo[id(self)] = ret
 

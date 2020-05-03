@@ -21,7 +21,7 @@ def _pool(pool_op, visitor, node, no_sum_dtype=False):
     input = srcs[0]
 
     # transpose data layout to nngen-compatible format
-    input = util.transpose_layout(input, 'NHWC', visitor.onnx_input_layout)
+    input = util.transpose_layout(input, visitor.nngen_input_layout, visitor.onnx_input_layout)
 
     name = util.get_name(node)
 
@@ -30,21 +30,25 @@ def _pool(pool_op, visitor, node, no_sum_dtype=False):
     else:
         dtype = visitor.default_operator_dtype
 
-    sum_dtype = dtype_list.int32
+    if dtype.width >= 16:
+        sum_dtype = dtype_list.dtype_int(dtype.width * 4)
+    else:
+        sum_dtype = dtype_list.int32
 
     ksize, strides, padding = _get_ksize_strides_padding(node)
 
     kwargs = collections.OrderedDict()
-    kwargs['ksize'] = tuple(ksize)
-    kwargs['strides'] = tuple(strides)
-    kwargs['padding'] = tuple(padding)
+    kwargs['ksize'] = ksize
+    kwargs['strides'] = strides
+    kwargs['padding'] = padding
     kwargs['dtype'] = dtype
     if not no_sum_dtype:
         kwargs['sum_dtype'] = sum_dtype
     kwargs['name'] = name
 
     c = pool_op(input, **kwargs)
-    c.layout = 'NHWC'
+    c.layout = visitor.nngen_input_layout
+    c.onnx_layout = visitor.onnx_input_layout
 
     return c
 
@@ -72,7 +76,7 @@ def GlobalAveragePool(visitor, node):
     input = srcs[0]
 
     # transpose data layout to nngen-compatible format
-    input = util.transpose_layout(input, 'NHWC', visitor.onnx_input_layout)
+    input = util.transpose_layout(input, visitor.nngen_input_layout, visitor.onnx_input_layout)
 
     name = util.get_name(node)
 
@@ -81,21 +85,24 @@ def GlobalAveragePool(visitor, node):
     else:
         dtype = visitor.default_operator_dtype
 
-    sum_dtype = dtype_list.int32
+    if dtype.width >= 16:
+        sum_dtype = dtype_list.dtype_int(dtype.width * 4)
+    else:
+        sum_dtype = dtype_list.int32
 
-    ksize = [1, input.shape[1], input.shape[2], 1]
-    strides = [1, input.shape[1], input.shape[2], 1]
-    padding = [0, 0, 0, 0]
+    ksize = tuple([1, input.shape[1], input.shape[2], 1])
+    strides = tuple([1, input.shape[1], input.shape[2], 1])
+    padding = tuple([0, 0, 0, 0])
 
     kwargs = collections.OrderedDict()
-    kwargs['ksize'] = tuple(ksize)
-    kwargs['strides'] = tuple(strides)
-    kwargs['padding'] = tuple(padding)
+    kwargs['ksize'] = ksize
+    kwargs['strides'] = strides
+    kwargs['padding'] = padding
     kwargs['dtype'] = dtype
     kwargs['name'] = name
 
     c = operator.avg_pool_serial(input, **kwargs)
-    c.layout = 'NHWC'
+    c.layout = visitor.nngen_input_layout
 
     return c
 
@@ -127,13 +134,16 @@ def _get_ksize_strides_padding(node):
             padding[1] = attribute.ints[1]
             padding[2] = attribute.ints[2]
             padding[3] = attribute.ints[3]
+            padding = tuple(padding)
 
         elif attribute.name == 'strides':
             strides[1] = attribute.ints[0]
             strides[2] = attribute.ints[1]
+            strides = tuple(strides)
 
         elif attribute.name == 'kernel_shape':
             ksize[1] = attribute.ints[0]
             ksize[2] = attribute.ints[1]
+            ksize = tuple(ksize)
 
     return ksize, strides, padding

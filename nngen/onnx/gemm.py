@@ -9,6 +9,8 @@ import nngen.operator as operator
 import nngen.dtype_list as dtype_list
 
 from . import util
+from . import flatten
+from . import reshape
 
 
 def Gemm(visitor, node,
@@ -17,31 +19,52 @@ def Gemm(visitor, node,
     # input, filter
     srcs = []
 
-    for src in node.input:
+    for i, src in enumerate(node.input):
+        src_node = util.search_node_from_model(visitor.model, src)
+
+        if (i == 0 and src_node.op_type == 'Flatten' and
+                len(visitor.consumers[src]) == 1):
+
+            src_obj = flatten.Flatten(visitor, src_node, no_transpose=True)
+            srcs.append(src_obj)
+            continue
+
+        if (i == 0 and src_node.op_type == 'Reshape' and
+                len(visitor.consumers[src]) == 1):
+
+            shape = visitor.visit(src_node.input[1])
+            if len(shape) == 2:
+                src_obj = reshape.Reshape(visitor, src_node, no_transpose=True)
+                srcs.append(src_obj)
+                continue
+
         src_obj = visitor.visit(src)
         srcs.append(src_obj)
 
     input = srcs[0]
     filter = srcs[1]
 
-    orig_layout = input.get_original_layout()
     orig_shape = input.get_original_shape()
+    orig_layout = input.get_original_layout()
+    orig_onnx_layout = input.get_original_onnx_layout()
 
     if orig_layout is None:
         pass
-    elif orig_layout == 'NCHW':
+    elif orig_layout == orig_onnx_layout:
         pass
-    elif orig_layout == 'NHWC':
-        # Though the original weight layout is identical to that of NNgen.
-        # However it assumes values before Reshape operators have the 'NCHW' layout.
-        # So the weight layout must be transposed.
-        shape = [filter.shape[0], orig_shape[3], orig_shape[1], orig_shape[2]]
+    else:
+        # The weight layout of Gemm is identical to nngen.matmul.
+        # However, Gemm assumes values before the Reshape operator have the different layout.
+        # (Almost ONNX models usually have 'NCHW' layouts).
+        # Thus the weight layout is transposed.
+
+        shape = ([filter.shape[0]] +
+                 [orig_shape[orig_layout.index(s)] for s in orig_onnx_layout[1:]])
         reshape_value = filter.value.reshape(shape)
-        transpose_value = reshape_value.transpose([0, 2, 3, 1])
+        perm = [orig_onnx_layout.index(s) for s in orig_layout]
+        transpose_value = reshape_value.transpose(perm)
         new_value = transpose_value.reshape([filter.shape[0], -1])
         filter.value = new_value
-    else:
-        raise ValueError("not supported input layout for Gemm: '%s'" % layout)
 
     bias = srcs[2] if len(srcs) > 2 else None
 

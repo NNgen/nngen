@@ -26,7 +26,7 @@ import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 
 
-def run(act_dtype=ng.int8, weight_dtype=ng.int8,
+def run(act_dtype=ng.int16, weight_dtype=ng.int8,
         bias_dtype=ng.int32, scale_dtype=ng.int8,
         with_batchnorm=True, disable_fusion=False,
         conv2d_par_ich=1, conv2d_par_och=1, conv2d_par_col=1, conv2d_par_row=1,
@@ -34,9 +34,9 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
         pool_par=1, elem_par=1,
         chunk_size=64, axi_datawidth=32, silent=False,
         filename=None,
-        simtype='iverilog',
+        # simtype='iverilog',
         # simtype='verilator',
-        # simtype=None,  # no RTL simulation
+        simtype=None,  # no RTL simulation
         outputfile=None):
 
     # input mean and standard deviation
@@ -127,7 +127,7 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
     img = (img - imagenet_mean) / imagenet_std
 
     # execution on pytorch
-    model_input = img
+    model_input = np.broadcast_to(img, act_shape)
 
     if act.perm is not None:
         model_input = np.transpose(model_input, act.reversed_perm)
@@ -144,6 +144,7 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
                    -1.0 * (2 ** (act.dtype.width - 1) - 1),
                    1.0 * (2 ** (act.dtype.width - 1) - 1))
     vact = np.round(vact).astype(np.int64)
+    vact = np.broadcast_to(vact, act_shape)
 
     # compare outputs of hidden layers
     features_ops = [v for k, v in operators.items()
@@ -192,10 +193,13 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
     model_outs = model_features_outs + [model_avgpool_out] + model_classifier_outs
     scaled_outs = [model_out * scale_factor
                    for model_out, scale_factor in zip(model_outs, sub_scale_factors)]
-    error_rates = [np.sum(np.abs(sub_out - model_out)) / np.sum(np.abs(model_out))
-                   for model_out, sub_out in zip(scaled_outs, sub_outs)]
+
     max_diffs = [model_out.max() / sub_out.max()
                  for model_out, sub_out in zip(scaled_outs, sub_outs)]
+    overflows = [np.sum(np.abs(sub_out) >= abs(2 ** (sub_op.dtype.width - 1) - 1))
+                 for sub_op, sub_out in zip(sub_ops, sub_outs)]
+    mean_square_errors = [np.sum((sub_out - model_out) ** 2) / sub_out.size
+                          for model_out, sub_out in zip(scaled_outs, sub_outs)]
     corrcoefs = [np.corrcoef(model_out.reshape([-1]), sub_out.reshape([-1]))
                  for model_out, sub_out in zip(model_outs, sub_outs)]
 
@@ -203,17 +207,29 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
     eval_outs = ng.eval([out], act=vact)
     vout = eval_outs[0]
 
+    mean_square_error = np.sum((vout - scaled_model_out) ** 2) / vout.size
+    corrcoef = np.corrcoef(model_out.reshape([-1]), vout.reshape([-1]))
+
     class_index = json.load(open('imagenet_class_index.json', 'r'))
     labels = {int(key): value for (key, value) in class_index.items()}
 
     mout = scaled_model_out
     for bat in range(mout.shape[0]):
-        for index, value in list(sorted(enumerate(mout[bat]),
-                                        key=lambda x: x[1], reverse=True))[:10]:
+        m_top10 = list(sorted(enumerate(mout[bat]), key=lambda x: x[1], reverse=True))[:10]
+        m_top10_indexes = [index for index, value in m_top10]
+        v_top10 = list(sorted(enumerate(vout[bat]), key=lambda x: x[1], reverse=True))[:10]
+        v_top10_indexes = [index for index, value in v_top10]
+        num_hit = 0
+        score = 0
+        for index, value in m_top10:
             print("# mout: %s (%d) = %f" % (str(labels[index]), index, value))
-        for index, value in list(sorted(enumerate(vout[bat]),
-                                        key=lambda x: x[1], reverse=True))[:10]:
+        for index, value in v_top10:
             print("# vout: %s (%d) = %d" % (str(labels[index]), index, value))
+            if index in m_top10_indexes:
+                num_hit += 1
+                score += 10 - abs(m_top10_indexes.index(index) - v_top10_indexes.index(index))
+        print("# top-10 hit: %d" % num_hit)
+        print("# top-10 score: %d" % score)
 
     # breakpoint()
 

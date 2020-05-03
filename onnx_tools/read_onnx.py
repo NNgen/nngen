@@ -23,14 +23,14 @@ for i, node in enumerate(onnx_model.graph.node):
     print(node)
 
 # Input
-# for i, input in enumerate(onnx_model.graph.input):
-#    print("[Input #{}]".format(i))
-#    print(input)
+for i, input in enumerate(onnx_model.graph.input):
+    print("[Input #{}]".format(i))
+    print(input)
 
 # Output
-# for i, output in enumerate(onnx_model.graph.output):
-#    print("[Output #{}]".format(i))
-#    print(output)
+for i, output in enumerate(onnx_model.graph.output):
+    print("[Output #{}]".format(i))
+    print(output)
 
 
 def get_name(obj):
@@ -54,6 +54,20 @@ for input_var in onnx_model.graph.input:
 for output_var in onnx_model.graph.output:
     outputs[output_var.name] = output_var
 
+# act shape: (y, x, ch, bat)
+# nngen act shape: (bat, y, x, ch)
+
+# weight shape: (y, x, ich, och)
+# nngen weight shape: (och, y, x, ich)
+
+weights = onnx_model.graph.initializer
+
+for weight in weights:
+    name = weight.name
+    inputs[name] = weight
+    np_weight = numpy_helper.to_array(weight)
+    input_values[name] = np_weight
+
 for node in onnx_model.graph.node:
     if node.op_type == 'Constant':
         name = get_name(node)
@@ -72,30 +86,20 @@ for node in onnx_model.graph.node:
         else:
             op_inputs[name].append(op_outputs[src])
 
-# act shape: (y, x, ch, bat)
-# nngen act shape: (bat, y, x, ch)
-
-# weight shape: (y, x, ich, och)
-# nngen weight shape: (och, y, x, ich)
-
-weights = onnx_model.graph.initializer
-
-for weight in weights:
-    name = weight.name
-    np_weight = numpy_helper.to_array(weight)
-    input_values[name] = np_weight
-
 weight_inputs = collections.OrderedDict([(name, node) for name, node in inputs.items()
                                          if name in input_values])
 user_inputs = collections.OrderedDict([(name, node) for name, node in inputs.items()
                                        if name not in input_values])
 
-#for name, node in weight_inputs.items():
+
+# for name, node in weight_inputs.items():
 #    print(node.name)
 #
 #    if hasattr(node, 'type'):
 #        print('# type: {}'.format(node.type.tensor_type.elem_type))
 #        for i, d in enumerate(node.type.tensor_type.shape.dim):
 #            print('# dim {}: {}'.format(i, d.dim_value))
-#
-breakpoint()
+
+# breakpoint()
+
+# print('# end')

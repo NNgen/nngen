@@ -4,7 +4,7 @@ from __future__ import division
 
 import numpy as np
 
-import nngen.basic_types as bt
+from . import util
 
 
 def Gather(visitor, node):
@@ -15,6 +15,8 @@ def Gather(visitor, node):
         src_obj = visitor.visit(src)
         srcs.append(src_obj)
 
+    srcs = [util.optimize_to_raw_value(src) for src in srcs]
+
     input = srcs[0]
     indices = srcs[1]
 
@@ -24,15 +26,21 @@ def Gather(visitor, node):
     if not isinstance(input, np.ndarray):
         input = np.array(input)
 
-    if not isinstance(input, (tuple, list, np.ndarray)):
+    if not isinstance(indices, (tuple, list, np.ndarray)):
         raise NotImplementedError("not supported indices type: '%s'" % str(type(indices)))
 
-    if not isinstance(input, np.ndarray):
+    if not isinstance(indices, np.ndarray):
         indices = np.array(indices)
 
     for attribute in node.attribute:
         if attribute.name == 'axis':
             axis = attribute.i
+
+    # layout = input.get_layout()
+    # onnx_layout = input.get_onnx_layout()
+    #
+    # if layout is not None and onnx_layout is not None:
+    #     axis = layout.index(onnx_layout[axis])
 
     c = _gather(input, axis, indices)
 

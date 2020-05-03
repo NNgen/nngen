@@ -34,6 +34,7 @@ class _Numeric(_Node):
 
     # for ONNX
     layout = None
+    onnx_layout = None
 
     def __init__(self, dtype=None, shape=None, name=None):
         _Node.__init__(self)
@@ -115,10 +116,15 @@ class _Numeric(_Node):
         aligned_shape = (' aligned_shape:%s' % str(tuple(self.get_aligned_shape()))
                          if isinstance(self.shape, (tuple, list)) and
                          self.maxi is not None else '()')
+        layout = (" layout:%s" % str(self.get_layout())
+                  if self.get_layout() is not None else '')
+        onnx_layout = (" onnx_layout:%s" % str(self.get_onnx_layout())
+                       if self.get_onnx_layout() is not None else '')
         scale_factor = ' scale_factor:%f' % self.scale_factor
-        return '<%s %s dtype:%s shape:%s%s%s%s%s%s%s%s>' % (
+        return '<%s %s dtype:%s shape:%s%s%s%s%s%s%s%s%s%s>' % (
             clsname, name, dtype, shape, sub_str,
-            default_addr, global_index, local_index, alignment, aligned_shape, scale_factor)
+            default_addr, global_index, local_index, alignment, aligned_shape,
+            layout, onnx_layout, scale_factor)
 
     def __sub_str__(self):
         return ''
@@ -299,6 +305,12 @@ class _Numeric(_Node):
     def get_original_layout(self):
         return self.get_layout()
 
+    def get_onnx_layout(self):
+        return self.onnx_layout
+
+    def get_original_onnx_layout(self):
+        return self.get_onnx_layout()
+
     @property
     def reversed_perm(self):
         if self.perm is None:
@@ -399,7 +411,7 @@ class _Operator(_Numeric):
                 arg.output_chainable = False
                 arg.chain_head = False
 
-        self.shared_attrs = defaultdict(list)
+        self.shared_attrs = defaultdict(OrderedDict)
 
         self.input_rams = None
         self.output_rams = None
@@ -432,13 +444,34 @@ class _Operator(_Numeric):
 
             self.add_alignment_request(self.par)
 
-    def set_shared_attrs(self, obj):
+    def merge_shared_attrs(self, obj):
+        """ merge obj's and self's shared_attrs. """
+
         for attr in self.shared_attr_names:
             v = getattr(obj, attr)
-            if v not in self.shared_attrs[attr]:
-                self.shared_attrs[attr].append(v)
+
+            if v is None:
+                self.shared_attrs[attr][None] = None
+                continue
+
+            key = v.get_stream_hash() if hasattr(v, 'get_stream_hash') else v
+            if key not in self.shared_attrs[attr]:
+                self.shared_attrs[attr][key] = v
 
         obj.shared_attrs = self.shared_attrs
+
+    def get_shared_attr_index(self, name, obj):
+        for index, key in enumerate(self.shared_attrs[name].keys()):
+            if key is None and obj is None:
+                return index
+            if key is None:
+                continue
+            if obj is None:
+                continue
+            if key == obj.get_stream_hash():
+                return index
+
+        raise ValueError('no such object %s' % str(obj))
 
     def collect_numerics(self):
         ret = []
@@ -486,27 +519,27 @@ class _Operator(_Numeric):
         return True
 
     def get_required_rams(self):
-        """ 
+        """
         @return 3 tuples of (width, length)
         """
-
-        shape = self.get_aligned_shape()
-        min_size = int(math.ceil(shape[-1] / self.par)) * 2
-        input_widths = [arg.get_ram_width() * self.par for arg in self.args]
-        output_width = self.get_ram_width() * self.par
-
         inputs = []
         temps = []
 
-        for arg, width in zip(self.args, input_widths):
+        for arg in self.args:
             if are_chainable_operators(self, arg):
                 arg_input_rams, arg_output_rams, arg_temp_rams = arg.get_required_rams()
                 inputs.extend(arg_input_rams)
                 temps.extend(arg_temp_rams)
             else:
-                arg_ram = [(width, min_size)]
+                input_width = arg.get_ram_width() * self.par
+                input_shape = arg.get_aligned_shape()
+                min_size = int(math.ceil(input_shape[-1] / self.par)) * 2
+                arg_ram = [(input_width, min_size)]
                 inputs.extend(arg_ram)
 
+        output_width = self.get_ram_width() * self.par
+        shape = self.get_aligned_shape()
+        min_size = int(math.ceil(shape[-1] / self.par)) * 2
         outputs = [(output_width, min_size)]
 
         return inputs, outputs, temps
@@ -664,11 +697,11 @@ class _Operator(_Numeric):
     def to_local_control_param_name(self, index, name):
         return '_'.join(['local', str(index), name])
 
-    def collect_local_control_param_values(self):
+    def collect_local_control_param_values(self, index_offset=0):
         values = OrderedDict()
 
         for name, lparam in self.get_local_control_param_values().items():
-            signame = self.to_local_control_param_name(0, name)
+            signame = self.to_local_control_param_name(index_offset, name)
             values[signame] = lparam
 
         numerics = self.collect_arg_numerics()
@@ -678,7 +711,7 @@ class _Operator(_Numeric):
                 continue
 
             for name, lparam in arg.get_local_control_param_values().items():
-                signame = self.to_local_control_param_name(i + 1, name)
+                signame = self.to_local_control_param_name(index_offset + i + 1, name)
                 values[signame] = lparam
 
         return values
@@ -1046,9 +1079,9 @@ class _Operator(_Numeric):
         self.control_param_index_reg = obj.control_param_index_reg
         self.control_param_ram = obj.control_param_ram
 
-    def copy_local_control_params(self, obj):
+    def copy_local_control_params(self, obj, index_offset=0):
         for name, lparam in self.get_local_control_param_values().items():
-            signame = self.to_local_control_param_name(0, name)
+            signame = self.to_local_control_param_name(index_offset, name)
             if hasattr(obj, signame):
                 setattr(self, name, getattr(obj, signame))
 
@@ -1058,7 +1091,7 @@ class _Operator(_Numeric):
             if not isinstance(arg, _Operator):
                 continue
             for name, lparam in arg.get_local_control_param_values().items():
-                signame = self.to_local_control_param_name(i + 1, name)
+                signame = self.to_local_control_param_name(index_offset + i + 1, name)
                 if hasattr(obj, signame):
                     setattr(arg, name, getattr(obj, signame))
 
@@ -1078,6 +1111,28 @@ class _Operator(_Numeric):
 
         return None
 
+    def get_onnx_layout(self):
+        if self.onnx_layout is not None:
+            return self.onnx_layout
+
+        for arg in self.args:
+            onnx_layout = arg.get_onnx_layout()
+            if onnx_layout is not None:
+                return onnx_layout
+
+        return None
+
+    def get_eval_method(self):
+        import nngen.verify as verify
+
+        name = self.__class__.__name__
+        method = getattr(verify, name, None)
+        return method
+
+    def get_max_arg_rank(self):
+        max_rank = max(list(self.shared_attrs['_rank'].values()))
+        return max_rank
+
     def eval(self, memo, input_dict, **kwargs):
         if id(self) in memo:
             return memo[id(self)]
@@ -1085,7 +1140,6 @@ class _Operator(_Numeric):
         import nngen.verify as verify
 
         name = self.__class__.__name__
-        method = getattr(verify, name, None)
 
         args = [arg.eval(memo, input_dict)
                 for arg in self.args]
@@ -1094,6 +1148,7 @@ class _Operator(_Numeric):
         kwargs['name'] = self.name
         kwargs['par'] = self.par
 
+        method = self.get_eval_method()
         ret = method(*args, **kwargs)
         memo[id(self)] = ret
 
@@ -1104,6 +1159,8 @@ class _StreamingOperator(_Operator):
     input_chainable = True
     output_chainable = True
     chain_head = True
+
+    shared_attr_names = ('_rank',)
 
     @staticmethod
     def op(strm, *args, **kwargs):
@@ -1126,6 +1183,9 @@ class _StreamingOperator(_Operator):
 
         if shape is None:
             shape = max_shape(*args)
+
+        # shared_attr
+        self._rank = len(shape)
 
         _Operator.__init__(self, *args, dtype=dtype,
                            shape=shape, name=name, par=par)
@@ -1207,55 +1267,106 @@ class _StreamingOperator(_Operator):
         aligned_shape = self.get_aligned_shape()
         aligned_length = self.get_aligned_length()
         total_size = int(math.ceil(aligned_length / self.par))
-        dma_size = int(math.ceil(aligned_shape[-1] / self.par))
-        num_comp = int(math.ceil(total_size / dma_size))
 
+        dma_size = int(math.ceil(aligned_shape[-1] / self.par))
+
+        num_comp = int(math.ceil(total_size / dma_size))
         addr_inc = to_byte(align_word(self.shape[-1], self.get_word_alignment()) *
                            self.get_ram_width())
 
         sources = self.collect_sources()
+        max_rank = self.get_max_arg_rank()
 
         arg_addr_incs = []
-        wrap_modes = []
-        wrap_sizes = []
+        arg_trip_sizes = []
+        arg_repeat_sizes = []
+        arg_stride_zeros = []
+        arg_omit_dmas = []
+
         for arg in sources:
-            arg_addr_inc = to_byte(align_word(arg.shape[-1], arg.get_word_alignment()) *
-                                   arg.get_ram_width())
-            if tuple(arg.shape) == tuple(self.shape):
-                wrap_mode = 0
-                wrap_size = 0
-            elif len(arg.shape) == 1 and arg.shape[-1] == 1:
-                # stride-0
-                wrap_mode = 2
-                wrap_size = get_wrap_size(self.shape, arg.shape)
-            else:
-                # repeat
-                wrap_mode = 1
-                wrap_size = get_wrap_size(self.shape, arg.shape)
-            arg_addr_incs.append(arg_addr_inc)
-            wrap_modes.append(wrap_mode)
-            wrap_sizes.append(wrap_size)
+            rank = get_rank(self.shape)
+            arg_rank = get_rank(arg.shape)
+
+            shape = [s for s in self.shape]
+            if rank < max_rank:
+                for _ in range(max_rank - rank):
+                    shape.insert(0, 1)
+
+            arg_shape = [s for s in arg.shape]
+            if arg_rank < max_rank:
+                for _ in range(max_rank - arg_rank):
+                    arg_shape.insert(0, 1)
+
+            inc = to_byte(align_word(arg_shape[-1], arg.get_word_alignment()) *
+                          arg.get_ram_width())
+
+            sub_incs = []
+            sub_incs.append(0)
+            for s in reversed(arg_shape[:-1]):
+                sub_incs.append(inc)
+                inc *= s
+
+            sub_incs.reverse()
+            arg_addr_incs.extend(sub_incs)
+
+            sub_trip_sizes = arg_shape
+            arg_trip_sizes.extend(sub_trip_sizes)
+
+            sub_repeat_sizes = [s // a for s, a in zip(shape, arg_shape)]
+            arg_repeat_sizes.extend(sub_repeat_sizes)
+
+            arg_omit_dmas.append(int(np.multiply.reduce(arg_shape[:-1])) == 1)
+            arg_stride_zeros.append(arg_shape[-1] == 1)
 
         return OrderedDict([('dma_size', dma_size),
                             ('num_comp', num_comp),
                             ('addr_inc', addr_inc),
                             ('arg_addr_incs', arg_addr_incs),
-                            ('wrap_modes', wrap_modes),
-                            ('wrap_sizes', wrap_sizes)])
+                            ('arg_trip_sizes', arg_trip_sizes),
+                            ('arg_repeat_sizes', arg_repeat_sizes),
+                            ('arg_omit_dmas', arg_omit_dmas),
+                            ('arg_stride_zeros', arg_stride_zeros)])
 
     def control_sequence(self, fsm):
         sources = self.collect_sources()
+        max_rank = self.get_max_arg_rank()
 
-        arg_gaddrs = [self.m.Reg(self._name('arg_gaddr_%d' % i),
-                                 self.maxi.addrwidth, initval=0)
-                      for i, _ in enumerate(self.arg_objaddrs)]
         out_gaddr = self.m.Reg(self._name('out_gaddr'),
                                self.maxi.addrwidth, initval=0)
         comp_count = self.m.Reg(self._name('comp_count'),
                                 self.maxi.addrwidth + 1, initval=0)
-        wrap_counts = [self.m.Reg(self._name('wrap_count_%d' % i),
-                                  self.maxi.addrwidth + 1, initval=0)
-                       for i, arg in enumerate(sources)]
+
+        arg_gaddr_offsets = []
+        for i, _ in enumerate(self.arg_objaddrs):
+            arg_gaddr_offsets.append([self.m.Reg(self._name('arg_gaddr_offset_%d_%d' % (i, j)),
+                                                 self.maxi.addrwidth, initval=0)
+                                      for j in range(max_rank)])
+
+        arg_gaddrs = [self.m.Wire(self._name('arg_gaddr_%d' % i),
+                                  self.maxi.addrwidth)
+                      for i, _ in enumerate(self.arg_objaddrs)]
+
+        for arg_gaddr, offsets in zip(arg_gaddrs, arg_gaddr_offsets):
+            v = offsets[0]
+            for offset in offsets[1:]:
+                v += offset
+            arg_gaddr.assign(v)
+
+        arg_trip_counts = [[self.m.Reg(self._name('arg_trip_count_%d_%d' % (i, j)),
+                                       self.maxi.addrwidth + 1, initval=0)
+                            for j in range(max_rank)]
+                           for i, arg in enumerate(sources)]
+
+        arg_repeat_counts = [[self.m.Reg(self._name('arg_repeat_count_%d_%d' % (i, j)),
+                                         self.maxi.addrwidth + 1, initval=0)
+                              for j in range(max_rank)]
+                             for i, arg in enumerate(sources)]
+
+        out_page = self.m.Reg(self._name('out_page'), initval=0)
+        out_page_comp_offset = self.m.Reg(self._name('out_page_comp_offset'),
+                                          self.maxi.addrwidth, initval=0)
+        out_page_dma_offset = self.m.Reg(self._name('out_page_dma_offset'),
+                                         self.maxi.addrwidth, initval=0)
 
         arg_pages = [self.m.Reg(self._name('arg_page_%d' % i), initval=0)
                      for i, _ in enumerate(self.arg_objaddrs)]
@@ -1266,13 +1377,7 @@ class _StreamingOperator(_Operator):
                                            self.maxi.addrwidth, initval=0)
                                 for i, _ in enumerate(self.arg_objaddrs)]
 
-        out_page = self.m.Reg(self._name('out_page'), initval=0)
-        out_page_comp_offset = self.m.Reg(self._name('out_page_comp_offset'),
-                                          self.maxi.addrwidth, initval=0)
-        out_page_dma_offset = self.m.Reg(self._name('out_page_dma_offset'),
-                                         self.maxi.addrwidth, initval=0)
-
-        arg_page_size = self.output_rams[0].length // 2
+        arg_page_size = min(ram.length for ram in self.input_rams) // 2
         out_page_size = self.output_rams[0].length // 2
 
         skip_read = self.m.Reg(self._name('skip_read'), initval=0)
@@ -1283,10 +1388,29 @@ class _StreamingOperator(_Operator):
         # initialization phase
         # --------------------
         fsm(
-            [arg_gaddr(0) for arg_gaddr in arg_gaddrs],
             out_gaddr(0),
             comp_count(0),
-            [wrap_count(0) for wrap_count in wrap_counts]
+        )
+
+        for offsets in arg_gaddr_offsets:
+            fsm(
+                [offset(0) for offset in offsets]
+            )
+
+        for trip_counts in arg_trip_counts:
+            fsm(
+                [trip_count(0) for trip_count in trip_counts]
+            )
+
+        for repeat_counts in arg_repeat_counts:
+            fsm(
+                [repeat_count(0) for repeat_count in repeat_counts]
+            )
+
+        fsm(
+            out_page(0),
+            out_page_comp_offset(0),
+            out_page_dma_offset(out_page_size)
         )
 
         fsm(
@@ -1295,12 +1419,6 @@ class _StreamingOperator(_Operator):
              for arg_page_comp_offset in arg_page_comp_offsets],
             [arg_page_dma_offset(0)
              for arg_page_dma_offset in arg_page_dma_offsets]
-        )
-
-        fsm(
-            out_page(0),
-            out_page_comp_offset(0),
-            out_page_dma_offset(out_page_size)
         )
 
         fsm(
@@ -1319,9 +1437,10 @@ class _StreamingOperator(_Operator):
         # DMA read -> Stream run -> Stream wait -> DMA write
         for (ram, arg_objaddr,
              arg_gaddr, arg_page_dma_offset,
-             wrap_mode, wrap_count, arg) in zip(self.input_rams, self.arg_objaddrs,
-                                                arg_gaddrs, arg_page_dma_offsets,
-                                                self.wrap_modes, wrap_counts, sources):
+             arg_stride_zero, arg_omit_dma, arg) in zip(self.input_rams, self.arg_objaddrs,
+                                                        arg_gaddrs, arg_page_dma_offsets,
+                                                        self.arg_stride_zeros, self.arg_omit_dmas,
+                                                        sources):
 
             b = fsm.current
             fsm.goto_next()
@@ -1343,11 +1462,12 @@ class _StreamingOperator(_Operator):
             bus_unlock(self.maxi, fsm)
             fsm.goto_next()
 
-            # for reuse
+            # FSM jumps for reuse
             e = fsm.current
-            fsm.If(wrap_mode == 2, wrap_count > 0).goto_from(b, e)
-            fsm.If(wrap_mode == 2, wrap_count == 0).goto_from(b, b_stride0)
-            fsm.If(wrap_mode != 2).goto_from(b_stride0, e)
+            fsm.If(arg_omit_dma, vg.Not(skip_write)).goto_from(b, e)
+            fsm.If(arg_omit_dma, arg_stride_zero,
+                   skip_write).goto_from(b, b_stride0)
+            fsm.If(vg.Not(arg_stride_zero)).goto_from(b_stride0, e)
 
         state_read_end = fsm.current
         fsm.If(skip_read).goto_from(state_read, state_read_end)
@@ -1360,16 +1480,18 @@ class _StreamingOperator(_Operator):
         self.stream.source_join(fsm)
 
         # set_source, set_constant (dup)
-        for (source_name, dup_name,
+        for (ram, source_name, dup_name,
              arg_page_comp_offset,
-             ram, wrap_mode) in zip(self.stream.sources.keys(),
-                                    self.stream.constants.keys(),
-                                    arg_page_comp_offsets,
-                                    self.input_rams, self.wrap_modes):
+             arg_stride_zero, arg_omit_dma) in zip(self.input_rams,
+                                                   self.stream.sources.keys(),
+                                                   self.stream.constants.keys(),
+                                                   arg_page_comp_offsets,
+                                                   self.arg_stride_zeros, self.arg_omit_dmas):
+
             read_laddr = arg_page_comp_offset
             read_size = self.dma_size
-            stride = vg.Mux(wrap_mode == 2, 0, 1)
-            dup = vg.Mux(wrap_mode == 2, 1, 0)
+            stride = vg.Mux(arg_stride_zero, 0, 1)
+            dup = vg.Mux(arg_stride_zero, 1, 0)
             self.stream.set_constant(fsm, dup_name, dup)
             fsm.set_index(fsm.current - 1)
             self.stream.set_source(fsm, source_name, ram,
@@ -1426,38 +1548,66 @@ class _StreamingOperator(_Operator):
             out_gaddr.add(self.addr_inc)
         )
 
-        for (arg_gaddr, arg_addr_inc,
+        arg_addr_incs = []
+        for i in range(0, len(self.arg_addr_incs), max_rank):
+            arg_addr_incs.append(self.arg_addr_incs[i: i + max_rank])
+
+        arg_trip_sizes = []
+        for i in range(0, len(self.arg_trip_sizes), max_rank):
+            arg_trip_sizes.append(self.arg_trip_sizes[i: i + max_rank])
+
+        arg_repeat_sizes = []
+        for i in range(0, len(self.arg_repeat_sizes), max_rank):
+            arg_repeat_sizes.append(self.arg_repeat_sizes[i: i + max_rank])
+
+        for (arg_offsets, arg_incs,
              arg_page, arg_page_comp_offset, arg_page_dma_offset,
-             wrap_mode, wrap_size,
-             wrap_count, arg) in zip(arg_gaddrs, self.arg_addr_incs,
-                                     arg_pages, arg_page_comp_offsets,
-                                     arg_page_dma_offsets,
-                                     self.wrap_modes, self.wrap_sizes,
-                                     wrap_counts, sources):
+             arg_stride_zero, arg_omit_dma,
+             trip_counts, trip_sizes,
+             repeat_counts, repeat_sizes, arg) in zip(arg_gaddr_offsets, arg_addr_incs,
+                                                      arg_pages, arg_page_comp_offsets,
+                                                      arg_page_dma_offsets,
+                                                      self.arg_stride_zeros, self.arg_omit_dmas,
+                                                      arg_trip_counts, arg_trip_sizes,
+                                                      arg_repeat_counts, arg_repeat_sizes,
+                                                      sources):
 
-            fsm.If(wrap_mode == 2)(
-                wrap_count(1)
-            )
+            # address increment for inner-most dim should be omitted.
+            cond = None
+            for (arg_offset, arg_inc,
+                 trip_count, trip_size,
+                 repeat_count, repeat_size) in zip(
+                     reversed(arg_offsets[:-1]), reversed(arg_incs[:-1]),
+                     reversed(trip_counts[:-1]), reversed(trip_sizes[:-1]),
+                     reversed(repeat_counts[:-1]), reversed(repeat_sizes[:-1])):
 
-            fsm.If(wrap_mode == 1)(
-                arg_gaddr.add(arg_addr_inc),
-                wrap_count.inc()
-            )
-            fsm.If(wrap_mode == 1, wrap_count == wrap_size - 1)(
-                arg_gaddr(0),
-                wrap_count(0)
-            )
+                fsm.If(cond)(
+                    repeat_count.inc()
+                )
+                fsm.If(cond, repeat_count == repeat_size - 1)(
+                    repeat_count(0),
+                    trip_count.inc(),
+                    arg_offset.add(arg_inc)
+                )
+                fsm.If(cond, repeat_count == repeat_size - 1,
+                       trip_count == trip_size - 1)(
+                    trip_count(0),
+                    arg_offset(0)
+                )
 
-            fsm.If(wrap_mode == 0)(
-                arg_gaddr.add(arg_addr_inc)
-            )
+                if cond:
+                    cond = vg.Ands(cond, repeat_count == repeat_size - 1,
+                                   trip_count == trip_size - 1)
+                else:
+                    cond = vg.Ands(repeat_count == repeat_size - 1,
+                                   trip_count == trip_size - 1)
 
-            fsm.If(vg.Not(arg_page), wrap_mode != 2)(
+            fsm.If(vg.Not(arg_page), vg.Not(arg_omit_dma))(
                 arg_page_comp_offset(arg_page_size),
-                arg_page_dma_offset(out_page_size),
+                arg_page_dma_offset(arg_page_size),
                 arg_page(1)
             )
-            fsm.If(arg_page, wrap_mode != 2)(
+            fsm.If(arg_page, vg.Not(arg_omit_dma))(
                 arg_page_comp_offset(0),
                 arg_page_dma_offset(0),
                 arg_page(0)
@@ -1501,11 +1651,12 @@ class _ReductionOperator(_StreamingOperator):
     input_chainable = True
     output_chainable = False
 
-    default_value = 0
+    carry_default_values = (0,)
 
     @staticmethod
-    def reduce_op(strm, *args, **kwargs):
-        # return strm.ReduceAddValid(*args, **kwargs)
+    def reduce_op(strm, value, size, par_offset, **kwargs):
+        # data, valid = strm.ReduceAddValid(value, size, **kwargs)
+        # return (data,), valid
         raise NotImplementedError()
 
     @staticmethod
@@ -1513,12 +1664,21 @@ class _ReductionOperator(_StreamingOperator):
         # return strm.Plus(*args)
         raise NotImplementedError()
 
+    def gather_op(self, strm, args, **kwargs):
+        carry_func = functools.partial(self.carry_op, strm)
+        data = strm.op_tree(carry_func,
+                            strm.Int(self.carry_default_values[0]), None, *args)
+        return (data,)
+
     def __init__(self, arg,
                  dtype=None, shape=None, name=None,
                  axis=None, keep_dims=False, par=1):
 
         _StreamingOperator.__init__(self, arg,
                                     dtype=dtype, shape=shape, name=name, par=par)
+
+        # shared_attr
+        self._rank = len(arg.shape)
 
         if axis is not None:
             rank = get_rank(self.args[0].shape)
@@ -1535,31 +1695,55 @@ class _ReductionOperator(_StreamingOperator):
         self.keep_dims = keep_dims
 
     def get_required_rams(self):
-        inputs, _, temps = _Operator.get_required_rams(self)
+        inputs, _, temps = _StreamingOperator.get_required_rams(self)
 
         outputs = []
 
+        output_width = self.get_ram_width()
         shape = self.get_aligned_shape()
         min_size = shape[-1] * 2
-        output_width = self.get_ram_width()
-
-        outputs = [(output_width, min_size)]
+        outputs = [(output_width, min_size)] * len(self.carry_default_values)
 
         return inputs, outputs, temps
 
     def get_stream_func(self):
         def func(strm):
-            data, valid = self.get_stream_reduce_value(strm)
-            strm.sink(data, when=valid)
+            values, valid = self.get_stream_reduce_value(strm)
+            for value in values:
+                strm.sink(value, when=valid)
 
         return func
+
+    def get_stream_reduce_output(self, strm, width, point, signed, values, omits, size):
+        carry_vars = [strm.constant(datawidth=width, point=point, signed=signed)
+                      for carry_default_value in self.carry_default_values]
+
+        data_list = [[] for carry_default_value in self.carry_default_values]
+        for par_offset, (value, omit) in enumerate(zip(values, omits)):
+            if self.par > 1:
+                value = strm.Mux(omit, strm.Int(self.carry_default_values[-1]), value)
+
+            out_values, valid = self.reduce_op(strm, value, size, par_offset,
+                                               width=width, signed=signed)
+            out_values = [out_rcast(strm, out_value, width, point, signed)
+                          for out_value in out_values]
+            for lst, out_value in zip(data_list, out_values):
+                lst.append(out_value)
+
+        for lst, carry_var in zip(data_list, carry_vars):
+            lst.append(carry_var)
+
+        out_values = self.gather_op(strm, *data_list)
+        out_values = [out_rcast(strm, out_value, width, point, signed)
+                      for out_value in out_values]
+
+        return out_values, valid
 
     def get_stream_reduce_value(self, strm):
         arg = self.args[0]
 
         if are_chainable_operators(self, arg):
             values = arg.get_stream_values(strm)
-            vars.append(values)
 
         else:
             datawidth = arg.get_op_width()
@@ -1580,7 +1764,7 @@ class _ReductionOperator(_StreamingOperator):
         point = self.get_op_point()
         signed = self.get_signed()
 
-        size = strm.constant(datawidth=self.read_dma_size.bit_length(),
+        size = strm.constant(datawidth=self.reduce_size.bit_length(),
                              signed=False)
 
         omit_mask = strm.constant(datawidth=self.par, signed=False)
@@ -1588,60 +1772,68 @@ class _ReductionOperator(_StreamingOperator):
         omits = [strm.Ands(b, omit_counter == size - 1)
                  for b in omit_mask]
 
-        carry = strm.constant(datawidth=width, point=point, signed=signed)
-
-        data_list = []
-        for value, omit in zip(values, omits):
-            if self.par > 1:
-                value = strm.Mux(omit, strm.Int(self.default_value), value)
-
-            data, valid = self.reduce_op(strm, value, size,
-                                         width=width, signed=signed)
-            data = out_rcast(strm, data, width, point, signed)
-            data_list.append(data)
-
-        data_list.append(carry)
-
-        carry_func = functools.partial(self.carry_op, strm)
-        data = strm.op_tree(carry_func,
-                            strm.Int(self.default_value), None, *data_list)
-        data = out_rcast(strm, data, width, point, signed)
-
-        return data, valid
+        return self.get_stream_reduce_output(strm, width, point, signed,
+                                             values, omits, size)
 
     def get_control_param_values(self):
+        shape = self.args[0].shape
         aligned_shape = self.args[0].get_aligned_shape()
         aligned_length = self.args[0].get_aligned_length()
         total_size = int(math.ceil(aligned_length / self.par))
+
         read_dma_size = int(math.ceil(aligned_shape[-1] / self.par))
         write_dma_size = self.shape[-1]
+        reduce_size = int(math.ceil(shape[-1] / self.par))
+
         num_comp = int(math.ceil(total_size / read_dma_size))
 
         addr_inc = to_byte(align_word(self.shape[-1], self.get_word_alignment()) *
                            self.get_ram_width())
 
         sources = self.collect_sources()
+        max_rank = self.get_max_arg_rank()
 
         arg_addr_incs = []
-        wrap_modes = []
-        wrap_sizes = []
+        arg_trip_sizes = []
+        arg_repeat_sizes = []
+        arg_stride_zeros = []
+        arg_omit_dmas = []
+
+        dummy_shape = list(max_shape(*sources))
+
         for arg in sources:
-            arg_addr_inc = to_byte(align_word(arg.shape[-1], arg.get_word_alignment()) *
-                                   arg.get_ram_width())
-            if tuple(arg.shape) == tuple(self.args[0].shape):
-                wrap_mode = 0
-                wrap_size = 0
-            elif len(arg.shape) == 1 and arg.shape[-1] == 1:
-                # stride-0
-                wrap_mode = 2
-                wrap_size = get_wrap_size(self.args[0].shape, arg.shape)
-            else:
-                # repeat
-                wrap_mode = 1
-                wrap_size = get_wrap_size(self.args[0].shape, arg.shape)
-            arg_addr_incs.append(arg_addr_inc)
-            wrap_modes.append(wrap_mode)
-            wrap_sizes.append(wrap_size)
+            rank = get_rank(dummy_shape)
+            arg_rank = get_rank(arg.shape)
+
+            if rank < max_rank:
+                for _ in range(max_rank - rank):
+                    dummy_shape.insert(0, 1)
+
+            arg_shape = [s for s in arg.shape]
+            if arg_rank < max_rank:
+                for _ in range(max_rank - arg_rank):
+                    arg_shape.insert(0, 1)
+
+            inc = to_byte(align_word(arg_shape[-1], arg.get_word_alignment()) *
+                          arg.get_ram_width())
+
+            sub_incs = []
+            sub_incs.append(0)
+            for s in reversed(arg_shape[:-1]):
+                sub_incs.append(inc)
+                inc *= s
+
+            sub_incs.reverse()
+            arg_addr_incs.extend(sub_incs)
+
+            sub_trip_sizes = arg_shape
+            arg_trip_sizes.extend(sub_trip_sizes)
+
+            sub_repeat_sizes = [s // a for s, a in zip(dummy_shape, arg_shape)]
+            arg_repeat_sizes.extend(sub_repeat_sizes)
+
+            arg_omit_dmas.append(int(np.multiply.reduce(arg_shape[:-1])) == 1)
+            arg_stride_zeros.append(arg_shape[-1] == 1)
 
         if self.args[0].shape[-1] % self.par == 0:
             stream_omit_mask = 0
@@ -1664,28 +1856,58 @@ class _ReductionOperator(_StreamingOperator):
 
         return OrderedDict([('read_dma_size', read_dma_size),
                             ('write_dma_size', write_dma_size),
+                            ('reduce_size', reduce_size),
                             ('num_comp', num_comp),
                             ('addr_inc', addr_inc),
                             ('arg_addr_incs', arg_addr_incs),
-                            ('wrap_modes', wrap_modes),
-                            ('wrap_sizes', wrap_sizes),
+                            ('arg_trip_sizes', arg_trip_sizes),
+                            ('arg_repeat_sizes', arg_repeat_sizes),
+                            ('arg_omit_dmas', arg_omit_dmas),
+                            ('arg_stride_zeros', arg_stride_zeros),
                             ('stream_omit_mask', stream_omit_mask),
                             ('max_reduce_op_count', max_reduce_op_count),
                             ('max_out_op_count', max_out_op_count)])
 
     def control_sequence(self, fsm):
         sources = self.collect_sources()
+        max_rank = self.get_max_arg_rank()
 
-        arg_gaddrs = [self.m.Reg(self._name('arg_gaddr_%d' % i),
-                                 self.maxi.addrwidth, initval=0)
-                      for i, _ in enumerate(self.arg_objaddrs)]
         out_gaddr = self.m.Reg(self._name('out_gaddr'),
                                self.maxi.addrwidth, initval=0)
         comp_count = self.m.Reg(self._name('comp_count'),
                                 self.maxi.addrwidth + 1, initval=0)
-        wrap_counts = [self.m.Reg(self._name('wrap_count_%d' % i),
-                                  self.maxi.addrwidth + 1, initval=0)
-                       for i, arg in enumerate(sources)]
+
+        arg_gaddr_offsets = []
+        for i, _ in enumerate(self.arg_objaddrs):
+            arg_gaddr_offsets.append([self.m.Reg(self._name('arg_gaddr_offset_%d_%d' % (i, j)),
+                                                 self.maxi.addrwidth, initval=0)
+                                      for j in range(max_rank)])
+
+        arg_gaddrs = [self.m.Wire(self._name('arg_gaddr_%d' % i),
+                                  self.maxi.addrwidth)
+                      for i, _ in enumerate(self.arg_objaddrs)]
+
+        for arg_gaddr, offsets in zip(arg_gaddrs, arg_gaddr_offsets):
+            v = offsets[0]
+            for offset in offsets[1:]:
+                v += offset
+            arg_gaddr.assign(v)
+
+        arg_trip_counts = [[self.m.Reg(self._name('arg_trip_count_%d_%d' % (i, j)),
+                                       self.maxi.addrwidth + 1, initval=0)
+                            for j in range(max_rank)]
+                           for i, arg in enumerate(sources)]
+
+        arg_repeat_counts = [[self.m.Reg(self._name('arg_repeat_count_%d_%d' % (i, j)),
+                                         self.maxi.addrwidth + 1, initval=0)
+                              for j in range(max_rank)]
+                             for i, arg in enumerate(sources)]
+
+        out_page = self.m.Reg(self._name('out_page'), initval=0)
+        out_page_comp_offset = self.m.Reg(self._name('out_page_comp_offset'),
+                                          self.maxi.addrwidth, initval=0)
+        out_page_dma_offset = self.m.Reg(self._name('out_page_dma_offset'),
+                                         self.maxi.addrwidth, initval=0)
 
         arg_pages = [self.m.Reg(self._name('arg_page_%d' % i), initval=0)
                      for i, _ in enumerate(self.arg_objaddrs)]
@@ -1696,13 +1918,7 @@ class _ReductionOperator(_StreamingOperator):
                                            self.maxi.addrwidth, initval=0)
                                 for i, _ in enumerate(self.arg_objaddrs)]
 
-        out_page = self.m.Reg(self._name('out_page'), initval=0)
-        out_page_comp_offset = self.m.Reg(self._name('out_page_comp_offset'),
-                                          self.maxi.addrwidth, initval=0)
-        out_page_dma_offset = self.m.Reg(self._name('out_page_dma_offset'),
-                                         self.maxi.addrwidth, initval=0)
-
-        arg_page_size = self.output_rams[0].length // 2
+        arg_page_size = min(ram.length for ram in self.input_rams) // 2
         out_page_size = self.output_rams[0].length // 2
 
         skip_read = self.m.Reg(self._name('skip_read'), initval=0)
@@ -1710,9 +1926,10 @@ class _ReductionOperator(_StreamingOperator):
         skip_write = self.m.Reg(self._name('skip_write'), initval=0)
 
         skip_carry_read = self.m.Reg(self._name('skip_carry_read'), initval=0)
-        carry = self.m.Reg(self._name('carry'),
-                           self.get_op_width(), initval=self.default_value,
-                           signed=self.get_signed())
+        carry_vars = [self.m.Reg(self._name('carry_var_%d' % i),
+                                 self.get_op_width(), initval=carry_default_value,
+                                 signed=self.get_signed())
+                      for i, carry_default_value in enumerate(self.carry_default_values)]
 
         reduce_op_count = self.m.Reg(self._name('reduce_op_count'),
                                      self.maxi.addrwidth, initval=0)
@@ -1723,10 +1940,29 @@ class _ReductionOperator(_StreamingOperator):
         # initialization phase
         # --------------------
         fsm(
-            [arg_gaddr(0) for arg_gaddr in arg_gaddrs],
             out_gaddr(0),
             comp_count(0),
-            [wrap_count(0) for wrap_count in wrap_counts]
+        )
+
+        for offsets in arg_gaddr_offsets:
+            fsm(
+                [offset(0) for offset in offsets]
+            )
+
+        for trip_counts in arg_trip_counts:
+            fsm(
+                [trip_count(0) for trip_count in trip_counts]
+            )
+
+        for repeat_counts in arg_repeat_counts:
+            fsm(
+                [repeat_count(0) for repeat_count in repeat_counts]
+            )
+
+        fsm(
+            out_page(0),
+            out_page_comp_offset(0),
+            out_page_dma_offset(out_page_size)
         )
 
         fsm(
@@ -1738,12 +1974,6 @@ class _ReductionOperator(_StreamingOperator):
         )
 
         fsm(
-            out_page(0),
-            out_page_comp_offset(0),
-            out_page_dma_offset(out_page_size)
-        )
-
-        fsm(
             skip_read(0),
             skip_comp(0),
             skip_write(1)
@@ -1751,7 +1981,8 @@ class _ReductionOperator(_StreamingOperator):
 
         fsm(
             skip_carry_read(1),
-            carry(self.default_value)
+            [carry_var(carry_default_value)
+             for carry_var, carry_default_value in zip(carry_vars, self.carry_default_values)]
         )
 
         fsm(
@@ -1769,9 +2000,10 @@ class _ReductionOperator(_StreamingOperator):
         # DMA read -> Stream run -> Stream wait -> DMA write
         for (ram, arg_objaddr,
              arg_gaddr, arg_page_dma_offset,
-             wrap_mode, wrap_count, arg) in zip(self.input_rams, self.arg_objaddrs,
-                                                arg_gaddrs, arg_page_dma_offsets,
-                                                self.wrap_modes, wrap_counts, sources):
+             arg_stride_zero, arg_omit_dma, arg) in zip(self.input_rams, self.arg_objaddrs,
+                                                        arg_gaddrs, arg_page_dma_offsets,
+                                                        self.arg_stride_zeros, self.arg_omit_dmas,
+                                                        sources):
 
             b = fsm.current
             fsm.goto_next()
@@ -1793,11 +2025,12 @@ class _ReductionOperator(_StreamingOperator):
             bus_unlock(self.maxi, fsm)
             fsm.goto_next()
 
-            # for reuse
+            # FSM jumps for reuse
             e = fsm.current
-            fsm.If(wrap_mode == 2, wrap_count > 0).goto_from(b, e)
-            fsm.If(wrap_mode == 2, wrap_count == 0).goto_from(b, b_stride0)
-            fsm.If(wrap_mode != 2).goto_from(b_stride0, e)
+            fsm.If(arg_omit_dma, vg.Not(skip_write)).goto_from(b, e)
+            fsm.If(arg_omit_dma, arg_stride_zero,
+                   skip_write).goto_from(b, b_stride0)
+            fsm.If(vg.Not(arg_stride_zero)).goto_from(b_stride0, e)
 
         state_read_end = fsm.current
         fsm.If(skip_read).goto_from(state_read, state_read_end)
@@ -1809,29 +2042,34 @@ class _ReductionOperator(_StreamingOperator):
 
         self.stream.source_join(fsm)
 
-        # update carry
+        # update carry_vars
         laddr = out_page_comp_offset + out_op_count
-        ram_value = self.output_rams[0].read(fsm, laddr)
+        ram_values = []
+        for output_ram in self.output_rams:
+            ram_values.append(output_ram.read(fsm, laddr))
 
         fsm.If(vg.Not(skip_carry_read))(
-            carry(ram_value)
+            [carry_var(ram_value) for carry_var, ram_value in zip(carry_vars, ram_values)]
         )
 
         # set_constant (carry)
-        name = list(self.stream.constants.keys())[len(self.stream.sources) + 2]
-        self.stream.set_constant(fsm, name, carry)
+        for name, carry_var in zip(
+                list(self.stream.constants.keys())[len(self.stream.sources) + 2:], carry_vars):
+            self.stream.set_constant(fsm, name, carry_var)
 
         # set_source, set_constant (dup)
-        for (source_name, dup_name,
+        for (ram, source_name, dup_name,
              arg_page_comp_offset,
-             ram, wrap_mode) in zip(self.stream.sources.keys(),
-                                    self.stream.constants.keys(),
-                                    arg_page_comp_offsets,
-                                    self.input_rams, self.wrap_modes):
+             arg_stride_zero, arg_omit_dma) in zip(self.input_rams,
+                                                   self.stream.sources.keys(),
+                                                   self.stream.constants.keys(),
+                                                   arg_page_comp_offsets,
+                                                   self.arg_stride_zeros, self.arg_omit_dmas):
+
             read_laddr = arg_page_comp_offset
-            read_size = self.read_dma_size
-            stride = vg.Mux(wrap_mode == 2, 0, 1)
-            dup = vg.Mux(wrap_mode == 2, 1, 0)
+            read_size = self.reduce_size
+            stride = vg.Mux(arg_stride_zero, 0, 1)
+            dup = vg.Mux(arg_stride_zero, 1, 0)
             self.stream.set_constant(fsm, dup_name, dup)
             fsm.set_index(fsm.current - 1)
             self.stream.set_source(fsm, source_name, ram,
@@ -1848,15 +2086,16 @@ class _ReductionOperator(_StreamingOperator):
 
         # set_constant (size)
         name = list(self.stream.constants.keys())[len(self.stream.sources)]
-        self.stream.set_constant(fsm, name, self.read_dma_size)
+        self.stream.set_constant(fsm, name, self.reduce_size)
 
         # set_constant (omit_mask)
         name = list(self.stream.constants.keys())[len(self.stream.sources) + 1]
         self.stream.set_constant(fsm, name, self.stream_omit_mask)
 
         # set_constant (carry)
-        name = list(self.stream.constants.keys())[len(self.stream.sources) + 2]
-        self.stream.set_constant(fsm, name, carry)
+        for name, carry_var in zip(
+                list(self.stream.constants.keys())[len(self.stream.sources) + 2:], carry_vars):
+            self.stream.set_constant(fsm, name, carry_var)
 
         fsm.goto_next()
 
@@ -1900,38 +2139,66 @@ class _ReductionOperator(_StreamingOperator):
             out_gaddr.add(self.addr_inc)
         )
 
-        for (arg_gaddr, arg_addr_inc,
+        arg_addr_incs = []
+        for i in range(0, len(self.arg_addr_incs), max_rank):
+            arg_addr_incs.append(self.arg_addr_incs[i: i + max_rank])
+
+        arg_trip_sizes = []
+        for i in range(0, len(self.arg_trip_sizes), max_rank):
+            arg_trip_sizes.append(self.arg_trip_sizes[i: i + max_rank])
+
+        arg_repeat_sizes = []
+        for i in range(0, len(self.arg_repeat_sizes), max_rank):
+            arg_repeat_sizes.append(self.arg_repeat_sizes[i: i + max_rank])
+
+        for (arg_offsets, arg_incs,
              arg_page, arg_page_comp_offset, arg_page_dma_offset,
-             wrap_mode, wrap_size,
-             wrap_count, arg) in zip(arg_gaddrs, self.arg_addr_incs,
-                                     arg_pages, arg_page_comp_offsets,
-                                     arg_page_dma_offsets,
-                                     self.wrap_modes, self.wrap_sizes,
-                                     wrap_counts, sources):
+             arg_stride_zero, arg_omit_dma,
+             trip_counts, trip_sizes,
+             repeat_counts, repeat_sizes, arg) in zip(arg_gaddr_offsets, arg_addr_incs,
+                                                      arg_pages, arg_page_comp_offsets,
+                                                      arg_page_dma_offsets,
+                                                      self.arg_stride_zeros, self.arg_omit_dmas,
+                                                      arg_trip_counts, arg_trip_sizes,
+                                                      arg_repeat_counts, arg_repeat_sizes,
+                                                      sources):
 
-            fsm.If(wrap_mode == 2)(
-                wrap_count(1)
-            )
+            # address increment for inner-most dim should be omitted.
+            cond = None
+            for (arg_offset, arg_inc,
+                 trip_count, trip_size,
+                 repeat_count, repeat_size) in zip(
+                     reversed(arg_offsets[:-1]), reversed(arg_incs[:-1]),
+                     reversed(trip_counts[:-1]), reversed(trip_sizes[:-1]),
+                     reversed(repeat_counts[:-1]), reversed(repeat_sizes[:-1])):
 
-            fsm.If(wrap_mode == 1)(
-                arg_gaddr.add(arg_addr_inc),
-                wrap_count.inc()
-            )
-            fsm.If(wrap_mode == 1, wrap_count == wrap_size - 1)(
-                arg_gaddr(0),
-                wrap_count(0)
-            )
+                fsm.If(cond)(
+                    repeat_count.inc()
+                )
+                fsm.If(cond, repeat_count == repeat_size - 1)(
+                    repeat_count(0),
+                    trip_count.inc(),
+                    arg_offset.add(arg_inc)
+                )
+                fsm.If(cond, repeat_count == repeat_size - 1,
+                       trip_count == trip_size - 1)(
+                    trip_count(0),
+                    arg_offset(0)
+                )
 
-            fsm.If(wrap_mode == 0)(
-                arg_gaddr.add(arg_addr_inc)
-            )
+                if cond:
+                    cond = vg.Ands(cond, repeat_count == repeat_size - 1,
+                                   trip_count == trip_size - 1)
+                else:
+                    cond = vg.Ands(repeat_count == repeat_size - 1,
+                                   trip_count == trip_size - 1)
 
-            fsm.If(vg.Not(arg_page), wrap_mode != 2)(
+            fsm.If(vg.Not(arg_page), vg.Not(arg_omit_dma))(
                 arg_page_comp_offset(arg_page_size),
-                arg_page_dma_offset(out_page_size),
+                arg_page_dma_offset(arg_page_size),
                 arg_page(1)
             )
-            fsm.If(arg_page, wrap_mode != 2)(
+            fsm.If(arg_page, vg.Not(arg_omit_dma))(
                 arg_page_comp_offset(0),
                 arg_page_dma_offset(0),
                 arg_page(0)
@@ -1970,7 +2237,9 @@ class _ReductionOperator(_StreamingOperator):
         )
 
         fsm.If(reduce_op_count == self.max_reduce_op_count)(
-            carry(self.default_value),
+            [carry_var(carry_default_value)
+             for carry_var, carry_default_value in zip(carry_vars,
+                                                       self.carry_default_values)],
             skip_carry_read(1),
             out_op_count.inc()
         )
@@ -1992,6 +2261,14 @@ class _ReductionOperator(_StreamingOperator):
         return _StreamingOperator.eval(self, memo, input_dict, **kwargs)
 
 
+class _ActFuncOperator(_ElementwiseOperator):
+
+    def get_act_func(self):
+        method = self.get_eval_method()
+        method = functools.partial(method, dtype=self.dtype)
+        return method
+
+
 class _View(_Operator):
     __redirects__ = ('word_alignment',
                      'global_index', 'local_index',
@@ -1999,11 +2276,11 @@ class _View(_Operator):
                      'objaddr',
                      'add_consumer', 'set_output', 'add_alignment_request')
 
-    def __init__(self, value, dtype=None, shape=None, name=None):
-        if dtype is None:
-            dtype = value.dtype
+    def __init__(self, value, shape=None, dtype=None, name=None):
         if shape is None:
             shape = value.shape
+        if dtype is None:
+            dtype = value.dtype
         _Operator.__init__(self, value, dtype=dtype, shape=shape, name=name)
 
     def set_global_index(self, global_index):
@@ -2063,6 +2340,8 @@ class _Reshape(_Operator):
             if s is None or s == -1:
                 use_minus_one = True
                 minus_one_index = i
+            elif s < 0:
+                raise ValueError('not supported value for shape: %d' % s)
             else:
                 all_mul *= s
 
@@ -2071,8 +2350,12 @@ class _Reshape(_Operator):
 
         shape = tuple(shape)
 
-        _StreamingOperator.__init__(self, tensor,
-                                    dtype=dtype, shape=shape, name=name)
+        reshaped_length = functools.reduce(lambda x, y: x * y, shape, 1)
+        if length != reshaped_length:
+            raise ValueError('size mismatch: %d != %d' % (length, reshaped_length))
+
+        _Operator.__init__(self, tensor,
+                           dtype=dtype, shape=shape, name=name)
 
     def attribute(self):
         pass
@@ -2241,8 +2524,17 @@ class _Reshape(_Operator):
     def get_original_shape(self):
         return self.args[0].get_original_shape()
 
+    def get_layout(self):
+        return self.layout
+
+    def get_onnx_layout(self):
+        return self.onnx_layout
+
     def get_original_layout(self):
         return self.args[0].get_original_layout()
+
+    def get_original_onnx_layout(self):
+        return self.args[0].get_original_onnx_layout()
 
     def eval(self, memo, input_dict, **kwargs):
         if id(self) in memo:
@@ -2491,40 +2783,54 @@ def max_shape(*args):
             arg_rank = get_rank(tuple(arg.shape))
 
             if ret_rank == arg_rank:
-                if ret_rank == 1 and ret[0] == 1:
-                    ret = tuple(arg.shape)
-                elif arg_rank == 1 and arg.shape[0] == 1:
-                    pass
-                else:
-                    raise ValueError('shape mismatch: %s != %s' %
-                                     (str(ret), str(tuple(arg.shape))))
-
-            if ret_rank > arg_rank:
-                if arg_rank == 1 and arg.shape[0] == 1:
-                    continue
-
-                for r, a in zip(ret[-arg_rank:], arg.shape):
-                    if r != a:
+                shape = []
+                for r, a in zip(ret, arg.shape):
+                    if r == a:
+                        shape.append(r)
+                    elif r != a and r == 1:
+                        shape.append(a)
+                    elif r != a and a == 1:
+                        shape.append(r)
+                    else:
                         raise ValueError('shape mismatch: %s != %s' %
                                          (str(ret), str(tuple(arg.shape))))
+                ret = tuple(shape)
+                continue
 
+            if ret_rank > arg_rank:
                 shape = []
                 for r in ret[:-arg_rank]:
                     shape.append(r)
-                shape.extend(arg.shape)
+
+                for r, a in zip(ret[-arg_rank:], arg.shape):
+                    if r == a:
+                        shape.append(r)
+                    elif r != a and r == 1:
+                        shape.append(a)
+                    elif r != a and a == 1:
+                        shape.append(r)
+                    else:
+                        raise ValueError('shape mismatch: %s != %s' %
+                                         (str(ret), str(tuple(arg.shape))))
+
                 ret = tuple(shape)
                 continue
 
             if arg_rank > ret_rank:
-                for a, r in zip(arg[-ret_rank:], ret.shape):
-                    if a != r:
-                        raise ValueError('shape mismatch: %s != %s' %
-                                         (str(arg), str(tuple(ret.shape))))
-
                 shape = []
-                for r in arg[:-ret_rank]:
-                    shape.append(r)
-                shape.extend(ret.shape)
+                for a in arg.shape[:-ret_rank]:
+                    shape.append(a)
+
+                for r, a in zip(ret, arg.shape[-ret_rank:]):
+                    if r == a:
+                        shape.append(r)
+                    elif r != a and r == 1:
+                        shape.append(a)
+                    elif r != a and a == 1:
+                        shape.append(r)
+                    else:
+                        raise ValueError('shape mismatch: %s != %s' %
+                                         (str(ret), str(tuple(arg.shape))))
                 ret = tuple(shape)
                 continue
 

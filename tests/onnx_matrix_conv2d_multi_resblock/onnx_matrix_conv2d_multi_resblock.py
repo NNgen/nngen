@@ -27,7 +27,7 @@ import veriloggen.types.axi as axi
 
 class MatrixConv2dMultiResblock(nn.Module):
     def __init__(self, weight_shape, stride=1, padding=0,
-                 with_batchnorm=False, act_func='relu'):
+                 with_batchnorm=False, act_func='ReLU'):
 
         super(MatrixConv2dMultiResblock, self).__init__()
 
@@ -40,10 +40,8 @@ class MatrixConv2dMultiResblock(nn.Module):
         else:
             self.bn1 = None
 
-        if act_func == 'relu':
-            self.f1 = nn.ReLU(inplace=True)
-        elif act_func == 'leaky_relu':
-            self.f1 = nn.LeakyReLU(inplace=True)
+        if act_func is not None:
+            self.f1 = getattr(nn, act_func)()
         else:
             self.f1 = None
 
@@ -56,10 +54,8 @@ class MatrixConv2dMultiResblock(nn.Module):
         else:
             self.bn2 = None
 
-        if act_func == 'relu':
-            self.f2 = nn.ReLU(inplace=True)
-        elif act_func == 'leaky_relu':
-            self.f2 = nn.LeakyReLU(inplace=True)
+        if act_func is not None:
+            self.f2 = getattr(nn, act_func)()
         else:
             self.f2 = None
 
@@ -93,7 +89,7 @@ class MatrixConv2dMultiResblock(nn.Module):
 def run(act_shape=(1, 7, 7, 15), weight_shape=(15, 3, 3, 15),
         act_dtype=ng.int32, weight_dtype=ng.int32,
         stride=1, padding=1,
-        with_batchnorm=False, act_func='relu', disable_fusion=False,
+        with_batchnorm=False, act_func='ReLU', disable_fusion=False,
         par_ich=1, par_och=1, par_col=1, par_row=1,
         concur_och=None, stationary='filter',
         chunk_size=64,
@@ -103,9 +99,10 @@ def run(act_shape=(1, 7, 7, 15), weight_shape=(15, 3, 3, 15),
     if weight_shape[0] != weight_shape[3]:
         raise ValueError('not supported shape: weight_shape[0] != weight_shape[3]')
 
-    # model definition
+    # pytorch model
     model = MatrixConv2dMultiResblock(weight_shape, stride, padding,
                                       with_batchnorm, act_func)
+
     # overwrite weight values for test
     # model.conv.weight.data = torch.from_numpy(np.ones_like(model.conv.weight.data.numpy()))
     # model.conv.bias.data = torch.from_numpy(np.zeros_like(model.conv.bias.data.numpy()))
@@ -118,6 +115,10 @@ def run(act_shape=(1, 7, 7, 15), weight_shape=(15, 3, 3, 15),
     model.eval()
     torch.onnx.export(model, dummy_input, onnx_filename,
                       input_names=input_names, output_names=output_names)
+
+    # --------------------
+    # (1) Represent a DNN model as a dataflow by NNgen operators
+    # --------------------
 
     # ONNX to NNgen
     value_dtypes = {'act': act_dtype,
@@ -135,66 +136,84 @@ def run(act_shape=(1, 7, 7, 15), weight_shape=(15, 3, 3, 15),
                                           default_bias_dtype=ng.int32,
                                           disable_fusion=disable_fusion)
 
-    # default linear quantization
-    if act_dtype.width >= 8:
-        value_ranges = {'act': (-120, 120)}
+    # --------------------
+    # (2) Assign quantized weights to the NNgen operators
+    # --------------------
+
+    if act_dtype.width > 8:
+        act_scale_factor = 128
     else:
-        value_ranges = {'act': (-(2 ** (act_dtype.width - 1)), (2 ** (act_dtype.width - 1)))}
+        act_scale_factor = int(round(2 ** (act_dtype.width - 1) * 0.5))
 
-    ng.quantize(outputs, value_ranges=value_ranges)
+    input_scale_factors = {'act': act_scale_factor}
 
-    # set attribute
+    ng.quantize(outputs, input_scale_factors)
+
+    # --------------------
+    # (3) Assign hardware attributes
+    # --------------------
+
     for op in operators.values():
         if isinstance(op, ng.conv2d):
             op.attribute(par_ich=par_ich, par_och=par_och,
                          par_row=par_row, par_col=par_col,
                          concur_och=concur_och)
 
-    # create target hardware
+    # --------------------
+    # (4) Verify the DNN model behavior by executing the NNgen dataflow as a software
+    # --------------------
+
     act = placeholders['act']
     out = outputs['out']
 
-    targ = ng.to_veriloggen([out], 'onnx_matrix_conv2d', silent=silent,
-                            config={'maxi_datawidth': axi_datawidth,
-                                    'chunk_size': chunk_size})
-
     # verification data
-    # if act_dtype.width > 4:
-    #    vact = np.arange(act.length, dtype=np.int64).reshape(act.shape) % [11] + [1]
-    # else:
-    #    vact = np.arange(act.length, dtype=np.int64).reshape(act.shape) % [5] + [1]
+    # random data
+    std = 0.2
+    mean = 0.5
+    img = np.random.normal(size=act.length).astype(np.float32).reshape(act.shape)
+    img = img * std + mean
 
-    #vact = np.ones(act.shape)
-    #vact = np.zeros(act.shape)
-    vact = np.random.normal(size=act.length).reshape(act.shape)
-    vact = np.clip(vact, -3.0, 3.0)
-    vact_min_val, vact_max_val = value_ranges['act']
-    vact_max_abs_range = max(abs(vact_min_val), abs(vact_max_val))
-    vact_width = vact_max_abs_range.bit_length() + 1
-    vact = vact * (1.0 * (2 ** (vact_width - 1) - 1)) / 3.0
-    vact = np.round(vact).astype(np.int64)
+    # execution on pytorch
+    model_input = img
 
-    eval_outs = ng.eval([out], act=vact)
-    vout = eval_outs[0]
-
-    # exec on pytorch
-    model_input = vact.astype(np.float32)
     if act.perm is not None:
         model_input = np.transpose(model_input, act.reversed_perm)
 
     model.eval()
     model_out = model(torch.from_numpy(model_input)).detach().numpy()
-    if act.perm is not None:
+    if act.perm is not None and len(model_out.shape) == len(act.shape):
         model_out = np.transpose(model_out, act.perm)
     scaled_model_out = model_out * out.scale_factor
 
-    out_diff = vout - scaled_model_out
-    out_err = out_diff / (scaled_model_out + 0.00000001)
-    max_out_err = np.max(np.abs(out_err))
+    # software-based verification
+    vact = img * act_scale_factor
+    vact = np.clip(vact,
+                   -1.0 * (2 ** (act.dtype.width - 1) - 1),
+                   1.0 * (2 ** (act.dtype.width - 1) - 1))
+    vact = np.round(vact).astype(np.int64)
+
+    eval_outs = ng.eval([out], act=vact)
+    vout = eval_outs[0]
+
+    mean_square_error = np.sum((vout - scaled_model_out) ** 2) / vout.size
+    corrcoef = np.corrcoef(model_out.reshape([-1]), vout.reshape([-1]))
+
     # breakpoint()
 
-    # if max_out_err > 0.1:
-    #    raise ValueError("too large output error: %f > 0.1" % max_out_err)
+    # --------------------
+    # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)
+    # --------------------
+
+    targ = ng.to_veriloggen([out], 'onnx_matrix_conv2d', silent=silent,
+                            config={'maxi_datawidth': axi_datawidth,
+                                    'chunk_size': chunk_size})
+
+    # --------------------
+    # (6) Simulate the generated hardware by Veriloggen and Verilog simulator
+    # --------------------
+
+    if simtype is None:
+        sys.exit()
 
     # to memory image
     param_data = ng.export_ndarray([out], chunk_size)

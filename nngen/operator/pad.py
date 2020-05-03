@@ -11,8 +11,8 @@ class pad(_pool):
         if hasattr(self, 'pad_col_left') and self.padding == 'SAME':
             padding = ("'%s'-(%d, %d, %d, %d)" %
                        (self.padding,
-                        self.pad_col_left_value, self.pad_col_right_value,
-                        self.pad_row_top_value, self.pad_row_bottom_value))
+                        self.pad_row_top_value, self.pad_row_bottom_value,
+                        self.pad_col_left_value, self.pad_col_right_value))
         else:
             padding = self.padding
 
@@ -49,7 +49,6 @@ class pad(_pool):
         import nngen.verify as verify
 
         name = self.__class__.__name__
-        method = getattr(verify, name, None)
 
         args = [arg.eval(memo, input_dict)
                 for arg in self.args]
@@ -61,6 +60,7 @@ class pad(_pool):
         kwargs['name'] = self.name
         kwargs['par'] = self.par
 
+        method = self.get_eval_method()
         ret = method(value, **kwargs)
         memo[id(self)] = ret
 

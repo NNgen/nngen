@@ -191,7 +191,7 @@ class conv2d(bt._Operator):
         cshamt_out = (' cshamt_out:%s' % self.cshamt_out
                       if self.cshamt_out is not None else '')
 
-        act_func = (' act_func:%s' % str(self.act_func.__name__)
+        act_func = (' act_func:%s' % str(self.act_func.__class__.__name__)
                     if self.act_func is not None else '')
         mul_dtype = (' mul_dtype:%s' % self.mul_dtype.to_str()
                      if self.mul_dtype is not None else '')
@@ -201,8 +201,8 @@ class conv2d(bt._Operator):
         if hasattr(self, 'pad_col_left_value') and self.padding == 'SAME':
             padding = ("'%s'-(%d, %d, %d, %d)" %
                        (self.padding,
-                        self.pad_col_left_value, self.pad_col_right_value,
-                        self.pad_row_top_value, self.pad_row_bottom_value))
+                        self.pad_row_top_value, self.pad_row_bottom_value,
+                        self.pad_col_left_value, self.pad_col_right_value))
         else:
             padding = self.padding
 
@@ -430,8 +430,8 @@ class conv2d(bt._Operator):
                                  str(type(cshamt_out)))
 
         if (act_func is not None and
-                not issubclass(act_func, bt._ElementwiseOperator)):
-            raise TypeError('act_func must be _ElementwiseOperator class.')
+                not issubclass(act_func, bt._ActFuncOperator)):
+            raise TypeError('act_func must be _ActFuncOperator class.')
 
         args = [input, filter]
         if bias is not None:
@@ -503,7 +503,7 @@ class conv2d(bt._Operator):
         self.mul_dtype = mul_dtype
         self.sum_dtype = sum_dtype
 
-        self.act_func = act_func
+        self.act_func = act_func(self) if act_func is not None else None
 
         # attribute
         self.par_ich = par_ich
@@ -659,6 +659,39 @@ class conv2d(bt._Operator):
 
         if disable_keep_input is not None:
             self.disable_keep_input = disable_keep_input
+
+    def collect_local_control_param_values(self, index_offset=0):
+        """
+        conv2d has no local_control_params,
+        but self.act_func can have local_control_params.
+        So collect_local_control_param_values() returns those of act_func.
+        """
+        values = OrderedDict()
+
+        for i, act_func in enumerate(self.shared_attrs['act_func'].values()):
+            if act_func is None:
+                continue
+
+            for name, lparam in act_func.get_local_control_param_values().items():
+                signame = self.to_local_control_param_name(index_offset + i, name)
+                values[signame] = lparam
+
+        return values
+
+    def copy_local_control_params(self, obj, index_offset=0):
+        """
+        conv2d has no local_control_params,
+        but self.act_func can have local_control_params.
+        So all local_control_params objects are assigned to act_func object.
+        """
+        for i, act_func in enumerate(self.shared_attrs['act_func'].values()):
+            if act_func is None:
+                continue
+
+            for name, lparam in act_func.get_local_control_param_values().items():
+                signame = self.to_local_control_param_name(index_offset + i, name)
+                if hasattr(obj, signame):
+                    setattr(act_func, name, getattr(obj, signame))
 
     def get_required_rams(self):
         arg_input = self.args[0]
@@ -1285,7 +1318,7 @@ class conv2d(bt._Operator):
                         out_var = mul.from_sink('z')
 
                         act_func_vars = []
-                        for act_func in self.shared_attrs['act_func']:
+                        for act_func in self.shared_attrs['act_func'].values():
                             if act_func is not None:
                                 act_func_vars.append(act_func.op(strm, out_var))
                             else:
@@ -1364,7 +1397,7 @@ class conv2d(bt._Operator):
         cshamt_sum_value = 0 if self.cshamt_sum is None else self.cshamt_sum
         cshamt_out_value = 0 if self.cshamt_out is None else self.cshamt_out
 
-        act_func_index = self.shared_attrs['act_func'].index(self.act_func)
+        act_func_index = self.get_shared_attr_index('act_func', self.act_func)
 
         # stride_ch = self.strides[-1]  # always 1
         stride_col = self.strides[-2]  # width
@@ -3001,6 +3034,9 @@ class conv2d(bt._Operator):
     def get_layout(self):
         return self.layout
 
+    def get_onnx_layout(self):
+        return self.onnx_layout
+
     def eval(self, memo, input_dict, **kwargs):
         if id(self) in memo:
             return memo[id(self)]
@@ -3008,7 +3044,6 @@ class conv2d(bt._Operator):
         import nngen.verify as verify
 
         name = self.__class__.__name__
-        method = getattr(verify, name, None)
 
         args = [arg.eval(memo, input_dict)
                 for arg in self.args]
@@ -3049,6 +3084,7 @@ class conv2d(bt._Operator):
         kwargs['bias_dtype'] = self.args[self.args_dict['bias']].dtype if self.has_bias else None
         kwargs['scale_dtype'] = self.args[self.args_dict['scale']].dtype if self.has_scale else None
 
+        method = self.get_eval_method()
         ret = method(input, filter, strides, **kwargs)
         memo[id(self)] = ret
 

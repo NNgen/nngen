@@ -72,8 +72,8 @@ sudo apt install iverilog
 ```
 
 - Jinja2: 2.10 or later
-- Pyverilog: 1.2.0 or later
-- Veriloggen: 1.8.0 or later
+- Pyverilog: 1.2.1 or later
+- Veriloggen: 1.8.2 or later
 - NumPy: 1.17 or later
 - ONNX: 1.6.0 or later
 
@@ -93,7 +93,7 @@ python3 setup.py install
 Optional requirements for testing
 --------------------
 
-These are required for automatic testing of **tests** and **examples**.
+These are required for automatic testing of **tests**.
 We recommend to install these testing library to verify experimental features.
 
 - pytest: 3.2 or later

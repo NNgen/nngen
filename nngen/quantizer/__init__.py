@@ -5,10 +5,15 @@ from __future__ import division
 import numpy as np
 
 import nngen.basic_types as bt
+import nngen.storage as storage
 
+from . import util
 from . import conv2d
 from . import matmul
 from . import normalize
+from . import sigmoid
+from . import exp
+from . import reduce
 
 
 # describe custom quantize methods here
@@ -18,6 +23,12 @@ func_map = {
     'normalize': normalize.normalize,
     'scaled_add': normalize.scaled_add,
     'scaled_concat': normalize.scaled_concat,
+    'scaled_multiply': normalize.scaled_multiply,
+    'scaled_div': normalize.scaled_div,
+    'sigmoid': sigmoid.sigmoid,
+    'exp': exp.exp,
+    'argmax': reduce.argmax,
+    'argmin': reduce.argmin,
 }
 
 
@@ -75,19 +86,23 @@ class _QuantizeVisitor(object):
     def visit(self, node):
 
         if isinstance(node, (int, float, bool, str)):
-            self._verbose_node(node)
+            self._verbose_skip(node)
             return
 
-        if isinstance(node, bt._Storage):
+        if isinstance(node, storage.variable):
+            self._verbose_skip(node)
+            return
+
+        if isinstance(node, storage.placeholder):
             if node.value is not None:
-                self._verbose_node(node)
+                self._verbose_skip(node)
                 return
 
             name = node.name
 
             if name in self.input_dict:
                 # values are already assigned
-                self._verbose_node(node)
+                self._verbose_skip(node)
                 return
 
             if name in self.input_generators:
@@ -114,9 +129,19 @@ class _QuantizeVisitor(object):
             return
 
         if node.quantized:
+            self._verbose_skip(node)
+            return
+
+        # constant
+        if isinstance(node, storage.constant):
+            q_value, scale_factor = util.quantize_linear(node.value, node.dtype.width)
+            node.set_value(q_value)
+            node.scale_factor = scale_factor
+            node.quantized = True
             self._verbose_node(node)
             return
 
+        # operators
         op_type = node.__class__.__name__
 
         if not _has_func(op_type) and isinstance(node, bt._Operator):
@@ -136,7 +161,11 @@ class _QuantizeVisitor(object):
 
     def _verbose_node(self, node):
         if self.verbose:
-            print('[quantize] {}'.format(str(node)))
+            print('[quantizer:done] {}'.format(str(node)))
+
+    def _verbose_skip(self, node):
+        if self.verbose:
+            print('[quantizer:skip] {}'.format(str(node)))
 
 
 def generate_samples(node, input_scale_factors, input_means, input_stds, num_samples):
@@ -176,22 +205,16 @@ def generate_samples(node, input_scale_factors, input_means, input_stds, num_sam
         mean = np.array(input_means[node.name]).astype(np.float32)
 
     if node.name not in input_stds:
+        if node.name not in input_scale_factors:
+            raise ValueError("scale_factor of '%s' not found." % node.name)
         scale_factor = input_scale_factors[node.name] * 1.0
         std = np.array([1.0] * shape[-1]).astype(np.float32) * scale_factor / 3.0
     else:
         std = np.array(input_stds[node.name]).astype(np.float32)
 
-    #p_shape = list(shape[:])
-    #for i in range(len(p_shape)):
-    #    if i != 0 and i != len(p_shape) - 1:
-    #        p_shape[i] = 1
-    #p_mean = mean * np.random.uniform(0.8, 1.2, np.multiply.reduce(p_shape)).reshape(p_shape)
-    #p_std = std * np.random.uniform(0.8, 1.2, np.multiply.reduce(p_shape)).reshape(p_shape)
-
-    #v = np.random.normal(size=length).reshape(shape) * std + mean
-
-    width = 12.0 * std
-    v = np.random.uniform(-0.5, 0.5, size=length).reshape(shape) * width + mean
+    # width = np.sqrt(12.0) * std / 2.0
+    # v = np.random.uniform(-0.5, 0.5, size=length).reshape(shape) * width + mean
+    v = np.random.normal(size=length).reshape(shape) * std + mean
     v = np.round(v).astype(np.int64)
 
     if node.dtype.signed:

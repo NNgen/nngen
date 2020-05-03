@@ -39,7 +39,7 @@ def run(a_shape=(7, 15), b_shape=(7, 15),
         par=1, axi_datawidth=32, silent=False,
         filename=None, simtype='iverilog', outputfile=None):
 
-    # model definition
+    # pytorch model
     model = MatrixAdd()
 
     # Pytorch to ONNX
@@ -52,6 +52,10 @@ def run(a_shape=(7, 15), b_shape=(7, 15),
     model.eval()
     torch.onnx.export(model, dummy_inputs, onnx_filename,
                       input_names=input_names, output_names=output_names)
+
+    # --------------------
+    # (1) Represent a DNN model as a dataflow by NNgen operators
+    # --------------------
 
     # ONNX to NNgen
     value_dtypes = {'a': a_dtype,
@@ -69,31 +73,40 @@ def run(a_shape=(7, 15), b_shape=(7, 15),
                                           default_bias_dtype=ng.int32,
                                           disable_fusion=False)
 
-    # set attribute
+    # --------------------
+    # (2) Assign quantized weights to the NNgen operators
+    # --------------------
+
+    input_scale_factors = {'a': 10.0, 'b': 15.0}
+
+    ng.quantize(outputs, input_scale_factors)
+
+    # --------------------
+    # (3) Assign hardware attributes
+    # --------------------
+
     for op in operators.values():
         if isinstance(op, ng.add):
             op.attribute(par=par)
 
-    # create target hardware
+    # --------------------
+    # (4) Verify the DNN model behavior by executing the NNgen dataflow as a software
+    # --------------------
+
     a = placeholders['a']
     b = placeholders['b']
     c = outputs['c']
 
-    targ = ng.to_veriloggen([c], 'onnx_matrix_add', silent=silent,
-                            config={'maxi_datawidth': axi_datawidth})
-
     # verification data
-    va = np.arange(a.length, dtype=np.int64).reshape(a.shape) % [5]
-    vb = (np.arange(b.length, dtype=np.int64).reshape(b.shape) + [100]) % [6]
+    input_a = np.arange(a.length, dtype=np.int64).reshape(a.shape) % [5]
+    input_b = (np.arange(b.length, dtype=np.int64).reshape(b.shape) + [100]) % [6]
 
-    eval_outs = ng.eval([c], a=va, b=vb)
-    vc = eval_outs[0]
-
-    # exec on pytorch
-    model_a = va.astype(np.float32)
-    model_b = vb.astype(np.float32)
+    # execution on pytorch
+    model_a = input_a.astype(np.float32)
     if a.perm is not None:
         model_a = np.transpose(model_a, a.reversed_perm)
+
+    model_b = input_b.astype(np.float32)
     if b.perm is not None:
         model_b = np.transpose(model_b, b.reversed_perm)
 
@@ -103,12 +116,40 @@ def run(a_shape=(7, 15), b_shape=(7, 15),
         model_c = np.transpose(model_c, a.perm)
     scaled_model_c = model_c * c.scale_factor
 
-    c_diff = vc - scaled_model_c
-    c_err = c_diff / (scaled_model_c + 0.00000001)
-    max_c_err = np.max(np.abs(c_err))
+    # software-based verification
+    va = input_a * input_scale_factors['a']
+    va = np.clip(va,
+                 -1.0 * (2 ** (a.dtype.width - 1) - 1),
+                 1.0 * (2 ** (a.dtype.width - 1) - 1))
+    va = np.round(va).astype(np.int64)
 
-    # if max_c_err > 0.1:
-    #    raise ValueError("too large output error: %f > 0.1" % max_c_err)
+    vb = input_b * input_scale_factors['b']
+    vb = np.clip(vb,
+                 -1.0 * (2 ** (b.dtype.width - 1) - 1),
+                 1.0 * (2 ** (b.dtype.width - 1) - 1))
+    vb = np.round(vb).astype(np.int64)
+
+    eval_outs = ng.eval([c], a=va, b=vb)
+    vc = eval_outs[0]
+
+    mean_square_error = np.sum((vc - scaled_model_c) ** 2) / vc.size
+    corrcoef = np.corrcoef(model_c.reshape([-1]), vc.reshape([-1]))
+
+    # breakpoint()
+
+    # --------------------
+    # (5) Convert the NNgen dataflow to a hardware description (Verilog HDL and IP-XACT)
+    # --------------------
+
+    targ = ng.to_veriloggen([c], 'onnx_matrix_add', silent=silent,
+                            config={'maxi_datawidth': axi_datawidth})
+
+    # --------------------
+    # (6) Simulate the generated hardware by Veriloggen and Verilog simulator
+    # --------------------
+
+    if simtype is None:
+        sys.exit()
 
     # to memory image
     param_data = ng.export_ndarray([c])

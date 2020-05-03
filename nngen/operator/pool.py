@@ -28,8 +28,8 @@ class _pool(bt._Operator):
         if hasattr(self, 'pad_col_left') and self.padding == 'SAME':
             padding = ("'%s'-(%d, %d, %d, %d)" %
                        (self.padding,
-                        self.pad_col_left_value, self.pad_col_right_value,
-                        self.pad_row_top_value, self.pad_row_bottom_value))
+                        self.pad_row_top_value, self.pad_row_bottom_value,
+                        self.pad_col_left_value, self.pad_col_right_value))
         else:
             padding = self.padding
 
@@ -155,14 +155,14 @@ class _pool(bt._Operator):
         out_num_row = out_shape[-3]
         out_num_bat = out_shape[-4]
 
-        input_min_size = (int(math.ceil(act_num_ch / self.par))
-                          * int(math.ceil(act_num_col / ksize_col)) * 2)
+        input_min_size = (int(math.ceil(act_num_ch / self.par)) *
+                          int(math.ceil(act_num_col / ksize_col)) * 2)
         if self.value_ram_size is not None and input_min_size < self.value_ram_size:
             input_min_size = self.value_ram_size
         input_width = act.get_ram_width() * self.par
 
-        output_min_size = (int(math.ceil(out_num_ch / self.par))
-                           * out_num_col * 2)
+        output_min_size = (int(math.ceil(out_num_ch / self.par)) *
+                           out_num_col * 2)
         if self.out_ram_size is not None and output_min_size < self.out_ram_size:
             output_min_size = self.out_ram_size
         output_width = self.get_ram_width() * self.par
@@ -350,18 +350,18 @@ class _pool(bt._Operator):
         act_row_step = act_step * act_num_col * stride_row
         act_bat_step = act_step * act_num_col * act_num_row
 
-        act_read_size = (int(math.ceil(aligned_act_num_ch / self.par))
-                         * act_num_col)
+        act_read_size = (int(math.ceil(aligned_act_num_ch / self.par)) *
+                         act_num_col)
         act_read_block = int(math.ceil(aligned_act_num_ch / self.par))
 
-        out_step = bt.to_byte(bt.align_word(out_num_ch, self.get_word_alignment())
-                              * self.get_ram_width())
+        out_step = bt.to_byte(bt.align_word(out_num_ch, self.get_word_alignment()) *
+                              self.get_ram_width())
 
         out_row_step = out_step * out_num_col
         out_bat_step = out_step * out_num_col * out_num_row
 
-        out_write_size = (int(math.ceil(out_num_ch / self.par))
-                          * out_num_col)
+        out_write_size = (int(math.ceil(out_num_ch / self.par)) *
+                          out_num_col)
 
         stream_size = int(math.ceil(act_num_ch / self.par))
 
@@ -454,8 +454,8 @@ class _pool(bt._Operator):
         act_base_offset_bat = self.m.Reg(self._name('act_base_offset_bat'),
                                          self.maxi.addrwidth, initval=0, signed=True)
 
-        act_base_offset.assign(act_base_offset_row
-                               + act_base_offset_bat)
+        act_base_offset.assign(act_base_offset_row +
+                               act_base_offset_bat)
 
         out_base_offset = self.m.Wire(self._name('out_base_offset'),
                                       self.maxi.addrwidth, signed=True)
@@ -464,8 +464,8 @@ class _pool(bt._Operator):
         out_base_offset_bat = self.m.Reg(self._name('out_base_offset_bat'),
                                          self.maxi.addrwidth, initval=0, signed=True)
 
-        out_base_offset.assign(out_base_offset_row
-                               + out_base_offset_bat)
+        out_base_offset.assign(out_base_offset_row +
+                               out_base_offset_bat)
 
         dma_flags = [self.m.Reg(self._name('dma_flag_%d' % i), initval=0)
                      for i in range(ksize_row)]
@@ -1048,7 +1048,6 @@ class _pool(bt._Operator):
         import nngen.verify as verify
 
         name = self.__class__.__name__
-        method = getattr(verify, name, None)
 
         args = [arg.eval(memo, input_dict)
                 for arg in self.args]
@@ -1062,6 +1061,7 @@ class _pool(bt._Operator):
         kwargs['name'] = self.name
         kwargs['par'] = self.par
 
+        method = self.get_eval_method()
         ret = method(value, ksize, strides, **kwargs)
         memo[id(self)] = ret
 
@@ -1132,9 +1132,9 @@ class avg_pool(_pool):
 
         sum = addtree.from_sink('sum')
 
-        if (self.sum_dtype is not None
-            and (sum.point != self.sum_dtype.point
-             or sum.signed != self.sum_dtype.signed)):
+        if (self.sum_dtype is not None and
+            (sum.point != self.sum_dtype.point or
+             sum.signed != self.sum_dtype.signed)):
             sum = strm.Cast(sum, self.sum_dtype.width, self.sum_dtype.point,
                             self.sum_dtype.signed)
 
@@ -1214,7 +1214,6 @@ def mux_2d(mat, col_select, row_select, col_size, row_size, width=1):
             ret = vg.Int(0, width=width)
             for i in reversed(range(len(line))):
                 ret = vg.Mux(col_select == i,
-                             # line[(i + j) % col_size], ret)
                              line[(j + col_size - i) % col_size], ret)
             ret_list.append(ret)
 
@@ -1226,7 +1225,6 @@ def mux_2d(mat, col_select, row_select, col_size, row_size, width=1):
             ret = vg.Int(0, width=width)
             for i in reversed(range(len(line))):
                 ret = vg.Mux(row_select == i,
-                             # line[(i + j) % row_size], ret)
                              line[(j + row_size - i) % row_size], ret)
             ret_list.append(ret)
 
@@ -1239,7 +1237,6 @@ def mux_1d(line, select, size, width=1):
         ret = vg.Int(0, width=width)
         for i in reversed(range(len(line))):
             ret = vg.Mux(select == i,
-                         # line[(i + j) % size], ret)
                          line[(j + size - i) % size], ret)
         ret_list.append(ret)
 

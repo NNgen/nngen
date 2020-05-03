@@ -9,18 +9,27 @@ import nngen.dtype_list as dtype_list
 
 from . import util
 from . import basic
+from . import exp
+from . import reduce
 from . import conv
 from . import gemm
 from . import pool
-from . import relu
-from . import batchnormalization
-from . import squeeze
 from . import pad
+from . import act_func
+from . import batchnormalization
 from . import shape
 from . import reshape
-from . import concat
-from . import gather
 from . import flatten
+from . import upsample
+from . import transpose
+from . import concat
+from . import squeeze
+from . import gather
+from . import slice_
+from . import cast
+from . import ceil
+from . import floor
+from . import identity
 
 
 # describe custom ONNX converting methods here
@@ -29,21 +38,36 @@ func_map = {
     'Sub': basic.Sub,
     'Mul': basic.Mul,
     'Div': basic.Div,
+    'Exp': exp.Exp,
+    'ReduceSum': reduce.ReduceSum,
+    'ReduceMax': reduce.ReduceMax,
+    'ReduceMin': reduce.ReduceMin,
+    'ArgMax': reduce.ArgMax,
+    'ArgMin': reduce.ArgMin,
     'Conv': conv.Conv,
     'Gemm': gemm.Gemm,
     'AveragePool': pool.AveragePool,
     'GlobalAveragePool': pool.GlobalAveragePool,
     'MaxPool': pool.MaxPool,
-    'Relu': relu.Relu,
-    'BatchNormalization': batchnormalization.BatchNormalization,
-    'Squeeze': squeeze.Squeeze,
-    'Unsqueeze': squeeze.Unsqueeze,
     'Pad': pad.Pad,
+    'Relu': act_func.Relu,
+    'LeakyRelu': act_func.LeakyRelu,
+    'Sigmoid': act_func.Sigmoid,
+    'BatchNormalization': batchnormalization.BatchNormalization,
     'Shape': shape.Shape,
     'Reshape': reshape.Reshape,
-    'Concat': concat.Concat,
-    'Gather': gather.Gather,
     'Flatten': flatten.Flatten,
+    'Upsample': upsample.Upsample,
+    'Transpose': transpose.Transpose,
+    'Concat': concat.Concat,
+    'Squeeze': squeeze.Squeeze,
+    'Unsqueeze': squeeze.Unsqueeze,
+    'Gather': gather.Gather,
+    'Slice': slice_.Slice,
+    'Cast': cast.Cast,
+    'Ceil': ceil.Ceil,
+    'Floor': floor.Floor,
+    'Identity': identity.Identity,
 }
 
 
@@ -60,8 +84,11 @@ class _OperatorVisitor(object):
                  default_placeholder_dtype, default_variable_dtype,
                  default_constant_dtype, default_operator_dtype,
                  default_scale_dtype, default_bias_dtype,
-                 onnx_input_layout='NCHW', onnx_filter_layout='OIHW',
-                 disable_fusion=False):
+                 onnx_input_layout=('N', 'C', 'H', 'W'),
+                 onnx_filter_layout=('O', 'I', 'H', 'W'),
+                 nngen_input_layout=('N', 'H', 'W', 'C'),
+                 nngen_filter_layout=('O', 'H', 'W', 'I'),
+                 disable_fusion=False, verbose=False):
 
         self.model = model
 
@@ -85,44 +112,60 @@ class _OperatorVisitor(object):
         self.onnx_input_layout = onnx_input_layout
         self.onnx_filter_layout = onnx_filter_layout
 
+        self.nngen_input_layout = nngen_input_layout
+        self.nngen_filter_layout = nngen_filter_layout
+
         self.disable_fusion = disable_fusion
+
+        self.verbose = verbose
+
+    def _verbose_node(self, name, node_func, ret):
+        if self.verbose:
+            print('[onnx] {} {} -> {} {}'.format(name, node_func, type(ret), str(ret)))
+        return ret
 
     def visit(self, name):
         if name in self.placeholders:
-            return self.placeholders[name]
+            # return self.placeholders[name]
+            return self._verbose_node(name, None, self.placeholders[name])
 
         if name in self.variables:
-            return self.variables[name]
+            # return self.variables[name]
+            return self._verbose_node(name, None, self.variables[name])
 
         if name in self.constants:
-            return self.constants[name]
+            # return self.constants[name]
+            return self._verbose_node(name, None, self.constants[name])
 
         if name in self.operators:
-            return self.operators[name]
+            # return self.operators[name]
+            return self._verbose_node(name, None, self.operators[name])
 
         node = util.search_node_from_model(self.model, name)
 
-        node_name = util.get_name(node)
         node_func = _get_func(node.op_type)
-
         node_op = node_func(self, node)
 
-        self.operators[node_name] = node_op
+        output_names = util.get_output_names(node)
+        for output_name in output_names:
+            self.operators[output_name] = node_op
 
-        return node_op
+        # return node_op
+        return self._verbose_node(name, node_func, node_op)
 
 
 def from_onnx(filename,
               value_dtypes=None,
+              value_shapes=None,
               default_placeholder_dtype=dtype_list.int32,
               default_variable_dtype=dtype_list.int32,
               default_constant_dtype=dtype_list.int32,
               default_operator_dtype=dtype_list.int32,
               default_scale_dtype=dtype_list.int32,
               default_bias_dtype=dtype_list.int32,
-              onnx_input_layout='NCHW',
-              onnx_filter_layout='OIHW',
-              disable_fusion=False):
+              onnx_input_layout=('N', 'C', 'H', 'W'),
+              onnx_filter_layout=('O', 'I', 'H', 'W'),
+              disable_fusion=False, verbose=False):
     """
     Convert ONNX model to NNgen model
 
@@ -133,6 +176,9 @@ def from_onnx(filename,
 
     value_dtypes : dict
         dtype_info dictionary by name
+
+    value_shapes : dict
+        shape dictionary for undefined node shapes by name
 
     default_placeholder_dtype : nngen.dtype_info
         Default dtype for placeholder
@@ -188,6 +234,9 @@ def from_onnx(filename,
     if value_dtypes is None:
         value_dtypes = {}
 
+    if value_shapes is None:
+        value_shapes = {}
+
     # load model
     model = onnx.load(filename)
 
@@ -214,14 +263,15 @@ def from_onnx(filename,
 
     for node in model.graph.node:
         if node.op_type == 'Constant':
-            name = util.get_name(node)
             value = numpy_helper.to_array(node.attribute[0].t)
-            constant_values[name] = value
+            output_names = util.get_output_names(node)
+            for output_name in output_names:
+                constant_values[output_name] = value
 
     # placeholders
     placeholders = _to_placeholders(input_nodes, output_nodes,
                                     variable_values, constant_values,
-                                    value_dtypes,
+                                    value_dtypes, value_shapes,
                                     default_placeholder_dtype,
                                     default_variable_dtype,
                                     default_constant_dtype,
@@ -230,33 +280,33 @@ def from_onnx(filename,
     # variables
     variables = _to_variables(input_nodes, output_nodes,
                               variable_values, constant_values,
-                              value_dtypes,
+                              value_dtypes, value_shapes,
                               default_placeholder_dtype,
                               default_variable_dtype,
                               default_constant_dtype,
                               default_operator_dtype)
 
     # constants
-    # constants = _to_constants(input_nodes, output_nodes,
-    #                          variable_values, constant_values,
-    #                          value_dtypes,
-    #                          default_placeholder_dtype,
-    #                          default_variable_dtype,
-    #                          default_constant_dtype,
-    #                          default_operator_dtype)
-    constants = constant_values
+    constants = _to_constants(input_nodes, output_nodes,
+                              variable_values, constant_values,
+                              value_dtypes, value_shapes,
+                              default_placeholder_dtype,
+                              default_variable_dtype,
+                              default_constant_dtype,
+                              default_operator_dtype)
 
     # producer/consumer table
     producers = collections.defaultdict(list)
     consumers = collections.defaultdict(list)
 
     for node in model.graph.node:
-        node_name = util.get_name(node)
-        for arg in node.input:
-            if arg not in producers[node_name]:
-                producers[node_name].append(arg)
-            if node_name not in consumers[arg]:
-                consumers[arg].append(node_name)
+        output_names = util.get_output_names(node)
+        for output_name in output_names:
+            for arg in node.input:
+                if arg not in producers[output_name]:
+                    producers[output_name].append(arg)
+                if output_name not in consumers[arg]:
+                    consumers[arg].append(output_name)
 
     # operators
     operators = collections.OrderedDict()
@@ -268,7 +318,7 @@ def from_onnx(filename,
                                default_constant_dtype, default_operator_dtype,
                                default_scale_dtype, default_bias_dtype,
                                onnx_input_layout, onnx_filter_layout,
-                               disable_fusion)
+                               disable_fusion=disable_fusion, verbose=verbose)
 
     placeholders = visitor.placeholders
     variables = visitor.variables
@@ -295,7 +345,7 @@ def from_onnx(filename,
 
 
 def _to_placeholders(input_nodes, output_nodes, variable_values, constant_values,
-                     value_dtypes,
+                     value_dtypes, value_shapes,
                      default_placeholder_dtype, default_variable_dtype,
                      default_constant_dtype, default_operator_dtype):
 
@@ -311,7 +361,7 @@ def _to_placeholders(input_nodes, output_nodes, variable_values, constant_values
         else:
             dtype = default_placeholder_dtype
 
-        shape = util.to_shape(node)
+        shape = util.to_shape(node, value_shapes)
         p = storage.placeholder(dtype=dtype, shape=shape, name=name)
         placeholders[name] = p
 
@@ -319,7 +369,7 @@ def _to_placeholders(input_nodes, output_nodes, variable_values, constant_values
 
 
 def _to_variables(input_nodes, output_nodes, variable_values, constant_values,
-                  value_dtypes,
+                  value_dtypes, value_shapes,
                   default_placeholder_dtype, default_variable_dtype,
                   default_constant_dtype, default_operator_dtype):
 
@@ -340,7 +390,7 @@ def _to_variables(input_nodes, output_nodes, variable_values, constant_values,
 
 
 def _to_constants(input_nodes, output_nodes, variable_values, constant_values,
-                  value_dtypes,
+                  value_dtypes, value_shapes,
                   default_placeholder_dtype, default_variable_dtype,
                   default_constant_dtype, default_operator_dtype):
 

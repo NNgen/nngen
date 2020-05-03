@@ -125,13 +125,11 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
     # verification data
     # random data
-    img = np.random.uniform(size=act.length).astype(np.float32).reshape(act.shape)
-    img = img * 12.0 * cifar10_std + cifar10_mean
-    # img = np.random.normal(size=act.length).astype(np.float32).reshape(act.shape)
-    # img = img * cifar10_std + cifar10_mean
+    img = np.random.normal(size=act.length).astype(np.float32).reshape(act.shape)
+    img = img * cifar10_std + cifar10_mean
 
     # execution on pytorch
-    model_input = img
+    model_input = np.broadcast_to(img, act_shape)
 
     if act.perm is not None:
         model_input = np.transpose(model_input, act.reversed_perm)
@@ -148,9 +146,13 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
                    -1.0 * (2 ** (act.dtype.width - 1) - 1),
                    1.0 * (2 ** (act.dtype.width - 1) - 1))
     vact = np.round(vact).astype(np.int64)
+    vact = np.broadcast_to(vact, act_shape)
 
     eval_outs = ng.eval([out], act=vact)
     vout = eval_outs[0]
+
+    mean_square_error = np.sum((vout - scaled_model_out) ** 2) / vout.size
+    corrcoef = np.corrcoef(model_out.reshape([-1]), vout.reshape([-1]))
 
     labels = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 

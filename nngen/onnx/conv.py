@@ -25,8 +25,8 @@ def Conv(visitor, node,
     filter = srcs[1]
 
     # transpose data layout to nngen-compatible format
-    input = util.transpose_layout(input, 'NHWC', visitor.onnx_input_layout)
-    filter = util.transpose_layout(filter, 'OHWI', visitor.onnx_filter_layout)
+    input = util.transpose_layout(input, visitor.nngen_input_layout, visitor.onnx_input_layout)
+    filter = util.transpose_layout(filter, visitor.nngen_filter_layout, visitor.onnx_filter_layout)
 
     bias = srcs[2] if len(srcs) > 2 else None
 
@@ -87,25 +87,28 @@ def Conv(visitor, node,
             padding[1] = attribute.ints[1]
             padding[2] = attribute.ints[2]
             padding[3] = attribute.ints[3]
+            padding = tuple(padding)
 
         elif attribute.name == 'strides':
             strides[1] = attribute.ints[0]
             strides[2] = attribute.ints[1]
+            strides = tuple(strides)
 
     args = [input, filter]
 
     kwargs = collections.OrderedDict()
-    kwargs['strides'] = tuple(strides)
+    kwargs['strides'] = strides
     kwargs['bias'] = bias
     kwargs['scale'] = scale
     kwargs['rshift_out'] = rshift_out
     kwargs['act_func'] = act_func
-    kwargs['padding'] = tuple(padding)
+    kwargs['padding'] = padding
     kwargs['dtype'] = dtype
     kwargs['sum_dtype'] = sum_dtype
     kwargs['name'] = name
 
     c = operator.conv2d(*args, **kwargs)
-    c.layout = 'NHWC'
+    c.layout = visitor.nngen_input_layout
+    c.onnx_layout = visitor.onnx_input_layout
 
     return c

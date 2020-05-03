@@ -5,7 +5,6 @@ from __future__ import division
 import numpy as np
 
 import nngen.operator as operator
-import nngen.dtype_list as dtype_list
 
 from . import util
 
@@ -18,9 +17,12 @@ def Concat(visitor, node):
         src_obj = visitor.visit(src)
         srcs.append(src_obj)
 
+    axis = None
     for attribute in node.attribute:
         if attribute.name == 'axis':
             axis = attribute.i
+
+    srcs = [util.optimize_to_raw_value(src) for src in srcs]
 
     all_ndarray = True
     for src in srcs:
@@ -36,9 +38,8 @@ def Concat(visitor, node):
     scales = [1.0 for src in srcs]
     shamt = 0
 
-    onnx_layout = visitor.onnx_input_layout
-
     layout = None
+    onnx_layout = None
     for src in srcs:
         l = src.get_layout()
         if l is None:
@@ -48,7 +49,15 @@ def Concat(visitor, node):
         elif layout != l:
             raise ValueError("layout mismatch: '%s' != '%s'" % (layout, l))
 
-    if layout is not None:
+        l = src.get_onnx_layout()
+        if l is None:
+            continue
+        if onnx_layout is None:
+            onnx_layout = l
+        elif onnx_layout != l:
+            raise ValueError("onnx_layout mismatch: '%s' != '%s'" % (onnx_layout, l))
+
+    if layout is not None and onnx_layout is not None:
         axis = layout.index(onnx_layout[axis])
 
     c = operator.scaled_concat(srcs, scales, shamt, axis, name=name)
