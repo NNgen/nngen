@@ -27,7 +27,7 @@ NNgenにコントリビュートするには
 
 NNgenプロジェクトは質問、バグ報告、新しい機能提案、[GitHub](https://github.com/NNgen/nngen)上でのプルリクエストを常に歓迎します。
 
-コミュニティ管理者 
+コミュニティ管理者
 --------------------
 
 このプロジェクトの管理者として、コミュニティ管理を主導し、ソフトウェアの開発と普及を促進する役割を担います。
@@ -60,24 +60,53 @@ NNgenは統合テストにpytestフレームワークを使います。 プル�
 インストール
 ==============================
 
-要件
+要求ソフトウェア
 --------------------
 
 - Python3: 3.6 or later
 - Icarus Verilog: 10.1 or later
 
 ```
-sudo apt install python3 python3-pip iverilog
+sudo apt install iverilog
 ```
 
-- Pyverilog: 1.1.4 or later
-- Veriloggen: 1.7.3 or later
 - Jinja2: 2.10 or later
-- NumPy: 1.14 or later
+- Pyverilog: 1.2.1 or later
+- Veriloggen: 1.8.2 or later
+- NumPy: 1.17 or later
 - ONNX: 1.6.0 or later
 
 ```
-pip3 install veriloggen pyverilog jinja2 numpy onnx
+pip3 install jinja2 pyverilog veriloggen numpy onnx
+```
+
+インストール
+--------------------
+
+```
+python3 setup.py install
+```
+
+テストのための追加要求ソフトウェア
+--------------------
+
+**tests** と **examples** にいくつかのテストコードがあり、これらを実行するためには以下のソフトウェアが必要になります。
+
+- pytest: 3.2 or later
+- pytest-pythonpath: 0.7 or later
+- PyTorch: 1.3.1 or later
+- torchvision: 0.4.2 or later
+
+```
+pip3 install pytest pytest-pythonpath torch torchvision
+```
+
+高速なRTLシミュレーションにはVerilatorが必要となります。
+
+- Verilator: 3.916 or later
+
+```
+sudo apt install verilator
 ```
 
 ドキュメント生成のための要件
@@ -99,7 +128,7 @@ pip3 install sphinx sphinx_rtd_theme
 
 別のインストール方法
 --------------------
-    
+
 現在のNNgenとVeriloggenは活発に開発が進んでいるので、最新の機能を利用する場合には、GitHubから最新バージョンのNNgen、Veriloggen、その他のライブラリをダウンロード（またはgit clone）し、適宜パスを通して利用することもできます。
 
 ### GitHubから最新のNNgen、Veriloggen、その他のライブラリをダウンロード
@@ -120,11 +149,24 @@ ln -s ../veriloggen/veriloggen
 ln -s ../Pyverilog/pyverilog
 ```
 
+Docker
+--------------------
+
+Dockerfileを用いてNNgen用の環境を構築することができます。
+
+```
+cd docker
+sudo docker build -t user/nngen .
+sudo docker run --name nngen -i -t user/nngen /bin/bash
+cd nngen/examples/mlp/
+make
+```
+
 
 Getting Started
 ==============================
 
-準備中です。
+準備中です。英語版READMEをご参照下さい。
 
 
 関連プロジェクト
