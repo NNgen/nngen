@@ -106,3 +106,8 @@ def Div(visitor, node):
 
     method = functools.partial(operator.scaled_div, shamt=0)
     return _elementwise(method, visitor, node, np.divide)
+
+def MatMul(visitor, node):
+
+    method = functools.partial(operator.matmul)
+    return _elementwise(method, visitor, node, np.dot)

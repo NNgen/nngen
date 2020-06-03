@@ -38,6 +38,7 @@ func_map = {
     'Sub': basic.Sub,
     'Mul': basic.Mul,
     'Div': basic.Div,
+    'MatMul' : basic.MatMul,
     'Exp': exp.Exp,
     'ReduceSum': reduce.ReduceSum,
     'ReduceMax': reduce.ReduceMax,
