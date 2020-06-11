@@ -33,11 +33,14 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int8,
         conv2d_concur_och=None, conv2d_stationary='filter',
         pool_par=1, elem_par=1,
         chunk_size=64, axi_datawidth=32, silent=False,
-        filename=None,
+        onnx_filename='resnet18_imagenet.onnx',
+        weight_filename='resnet18_imagenet.npy',
+        verilog_filename=None,
+        sim_filename=None,
+        simtype=None,  # no RTL simulation
         # simtype='iverilog',
         # simtype='verilator',
-        simtype=None,  # no RTL simulation
-        outputfile=None):
+        ):
 
     # input mean and standard deviation
     imagenet_mean = np.array([0.485, 0.456, 0.406]).astype(np.float32)
@@ -52,7 +55,6 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int8,
     model = torchvision.models.resnet18(pretrained=True)
 
     # Pytorch to ONNX
-    onnx_filename = 'resnet18_imagenet.onnx'
     dummy_input = torch.randn(*act_shape).transpose(1, 3)
     input_names = ['act']
     output_names = ['out']
@@ -348,15 +350,18 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int8,
     #                    config={'maxi_datawidth': axi_datawidth})
 
     # --------------------
-    # (6) Simulate the generated hardware by Veriloggen and Verilog simulator
+    # (6) Save the quantized weights
+    # --------------------
+    param_data = ng.export_ndarray([out], chunk_size)
+    param_bytes = len(param_data)
+    np.save(weight_filename, param_data)
+
+    # --------------------
+    # (7) Simulate the generated hardware by Veriloggen and Verilog simulator
     # --------------------
 
     if simtype is None:
         sys.exit()
-
-    # to memory image
-    param_data = ng.export_ndarray([out], chunk_size)
-    param_bytes = len(param_data)
 
     variable_addr = int(math.ceil((act.addr + act.memory_size) / chunk_size)) * chunk_size
     check_addr = int(math.ceil((variable_addr + param_bytes) / chunk_size)) * chunk_size
@@ -391,10 +396,10 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int8,
     rst.assign(Not(resetn))
 
     # AXI memory model
-    if outputfile is None:
-        outputfile = os.path.splitext(os.path.basename(__file__))[0] + '.out'
+    if sim_filename is None:
+        sim_filename = os.path.splitext(os.path.basename(__file__))[0] + '.out'
 
-    memimg_name = 'memimg_' + outputfile
+    memimg_name = 'memimg_' + sim_filename
 
     memory = axi.AxiMemoryModel(m, 'memory', clk, rst,
                                 datawidth=axi_datawidth,
@@ -471,12 +476,12 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int8,
     )
 
     # output source code
-    if filename is not None:
-        m.to_verilog(filename)
+    if verilog_filename is not None:
+        m.to_verilog(verilog_filename)
 
     # run simulation
     sim = simulation.Simulator(m, sim=simtype)
-    rslt = sim.run(outputfile=outputfile)
+    rslt = sim.run(outputfile=sim_filename)
     lines = rslt.splitlines()
     if simtype == 'verilator' and lines[-1].startswith('-'):
         rslt = '\n'.join(lines[:-1])
@@ -484,5 +489,5 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int8,
 
 
 if __name__ == '__main__':
-    rslt = run(silent=False, filename='tmp.v')
+    rslt = run(silent=False, verilog_filename='tmp.v')
     print(rslt)
