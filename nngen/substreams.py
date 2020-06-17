@@ -721,15 +721,13 @@ def reduce_max(m, clk, rst,
     x = stream.source('x', datawidth, point, signed)
     size = stream.constant('size', signed=False)
 
-    def func(a, b):
-        return vg.Mux(a > b, a, b)
-
     if signed:
         initval = - 2 ** (datawidth - 1)
     else:
         initval = 0
 
-    data, valid = stream.ReduceCustomValid(func, x, size, initval)
+    data, valid = stream.ReduceMaxValid(x, size, initval=initval,
+                                        width=datawidth, signed=signed)
 
     stream.sink(data, 'data')
     stream.sink(valid, 'valid')

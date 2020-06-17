@@ -1060,6 +1060,7 @@ class _pool(bt._Operator):
         kwargs['dtype'] = self.dtype
         kwargs['name'] = self.name
         kwargs['par'] = self.par
+        kwargs['value_dtype'] = self.args[0].dtype
 
         method = self.get_eval_method()
         ret = method(value, ksize, strides, **kwargs)

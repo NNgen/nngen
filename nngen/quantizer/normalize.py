@@ -23,8 +23,7 @@ def normalize(visitor, node):
     if isinstance(scale_value, (tuple, list)):
         scale_value = np.array(scale_value)
 
-    q_scale_value, scale_scale_factor = util.quantize_linear_scale(scale_value,
-                                                                   scale.dtype.width)
+    q_scale_value, scale_scale_factor = util.quantize_linear(scale_value, scale.dtype.width)
     scale.set_value(q_scale_value)
     scale.scale_factor = scale_scale_factor
 

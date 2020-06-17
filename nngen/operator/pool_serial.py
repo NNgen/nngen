@@ -112,7 +112,7 @@ class _pool_serial(_pool):
 
             # mask
             mask_vector = strm.constant(datawidth=ksize_col * ksize_row, signed=False)
-            mask_counter = strm.Counter(size)
+            mask_counter = strm.Counter(size=size)
             mask = strm.Pointer(mask_vector, mask_counter)
 
             # vec_act -> act

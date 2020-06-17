@@ -6,18 +6,18 @@ import numpy as np
 import math
 
 
-def quantize_linear(orig_weight, num_bits=8):
-    if num_bits > 16:
-        num_bits = 16
+def quantize_linear(orig_weight, width=8):
+    if width > 16:
+        width = 16
 
-    return _quantize_linear(orig_weight, num_bits)
+    return _quantize_linear(orig_weight, width)
 
 
-def _quantize_linear(orig_weight, num_bits=8, range_rate=0.995):
+def _quantize_linear(orig_weight, width=8, range_rate=0.995):
     if isinstance(orig_weight, (tuple, list)):
         orig_weight = np.array(orig_weight)
 
-    if num_bits >= 8:
+    if width >= 8:
         max_value = np.max(orig_weight)
         min_value = np.min(orig_weight)
     else:
@@ -28,7 +28,7 @@ def _quantize_linear(orig_weight, num_bits=8, range_rate=0.995):
 
     abs_max = max(abs(max_value), abs(min_value))
 
-    pos_num_quantized_bins = 2 ** (num_bits - 1) - 1
+    pos_num_quantized_bins = 2 ** (width - 1) - 1
     scale_factor = 1.0 * pos_num_quantized_bins / abs_max
     quantized_weight = np.round(orig_weight * scale_factor).astype(np.int64)
 
@@ -55,6 +55,10 @@ def find_optimal_scale_scale_factor(scale_value, width, allowed_rate=0.01):
         float_value = np.array(scale_value * scale_scale_factor)
         round_value = np.round(float_value)
 
+        if np.max(np.abs(round_value)) > 2 ** (width - 1) - 1:
+            scale_scale_factor /= 2.0
+            break
+
         cont = False
         for i, (f, r) in enumerate(sorted(zip(float_value.reshape([-1]),
                                               round_value.reshape([-1])),
@@ -71,7 +75,7 @@ def find_optimal_scale_scale_factor(scale_value, width, allowed_rate=0.01):
         if not cont:
             break
 
-        if np.max(np.abs(round_value)) >= 2 ** (width - 1) - 1:
+        if np.max(np.abs(round_value)) > 2 ** (width - 1) - 1:
             break
 
         scale_scale_factor *= 2.0

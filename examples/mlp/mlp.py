@@ -19,11 +19,13 @@ import veriloggen.types.axi as axi
 def run(act_dtype=ng.int16, weight_dtype=ng.int16,
         par_ich=2, par_och=2,
         chunk_size=64, axi_datawidth=32, silent=False,
-        filename=None,
+        weight_filename='mlp.npy',
+        verilog_filename=None,
+        sim_filename=None,
         simtype='iverilog',
         # simtype='verilator',
         # simtype=None,  # no RTL simulation
-        outputfile=None):
+        ):
 
     # --------------------
     # (1) Represent a DNN model as a dataflow by NNgen operators
@@ -44,24 +46,40 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
                              sum_dtype=ng.dtype_int(64))
 
     # --------------------
-    # (2) Assign quantized weights to the NNgen operators
+    # (2) Assign weights to the NNgen operators
     # --------------------
 
-    # In this example, random integer values are assigned.
-    # In real cases, you should assign actual integer weight values
-    # obtianed by a training on DNN framework
+    # In this example, random floating-point values are assigned.
+    # In a real case, you should assign actual weight values
+    # obtianed by a training on DNN framework.
+
+    # If you don't you NNgen's quantizer, you can assign integer weights to each tensor.
 
     w0_value = np.random.normal(size=w0.length).reshape(w0.shape)
-    w0_value = np.clip(w0_value, -5.0, 5.0)
-    w0_value = w0_value * (2.0 ** (weight_dtype.width - 1) - 1) / 5.0
-    w0_value = np.round(w0_value).astype(np.int64)
+    w0_value = np.clip(w0_value, -3.0, 3.0)
     w0.set_value(w0_value)
 
     w1_value = np.random.normal(size=w1.length).reshape(w1.shape)
-    w1_value = np.clip(w1_value, -5.0, 5.0)
-    w1_value = w1_value * (2.0 ** (weight_dtype.width - 1) - 1) / 5.0
-    w1_value = np.round(w1_value).astype(np.int64)
+    w1_value = np.clip(w1_value, -3.0, 3.0)
     w1.set_value(w1_value)
+
+    # Quantizing the floating-point weights by the NNgen quantizer.
+    # Alternatively, you can assign integer weights by yourself to each tensor.
+
+    img_mean = np.array([0.485]).astype(np.float32)
+    img_std = np.array([0.229]).astype(np.float32)
+
+    if act_dtype.width > 8:
+        act_scale_factor = 128
+    else:
+        act_scale_factor = int(round(2 ** (act_dtype.width - 1) * 0.5))
+
+    input_scale_factors = {'input_layer': act_scale_factor}
+    input_means = {'input_layer': img_mean * act_scale_factor}
+    input_stds = {'input_layer': img_std * act_scale_factor}
+
+    ng.quantize([output_layer], input_scale_factors, input_means, input_stds)
+
 
     # --------------------
     # (3) Assign hardware attributes
@@ -74,10 +92,16 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     # par_row: parallelism in pixel row
     # cshamt_out: right shift amount after applying bias/scale
 
-    a0.attribute(par_ich=par_ich, par_och=par_och,
-                 cshamt_out=weight_dtype.width + 1)
-    output_layer.attribute(par_ich=par_ich, par_och=par_och,
-                           cshamt_out=weight_dtype.width + 1)
+    a0.attribute(par_ich=par_ich, par_och=par_och)
+    output_layer.attribute(par_ich=par_ich, par_och=par_och)
+
+    # cshamt_out: right shift amount after applying bias/scale
+    # If you assign integer weights by yourself to each tensor,
+    # cshamt (constant shift amount) must be assigned to each operator.
+
+    # a0.attribute(cshamt_out=weight_dtype.width + 1)
+    # output_layer.attribute(cshamt_out=weight_dtype.width + 1)
+
 
     # --------------------
     # (4) Verify the DNN model behavior by executing the NNgen dataflow as a software
@@ -87,13 +111,17 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     # In real case, you should assign actual integer activation values, such as an image.
 
     input_layer_value = np.random.normal(size=input_layer.length).reshape(input_layer.shape)
+    input_layer_value = input_layer_value * img_std + img_mean
     input_layer_value = np.clip(input_layer_value, -5.0, 5.0)
-    input_layer_value = input_layer_value * (2.0 ** (input_layer.dtype.width - 1) - 1) / 5.0
+    input_layer_value = input_layer_value * act_scale_factor
+    input_layer_value = np.clip(input_layer_value,
+                                -1 * 2 ** (act_dtype.width - 1) - 1, 2 ** (act_dtype.width - 1))
     input_layer_value = np.round(input_layer_value).astype(np.int64)
-    #input_layer_value = np.ones(input_layer.shape).astype(np.int64)
 
     eval_outs = ng.eval([output_layer], input_layer=input_layer_value)
     output_layer_value = eval_outs[0]
+
+    # print(output_layer_value)
     # breakpoint()
 
     # --------------------
@@ -112,15 +140,21 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     # rtl = ng.to_verilog([output_layer], 'mlp', silent=silent,
     #                    config={'maxi_datawidth': axi_datawidth})
 
+
     # --------------------
-    # (6) Simulate the generated hardware by Veriloggen and Verilog simulator
+    # (6) Save the quantized weights
+    # --------------------
+    param_data = ng.export_ndarray([output_layer], chunk_size)
+    np.save(weight_filename, param_data)
+
+
+    # --------------------
+    # (7) Simulate the generated hardware by Veriloggen and Verilog simulator
     # --------------------
 
     if simtype is None:
         sys.exit()
 
-    # to memory image
-    param_data = ng.export_ndarray([output_layer], chunk_size)
     param_bytes = len(param_data)
 
     variable_addr = int(
@@ -156,10 +190,10 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     rst.assign(Not(resetn))
 
     # AXI memory model
-    if outputfile is None:
-        outputfile = os.path.splitext(os.path.basename(__file__))[0] + '.out'
+    if sim_filename is None:
+        sim_filename = os.path.splitext(os.path.basename(__file__))[0] + '.out'
 
-    memimg_name = 'memimg_' + outputfile
+    memimg_name = 'memimg_' + sim_filename
 
     memory = axi.AxiMemoryModel(m, 'memory', clk, rst,
                                 datawidth=axi_datawidth,
@@ -236,12 +270,12 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     )
 
     # output source code
-    if filename is not None:
-        m.to_verilog(filename)
+    if verilog_filename is not None:
+        m.to_verilog(verilog_filename)
 
     # run simulation
     sim = simulation.Simulator(m, sim=simtype)
-    rslt = sim.run(outputfile=outputfile)
+    rslt = sim.run(outputfile=sim_filename)
     lines = rslt.splitlines()
     if simtype == 'verilator' and lines[-1].startswith('-'):
         rslt = '\n'.join(lines[:-1])
@@ -249,5 +283,5 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
 
 if __name__ == '__main__':
-    rslt = run(silent=False, filename='tmp.v')
+    rslt = run(silent=False, verilog_filename='tmp.v')
     print(rslt)
