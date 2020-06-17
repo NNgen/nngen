@@ -42,21 +42,29 @@ def quantize_linear_by_scale_factor(value, width, scale_factor):
     return v
 
 
-def quantize_linear_scale(scale_value, width, allowed_rate=0.01):
-    scale_scale_factor = find_optimal_scale_scale_factor(scale_value, width, allowed_rate)
+def quantize_linear_scale(scale_value, width, allowed_rate=0.01, step=1.414):
+    scale_scale_factor = find_optimal_scale_scale_factor(scale_value, width,
+                                                         allowed_rate, step)
     q_scale_value = np.round(scale_value * scale_scale_factor).astype(np.int64)
     return q_scale_value, scale_scale_factor
 
 
-def find_optimal_scale_scale_factor(scale_value, width, allowed_rate=0.01):
+def find_optimal_scale_scale_factor(scale_value, width, allowed_rate=0.01, step=1.414):
     scale_scale_factor = 1.0
+
+    abs_max = np.max(np.abs(scale_value))
+    half_range = 2 ** (width - 1) - 1
+    if abs_max > half_range:
+        scale_scale_factor = 1.0 * half_range / abs_max
+
+    prev_scale_scale_factor = scale_scale_factor
 
     while True:
         float_value = np.array(scale_value * scale_scale_factor)
         round_value = np.round(float_value)
 
         if np.max(np.abs(round_value)) > 2 ** (width - 1) - 1:
-            scale_scale_factor /= 2.0
+            scale_scale_factor = prev_scale_scale_factor
             break
 
         cont = False
@@ -75,10 +83,8 @@ def find_optimal_scale_scale_factor(scale_value, width, allowed_rate=0.01):
         if not cont:
             break
 
-        if np.max(np.abs(round_value)) > 2 ** (width - 1) - 1:
-            break
-
-        scale_scale_factor *= 2.0
+        prev_scale_scale_factor = scale_scale_factor
+        scale_scale_factor *= step
 
     return scale_scale_factor
 
