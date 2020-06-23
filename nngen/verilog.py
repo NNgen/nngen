@@ -26,6 +26,10 @@ default_config = {
     'reset_name': 'RESETN',
     'reset_polarity': 'low',
 
+    # interrupt
+    'interrupt_enable': True,
+    'interrupt_name': 'irq',
+
     # AXI
     'axi_coherent': False,
     'maxi_datawidth': 32,
@@ -66,15 +70,25 @@ max_burst_length = 256
 num_header_regs = 4
 header_reg = 0
 
-num_control_regs = 6
+num_control_regs = 33 - num_header_regs
 control_reg_start = num_header_regs + 0
 control_reg_busy = num_header_regs + 1
 control_reg_reset = num_header_regs + 2
 control_reg_extern_send = num_header_regs + 3
 control_reg_extern_recv = num_header_regs + 4
-control_reg_global_offset = num_header_regs + 5
 
-control_reg_global_addr = num_header_regs + num_control_regs
+control_reg_interrupt_isr = num_header_regs + 5
+control_reg_interrupt_isr_busy = 0       # bitfield
+control_reg_interrupt_isr_extern = 1     # bitfield
+control_reg_interrupt_ier = num_header_regs + 6
+control_reg_interrupt_iar = num_header_regs + 7
+
+control_reg_reserved = num_header_regs + 8 # reservation
+
+control_reg_global_offset = 32
+
+assert (num_header_regs + num_control_regs) == control_reg_global_offset + 1, 'Register map was bloken'
+control_reg_global_addr = control_reg_global_offset + 1
 
 # when config['use_map_ram'] is True
 num_addr_map_regs = 3
@@ -119,13 +133,17 @@ def to_ipxact(objs, name, ipname=None, config=None, silent=False):
     rst_polarity = ('ACTIVE_LOW'
                     if 'low' in config['reset_polarity'] else
                     'ACTIVE_HIGH')
+    irq_name = config['interrupt_name']
+    irq_sensitivity = 'LEVEL_HIGH'
 
     clk_ports = [(clk_name, (rst_name,))]
     rst_ports = [(rst_name, rst_polarity)]
+    irq_ports = [(irq_name, irq_sensitivity)] if config['interrupt_enable'] else []
 
     ipxact.to_ipxact(m, ipname,
                      clk_ports=clk_ports,
-                     rst_ports=rst_ports)
+                     rst_ports=rst_ports,
+                     irq_ports=irq_ports)
 
     return m
 
@@ -238,6 +256,29 @@ def set_default_dtype(config, objs):
             obj.dtype = dtype_list.dtype_info('int', default_datawidth)
 
 
+def sence_edge(m, clk, wire, rst=None, mode='posedge', name='sence'):
+    tmp_reg = m.TmpRegLike(wire, prefix=name, initval=0)
+    edge_seq = vg.TmpSeq(m, clk, rst, prefix='sence_edge')
+    edge_seq(tmp_reg(wire))
+
+    edge = m.TmpWireLike(wire, prefix=name)
+    if mode == 'posedge':
+        edge.assign(vg.And(vg.Not(tmp_reg), wire))
+    elif mode == 'negedge':
+        edge.assign(vg.And(tmp_reg, vg.Not(wire)))
+    else:
+        raise ValueError(mode)
+
+    return edge
+
+
+def add_irq(m, clk, rst, saxi, bit_field, target_signal, mode='posedge', name=None):
+    irq_target = sence_edge(m, clk, target_signal, rst, mode=mode, name=name)
+    saxi.seq.If(irq_target)(
+        saxi.register[control_reg_interrupt_isr][bit_field](irq_target)
+    )
+
+
 def make_module(config, name, objs, num_storages, num_input_storages, num_output_storages):
     m = vg.Module(name)
 
@@ -253,6 +294,9 @@ def make_module(config, name, objs, num_storages, num_input_storages, num_output
 
     else:
         rst = m.Input(config['reset_name'])
+
+    if config['interrupt_enable']:
+        irq = m.OutputReg(config['interrupt_name'], initval=0)
 
     datawidth = config['maxi_datawidth']
     addrwidth = config['maxi_addrwidth']
@@ -304,6 +348,26 @@ def make_module(config, name, objs, num_storages, num_input_storages, num_output
     sys_rst_seq(
         sys_rst(v)
     )
+
+    if config['interrupt_enable']:
+        irq_tmp = m.TmpWireLike(saxi.register[control_reg_interrupt_isr], prefix="irq")
+        irq_tmp.assign(vg.And(saxi.register[control_reg_interrupt_isr],
+                                 saxi.register[control_reg_interrupt_ier]))
+        irq_seq = vg.Seq(m, 'interrupt_seq', clk, rst)
+        irq_seq(
+            irq(vg.Uor(irq_tmp))
+        )
+
+        list(map(lambda ack, stat: saxi.seq.If(ack==1)(ack(0),stat(0)),
+            saxi.register[control_reg_interrupt_iar], saxi.register[control_reg_interrupt_isr]))
+
+        irq_busy = m.Wire("irq_busy")
+        irq_busy.assign(saxi.register[control_reg_busy][0])
+        add_irq(m, clk, rst, saxi, control_reg_interrupt_isr_busy, irq_busy, mode='negedge', name="irq_busy_edge")
+
+        irq_extern = m.Wire("irq_extern")
+        irq_extern.assign(vg.Uor(saxi.register[control_reg_extern_send]))
+        add_irq(m, clk, rst, saxi, control_reg_interrupt_isr_extern, irq_extern, name="irq_extern_edge")
 
     for obj in objs:
         obj.set_module_info(m, clk, sys_rst, maxi, saxi)
@@ -1529,6 +1593,25 @@ def make_reg_map(config, global_map_info, header_info):
 
     index = index_to_bytes(control_reg_extern_recv)
     reg_map[index] = (reg_type['w'], "Resume extern objects (set '1' to resume)")
+
+    if config['interrupt_enable']:
+        index = index_to_bytes(control_reg_interrupt_isr)
+        reg_map[index] = (reg_type['r'], "Interrupt Status Register")
+
+        index = index_to_bytes(control_reg_interrupt_ier)
+        reg_map[index] = (reg_type['w'], "Interrupt Enable Register")
+
+        index = index_to_bytes(control_reg_interrupt_iar)
+        reg_map[index] = (reg_type['w'], "Interrupt Acknowledge Register")
+        control_reg_reserved_start = control_reg_reserved
+    else:
+        control_reg_reserved_start = control_reg_interrupt_isr
+
+    index = index_to_bytes(control_reg_reserved_start)
+    reg_map[index] = ('X', "reserved ..")
+
+    index = index_to_bytes(control_reg_global_offset-1)
+    reg_map[index] = ('X', ".. reserved")
 
     index = index_to_bytes(control_reg_global_offset)
     default_global_addr_offset = config['default_global_addr_offset']

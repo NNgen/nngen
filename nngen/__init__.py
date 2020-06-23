@@ -37,6 +37,7 @@ from .verilog import control_reg_extern_send, control_reg_extern_recv
 from .verilog import control_reg_global_offset
 from .verilog import control_reg_global_addr
 from .verilog import control_reg_load_global_addr_map, control_reg_busy_global_addr_map, control_reg_addr_global_addr_map
+from .verilog import control_reg_interrupt_isr, control_reg_interrupt_isr_busy, control_reg_interrupt_isr_extern, control_reg_interrupt_ier, control_reg_interrupt_iar
 
 from . import verify
 from . import sim
