@@ -214,6 +214,12 @@ def mul_rshift_round_madd(m, clk, rst,
 
     frac = stream.Mux(rshift > 0, stream.Sll(1, rshift - 1), 0)
     frac.width = mul_width
+    neg_frac = stream.Uminus(frac)
+    neg_frac.width = datawidth
+    neg_frac.latency = 0
+    frac = stream.Mux(x >= 0, frac, neg_frac)
+    frac.latency = 0
+    frac.width = datawidth
 
     z = stream.Madd(x, y, frac)
     z.latency = 4
@@ -733,11 +739,11 @@ def div_const_frac(m, clk, rst,
     frac= stream.source('frac')
     frac.width = datawidth
 
-    frac_minus = stream.Uminus(frac)
-    frac_minus.width = datawidth
-    frac_minus.latency = 0
+    neg_frac = stream.Uminus(frac)
+    neg_frac.width = datawidth
+    neg_frac.latency = 0
 
-    frac = stream.Mux(x >= 0, frac, frac_minus)
+    frac = stream.Mux(x >= 0, frac, neg_frac)
     frac.latency = 0
     frac.width = datawidth
 
