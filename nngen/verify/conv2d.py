@@ -202,8 +202,8 @@ def conv2d(input, filter, strides,
 
     def my_matmul_by_multiply(a, w):
         mul = np.multiply(a, w)
-        mul = np.right_shift(mul, mul_shift)
         mul = np.add(mul, rshift_mul_round.reshape([rshift_mul_round.shape[-1], 1]))
+        mul = np.right_shift(mul, mul_shift)
         mul = np.right_shift(mul, rshift_mul.reshape([rshift_mul.shape[-1], 1]))
         return np.add.reduce(mul, axis=1)
 
@@ -239,7 +239,8 @@ def conv2d(input, filter, strides,
                 sum = np.right_shift(sum, rshift_sum)
                 sum = np.add(sum, shifted_bias)
                 sum = np.multiply(sum, shifted_scale)
-                sum = np.add(sum, rshift_out_round)
+                frac = np.where(sum>=0, rshift_out_round, rshift_out_round - 1)
+                sum = np.add(sum,frac)
                 sum = np.right_shift(sum, rshift_out)
                 sum = np.where(sum > p_th, p_th, np.where(sum < n_th, n_th, sum))
 
