@@ -36,11 +36,16 @@ default_config = {
     'maxi_addrwidth': 32,
     'saxi_datawidth': 32,
     'saxi_addrwidth': 32,
+
+    # address map
     'default_global_addr_offset': 0,
-    'use_map_reg': False,
-    'use_map_ram': False,
-    'use_param_ram': False,
-    'min_param_ram_len': 0,
+    'use_map_ram': False,  # using a address map RAM instead of AXIS registers
+    'use_map_reg': False,  # using dedicated address registers instead of unified register for variable and constant
+
+    # control params
+    'use_param_ram': False,  # using a RAM instead of MUX for control params.
+    'min_param_ram_len': 0,  # if use_param_ram == True and num_of_params < min_param_ram_len,
+                             # a control param RAM is created instead of MUX
 
     # default parameters
     'default_datawidth': 32,
@@ -68,9 +73,12 @@ default_config = {
 max_burst_length = 256
 
 num_header_regs = 4
-header_reg = 0
+header_reg = 0  # index used in "sim.py"
 
-num_control_regs = 33 - num_header_regs
+# control_reg_global_offset must be same as REG_GLOBAL_OFFSET in pynq/nngen_ctrl.py'.
+control_reg_global_offset = 32
+num_control_regs = control_reg_global_offset + 1 - num_header_regs
+
 control_reg_start = num_header_regs + 0
 control_reg_busy = num_header_regs + 1
 control_reg_reset = num_header_regs + 2
@@ -78,23 +86,19 @@ control_reg_extern_send = num_header_regs + 3
 control_reg_extern_recv = num_header_regs + 4
 
 control_reg_interrupt_isr = num_header_regs + 5
-control_reg_interrupt_isr_busy = 0       # bitfield
-control_reg_interrupt_isr_extern = 1     # bitfield
+control_reg_interrupt_isr_busy = 0  # bit-field index in ISR
+control_reg_interrupt_isr_extern = 1  # bit-field index in ISR
 control_reg_interrupt_ier = num_header_regs + 6
 control_reg_interrupt_iar = num_header_regs + 7
 
-control_reg_reserved = num_header_regs + 8 # reservation
+control_reg_reserved = num_header_regs + 8  # head of reserved region
 
-control_reg_global_offset = 32
-
-assert (num_header_regs + num_control_regs) == control_reg_global_offset + 1, 'Register map was bloken'
-control_reg_global_addr = control_reg_global_offset + 1
-
-# when config['use_map_ram'] is True
 num_addr_map_regs = 3
-control_reg_load_global_addr_map = num_header_regs + num_control_regs
-control_reg_busy_global_addr_map = num_header_regs + num_control_regs + 1
-control_reg_addr_global_addr_map = num_header_regs + num_control_regs + 2
+control_reg_load_global_addr_map = num_header_regs + 8
+control_reg_busy_global_addr_map = num_header_regs + 9
+control_reg_addr_global_addr_map = num_header_regs + 10
+
+control_reg_global_addr = control_reg_global_offset + 1
 
 
 def to_veriloggen(objs, name, config=None, silent=False):
@@ -352,22 +356,24 @@ def make_module(config, name, objs, num_storages, num_input_storages, num_output
     if config['interrupt_enable']:
         irq_tmp = m.TmpWireLike(saxi.register[control_reg_interrupt_isr], prefix="irq")
         irq_tmp.assign(vg.And(saxi.register[control_reg_interrupt_isr],
-                                 saxi.register[control_reg_interrupt_ier]))
+                              saxi.register[control_reg_interrupt_ier]))
         irq_seq = vg.Seq(m, 'interrupt_seq', clk, rst)
         irq_seq(
             irq(vg.Uor(irq_tmp))
         )
 
-        list(map(lambda ack, stat: saxi.seq.If(ack==1)(ack(0),stat(0)),
-            saxi.register[control_reg_interrupt_iar], saxi.register[control_reg_interrupt_isr]))
+        list(map(lambda ack, stat: saxi.seq.If(ack == 1)(ack(0), stat(0)),
+                 saxi.register[control_reg_interrupt_iar], saxi.register[control_reg_interrupt_isr]))
 
         irq_busy = m.Wire("irq_busy")
         irq_busy.assign(saxi.register[control_reg_busy][0])
-        add_irq(m, clk, rst, saxi, control_reg_interrupt_isr_busy, irq_busy, mode='negedge', name="irq_busy_edge")
+        add_irq(m, clk, rst, saxi, control_reg_interrupt_isr_busy,
+                irq_busy, mode='negedge', name="irq_busy_edge")
 
         irq_extern = m.Wire("irq_extern")
         irq_extern.assign(vg.Uor(saxi.register[control_reg_extern_send]))
-        add_irq(m, clk, rst, saxi, control_reg_interrupt_isr_extern, irq_extern, name="irq_extern_edge")
+        add_irq(m, clk, rst, saxi, control_reg_interrupt_isr_extern,
+                irq_extern, name="irq_extern_edge")
 
     for obj in objs:
         obj.set_module_info(m, clk, sys_rst, maxi, saxi)
@@ -1573,7 +1579,7 @@ def disable_unused_ram_ports(ram_dict):
 
 def make_reg_map(config, global_map_info, header_info):
     reg_map = collections.OrderedDict()
-    reg_type = {'rw': 'RW', 'r': 'R ', 'w': ' W'}
+    reg_type = {'rw': 'RW', 'r': 'R ', 'w': ' W', 'x': '  '}
 
     for i in range(num_header_regs):
         index = index_to_bytes(i)
@@ -1603,26 +1609,32 @@ def make_reg_map(config, global_map_info, header_info):
 
         index = index_to_bytes(control_reg_interrupt_iar)
         reg_map[index] = (reg_type['w'], "Interrupt Acknowledge Register")
+
+    if config['use_map_ram']:
+        control_reg_reserved_start = control_reg_addr_global_addr_map + 1
+    elif config['interrupt_enable']:
         control_reg_reserved_start = control_reg_reserved
     else:
         control_reg_reserved_start = control_reg_interrupt_isr
 
     index = index_to_bytes(control_reg_reserved_start)
-    reg_map[index] = ('X', "reserved ..")
+    reg_map[index] = (reg_type['x'], "Reserved ...")
 
-    index = index_to_bytes(control_reg_global_offset-1)
-    reg_map[index] = ('X', ".. reserved")
+    index = index_to_bytes(control_reg_global_offset - 1)
+    reg_map[index] = (reg_type['x'], "... Reserved")
 
     index = index_to_bytes(control_reg_global_offset)
     default_global_addr_offset = config['default_global_addr_offset']
-    reg_map[index] = (reg_type['rw'], 'Global address offset (default: %d)' % default_global_addr_offset)
+    reg_map[index] = (reg_type['rw'], 'Global address offset (default: %d)' %
+                      default_global_addr_offset)
 
     if config['use_map_ram']:
         index = index_to_bytes(control_reg_load_global_addr_map)
         reg_map[index] = (reg_type['w'], "Load global address map (set '1' to load)")
 
         index = index_to_bytes(control_reg_busy_global_addr_map)
-        reg_map[index] = (reg_type['r'], "Busy loading global address map (returns '1' when loading)")
+        reg_map[index] = (
+            reg_type['r'], "Busy loading global address map (returns '1' when loading)")
 
         index = index_to_bytes(control_reg_addr_global_addr_map)
         reg_map[index] = (reg_type['w'], "Head address of global address map")
