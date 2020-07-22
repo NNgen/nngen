@@ -904,7 +904,6 @@ class avg_pool_serial(_pool_serial):
         if self.force_div or num_vars & (num_vars - 1) != 0:
             rshift = 0
             acc.to_constant('rshift', rshift)
-            #sum += (num_vars // 2)
 
             div = strm.substream(self.substreams[self.par + index])
             div.to_source('x', sum)
