@@ -26,6 +26,9 @@ default_config = {
     'reset_name': 'RESETN',
     'reset_polarity': 'low',
 
+    # measure enable main_fsm
+    'measurable_main_fsm': True,
+
     # interrupt
     'interrupt_enable': True,
     'interrupt_name': 'irq',
@@ -79,6 +82,7 @@ header_reg = 0  # index used in "sim.py"
 control_reg_global_offset = 32
 num_control_regs = control_reg_global_offset + 1 - num_header_regs
 
+num_control_regs = 33 - num_header_regs
 control_reg_start = num_header_regs + 0
 control_reg_busy = num_header_regs + 1
 control_reg_reset = num_header_regs + 2
@@ -91,14 +95,20 @@ control_reg_interrupt_isr_extern = 1  # bit-field index in ISR
 control_reg_interrupt_ier = num_header_regs + 6
 control_reg_interrupt_iar = num_header_regs + 7
 
-control_reg_reserved = num_header_regs + 8  # head of reserved region
+control_reg_count = num_header_regs + 8
+control_reg_count_state = num_header_regs + 9
+control_reg_count_div = num_header_regs + 10
 
-num_addr_map_regs = 3
-control_reg_load_global_addr_map = num_header_regs + 8
-control_reg_busy_global_addr_map = num_header_regs + 9
-control_reg_addr_global_addr_map = num_header_regs + 10
+control_reg_reserved = num_header_regs + 11 # reservation
 
+control_reg_address_amount = control_reg_global_offset - 1
 control_reg_global_addr = control_reg_global_offset + 1
+
+# when config['use_map_ram'] is True
+num_addr_map_regs = 3
+control_reg_load_global_addr_map = num_header_regs + num_control_regs
+control_reg_busy_global_addr_map = num_header_regs + num_control_regs + 1
+control_reg_addr_global_addr_map = num_header_regs + num_control_regs + 2
 
 
 def to_veriloggen(objs, name, config=None, silent=False):
@@ -186,18 +196,32 @@ def _to_veriloggen_module(objs, name, config=None,
 
     reg_map = make_reg_map(config, global_map_info, header_info)
 
+    saxi.register[control_reg_address_amount].initval = address_space_amount(global_mem_map)
+
     if not silent:
         dump_config(config, where_from, output)
         dump_schedule_table(schedule_table)
         dump_rams(ram_dict)
         dump_substreams(substrm_dict)
         dump_streams(stream_cache)
+        dump_main_fsm(main_fsm)
         dump_controls(control_cache, main_fsm)
         dump_register_map(reg_map)
         dump_memory_map(global_mem_map)
 
     return m
 
+def address_space_amount(mem_map):
+    max_gaddr = 0
+    min_gaddr = 0
+    for start, end in mem_map.keys():
+        if start <= end:
+            max_gaddr = max(max_gaddr, start, end)
+            min_gaddr = min(min_gaddr, start, end)
+
+    num_bytes = max_gaddr - min_gaddr + 1
+
+    return num_bytes
 
 def analyze(config, objs):
     set_output(objs)
@@ -395,7 +419,7 @@ def make_header_addr_map(config, saxi):
         name = 'header%d' % i
         initval = config[name] if name in config else 0
         header_regs[i].initval = initval
-        header_info[i] = 'header%d (default: %d)' % (i, initval)
+        header_info[i] = 'header{} (default: 0x{:08x})'.format(i, initval)
 
     return header_info
 
@@ -1381,7 +1405,6 @@ def make_addr_map_rams(config, m, clk, rst, maxi,
 
     return global_map_ram, local_map_ram
 
-
 def make_controls(config, m, clk, rst, maxi, saxi,
                   schedule_table, control_param_dict,
                   global_addr_map, local_addr_map,
@@ -1392,12 +1415,27 @@ def make_controls(config, m, clk, rst, maxi, saxi,
     name = 'main_fsm'
     main_fsm = vg.FSM(m, name, clk, rst, as_module=config['fsm_as_module'])
     state_init = main_fsm.current
+    main_fsm.state_list = []
 
     saxi.seq.If(main_fsm.state == state_init)(
         saxi.register[control_reg_busy](0),
         saxi.register[control_reg_reset](0),
         saxi.register[control_reg_extern_send](0)
     )
+
+    if config['measurable_main_fsm']:
+        internal_counter =  m.Reg("internal_state_counter", width=32, initval=0)
+        saxi.seq.If(main_fsm.state == state_init + 1)(
+            internal_counter(0),
+            saxi.register[control_reg_count](0)
+        ).Elif(main_fsm.state == saxi.register[control_reg_count_state])(
+            vg.If(internal_counter == saxi.register[control_reg_count_div])(
+                internal_counter(0),
+                saxi.register[control_reg_count](saxi.register[control_reg_count] + 1)
+            ).Else(
+                internal_counter(internal_counter + 1)
+            )
+        )
 
     if config['use_map_ram']:
         global_map_ram.disable_write(0)
@@ -1535,6 +1573,7 @@ def make_controls(config, m, clk, rst, maxi, saxi,
 
             obj.run_control(main_fsm)
 
+        ret_start_state = main_fsm.current
         main_fsm.goto_next()
 
         for obj in objs:
@@ -1547,6 +1586,23 @@ def make_controls(config, m, clk, rst, maxi, saxi,
 
             obj.join_control(main_fsm)
             obj.reset_control(main_fsm)
+
+        ret_end_state = main_fsm.current
+
+        if not bt.is_operator(obj):
+            control_name = 'None'
+        elif bt.is_view(obj):
+            control_name = 'None'
+        elif bt.is_removable_reshape(obj):
+            control_name = 'None'
+        elif (bt.is_output_chainable_operator(obj) and
+                not obj.chain_head):
+            control_name = 'None'
+        else:
+            control_name = control_cache[obj.get_control_hash()][0][0].name
+
+        main_fsm.state_list.append(
+            (ret_start_state, ret_end_state, obj.name, control_name))
 
         main_fsm.goto_next()
 
@@ -1617,11 +1673,25 @@ def make_reg_map(config, global_map_info, header_info):
     else:
         control_reg_reserved_start = control_reg_interrupt_isr
 
+    if config['measurable_main_fsm']:
+        index = index_to_bytes(control_reg_count)
+        reg_map[index] = (reg_type['r'], "State Counter")
+
+        index = index_to_bytes(control_reg_count_state)
+        reg_map[index] = (reg_type['w'], "Count Target")
+
+        index = index_to_bytes(control_reg_count_div)
+        reg_map[index] = (reg_type['w'], "Count Divider")
+    else:
+        control_reg_reserved_start = control_reg_count
     index = index_to_bytes(control_reg_reserved_start)
     reg_map[index] = (reg_type['x'], "Reserved ...")
 
-    index = index_to_bytes(control_reg_global_offset - 1)
+    index = index_to_bytes(control_reg_address_amount-1)
     reg_map[index] = (reg_type['x'], "... Reserved")
+
+    index = index_to_bytes(control_reg_address_amount)
+    reg_map[index] = (reg_type['r'], "Address space amount")
 
     index = index_to_bytes(control_reg_global_offset)
     default_global_addr_offset = config['default_global_addr_offset']
@@ -1650,6 +1720,14 @@ def make_reg_map(config, global_map_info, header_info):
 def index_to_bytes(index, wordsize=4):
     return index * wordsize
 
+def dump_main_fsm(main_fsm):
+    s = []
+    s.append('[State IDs in main_fsm]')
+
+    for value in main_fsm.state_list:
+        s.append("  %s" % str(value))
+
+    print('\n'.join(s))
 
 def dump_config(config, where_from=None, output=None):
     s = []
