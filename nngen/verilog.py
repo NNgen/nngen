@@ -62,6 +62,9 @@ default_config = {
     # 'onchip_ram_priority': 'max_size',
     # 'onchip_ram_priority': (lambda cur, width, length, num: cur + width * length * num),
 
+    # clipping mode
+    'imbalanced_clip': False,
+
     # for debug
     'fsm_as_module': False,
     'disable_stream_cache': False,
@@ -207,6 +210,7 @@ def analyze(config, objs):
     num_input_storages = count_input_storages(objs)
     num_output_storages = count_output_storages(objs)
 
+    set_imbalanced_clip(config, objs)
     set_default_dtype(config, objs)
 
     return objs, num_storages, num_input_storages, num_output_storages
@@ -259,6 +263,10 @@ def set_default_dtype(config, objs):
         if obj.dtype is None:
             obj.dtype = dtype_list.dtype_info('int', default_datawidth)
 
+def set_imbalanced_clip(config, objs):
+    if config['imbalanced_clip']:
+        for obj in objs:
+            obj.imbalanced_clip = True
 
 def sence_edge(m, clk, wire, rst=None, mode='posedge', name='sence'):
     tmp_reg = m.TmpRegLike(wire, prefix=name, initval=0)
@@ -906,6 +914,7 @@ def make_substreams(config, m, clk, rst, maxi, schedule_table):
         method_name = key[0]
         args = key[1]
         method = getattr(substreams, method_name)
+
         for _ in range(num):
             i = substrm_index[key]
             substrm_index[key] += 1
@@ -1380,7 +1389,6 @@ def make_addr_map_rams(config, m, clk, rst, maxi,
                                 ram_style=config['map_ram_style'])
 
     return global_map_ram, local_map_ram
-
 
 def make_controls(config, m, clk, rst, maxi, saxi,
                   schedule_table, control_param_dict,

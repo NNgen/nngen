@@ -93,6 +93,9 @@ class _Numeric(_Node):
         # remember applied permutation pattern for ONNX
         self.perm = None
 
+        # memory access information
+        self.imbalanced_clip = False
+
     def __str__(self):
         clsname = self.__class__.__name__
         name = self.name if self.name is not None else 'None'
