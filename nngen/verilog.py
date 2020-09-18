@@ -1687,7 +1687,7 @@ def make_reg_map(config, global_map_info, header_info):
     index = index_to_bytes(control_reg_reserved_start)
     reg_map[index] = (reg_type['x'], "Reserved ...")
 
-    index = index_to_bytes(control_reg_address_amount-1)
+    index = index_to_bytes(control_reg_address_amount - 1)
     reg_map[index] = (reg_type['x'], "... Reserved")
 
     index = index_to_bytes(control_reg_address_amount)
