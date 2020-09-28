@@ -99,7 +99,7 @@ control_reg_count = num_header_regs + 8
 control_reg_count_state = num_header_regs + 9
 control_reg_count_div = num_header_regs + 10
 
-control_reg_reserved = num_header_regs + 11 # reservation
+control_reg_reserved = num_header_regs + 11 # head of reserved region
 
 control_reg_address_amount = control_reg_global_offset - 1
 control_reg_global_addr = control_reg_global_offset + 1
