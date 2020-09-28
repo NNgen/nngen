@@ -1405,6 +1405,7 @@ def make_addr_map_rams(config, m, clk, rst, maxi,
 
     return global_map_ram, local_map_ram
 
+
 def make_controls(config, m, clk, rst, maxi, saxi,
                   schedule_table, control_param_dict,
                   global_addr_map, local_addr_map,
