@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
 
 import nngen as ng
+print(ng.__file__)
 
 from veriloggen import *
 import veriloggen.thread as vthread
@@ -24,7 +25,7 @@ import veriloggen.types.axi as axi
 
 
 def run(a_shape=(15, 15),
-        a_dtype=ng.int32, b_dtype=ng.int32,
+        a_dtype=ng.int32, b_dtype=ng.int16,
         par=1, axi_datawidth=32, silent=False,
         filename=None, simtype='iverilog', outputfile=None):
 
@@ -36,7 +37,11 @@ def run(a_shape=(15, 15),
                             config={'maxi_datawidth': axi_datawidth})
 
     # verification data
-    va = np.arange(a.length, dtype=np.int64).reshape(a.shape) % [9] - [4]
+    va = np.arange(a.length, dtype=np.int32)
+    va = va*2 - a.length
+    va = va * [(2**(a_dtype.width-1)-1), ]
+    va = va // a.length
+    va = va.reshape(a.shape)
 
     eval_outs = ng.eval([b], a=va)
     vb = eval_outs[0]
