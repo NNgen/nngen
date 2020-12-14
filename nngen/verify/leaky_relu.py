@@ -4,6 +4,7 @@ from __future__ import division
 
 import numpy as np
 import functools
+from decimal import Decimal, ROUND_HALF_UP, ROUND_HALF_EVEN
 
 
 def leaky_relu(features, slope, rshift, dtype=None, name=None, par=1,
@@ -16,7 +17,10 @@ def leaky_relu(features, slope, rshift, dtype=None, name=None, par=1,
     out_point = 0 if dtype is None else dtype.point
     out_shift = out_point - features_point
 
-    negs = (features * slope) >> rshift
+    features_shape = features.shape
+    negs = np.array(list(map(lambda x: Decimal(str(x*slope/(2**rshift))).quantize(Decimal('0'),
+                rounding=ROUND_HALF_UP), features.flatten()))).astype(np.int64).reshape(features_shape)
+
     comp = features >= 0
 
     out_op = ((lambda x: x << out_shift) if out_shift >= 0 else

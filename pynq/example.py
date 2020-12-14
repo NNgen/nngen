@@ -56,7 +56,7 @@ overlay.ip_dict
 # In[5]:
 
 
-ip = ng.nngen_ip(overlay, ipname)
+ip = ng.nngen_core(overlay, ipname)
 
 
 # In[6]:
@@ -89,7 +89,7 @@ buf[param_offset:param_offset + param_size] = param.view(np.uint8)
 # In[8]:
 
 
-ip.set_global_offset(buf)
+ip.set_global_buffer(buf)
 
 
 # In[9]:

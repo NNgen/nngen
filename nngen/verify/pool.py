@@ -3,6 +3,8 @@ from __future__ import print_function
 from __future__ import division
 
 import numpy as np
+from decimal import Decimal, ROUND_HALF_UP, ROUND_HALF_EVEN
+
 
 import nngen.util as util
 
@@ -78,10 +80,12 @@ def avg_pool(value, ksize, stride, padding='SAME',
               lambda x: x >> -div_shift)
 
     num_vars = ksize_col * ksize_row
-    if force_div or num_vars & (num_vars - 1) != 0:
-        def divider(x): return (x / num_vars).astype(np.int64)
-    else:
-        def divider(x): return x // num_vars
+
+
+    def divider(vx):
+        return np.array(
+                list(map(lambda x: Decimal(str(x/num_vars)).quantize(Decimal('0'),
+                    rounding=ROUND_HALF_UP), vx))).astype(np.int64)
 
     for bat in range(value.shape[0]):
 
@@ -98,8 +102,6 @@ def avg_pool(value, ksize, stride, padding='SAME',
                 a = value[bat, ys: ye, xs: xe]
                 a = np.add.reduce(a, axis=0)
                 sum = np.add.reduce(a, axis=0)
-
-                sum += (num_vars // 2)
                 div = divider(sum)
 
                 out[bat][oy][ox][:] = div_op(div)
