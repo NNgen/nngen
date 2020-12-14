@@ -102,7 +102,8 @@ def run(act_shape=(1, 7, 7, 7), weight_shape=(3, 3, 3, 7),
     tmp_addr = check_addr + size_check
 
     memimg_datawidth = 32
-    mem = np.zeros([1024 * 1024 * 8 // (memimg_datawidth // 8)], dtype=np.int64)
+    #mem = np.zeros([1024 * 1024 * 8 // (memimg_datawidth // 8)], dtype=np.int64)
+    mem = np.zeros([1024 * 1024 * 128 // (memimg_datawidth // 8)], dtype=np.int64)
     mem = mem + [100]
 
     axi.set_memory(mem, vact, memimg_datawidth,
