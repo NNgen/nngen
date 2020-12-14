@@ -972,7 +972,8 @@ class conv2d(bt._Operator):
                           (sum_width, sum_point, sum_signed,
                            scale_width, scale_point, scale_signed,
                            scl_width, scl_point, scl_signed,
-                           out_width, out_point, out_signed))] *
+                           out_width, out_point, out_signed,
+                           self.imbalanced_clip))] *
                         self.par_och * self.par_col * self.par_row)
 
         return substrms

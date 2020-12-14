@@ -79,11 +79,15 @@ class scaled_add(bt._ElementwiseOperator):
         sra = strm.Sra(madd, shamt)
 
         width = self.dtype.width
-        p_th = (1 << (width - 1)) - 1
-        n_th = -1 * p_th
-
+        if self.imbalanced_clip:
+            p_th = (1 << (width - 1)) - 1
+            n_th = -1 * p_th - 1
+        else:
+            p_th = (1 << (width - 1)) - 1
+            n_th = -1 * p_th
         p = strm.Mux(sra > p_th, p_th, sra)
         n = strm.Mux(sra < n_th, n_th, sra)
+
         return strm.Mux(sra >= 0, p, n)
 
     def __init__(self, a, b, a_scale, b_scale, shamt,
@@ -183,9 +187,12 @@ class scaled_concat(concat):
             sra = strm.Sra(mul, shamt)
 
             width = self.dtype.width
-            p_th = (1 << (width - 1)) - 1
-            n_th = -1 * p_th
-
+            if self.imbalanced_clip:
+                p_th = (1 << (width - 1)) - 1
+                n_th = -1 * p_th - 1
+            else:
+                p_th = (1 << (width - 1)) - 1
+                n_th = -1 * p_th
             p = strm.Mux(sra > p_th, p_th, sra)
             n = strm.Mux(sra < n_th, n_th, sra)
             dst = strm.Mux(sra >= 0, p, n)

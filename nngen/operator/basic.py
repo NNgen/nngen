@@ -527,11 +527,15 @@ class clip(bt._ElementwiseOperator):
 
     def op(self, strm, *args, **kwargs):
         width = self.dtype.width
-        p_th = (1 << (width - 1)) - 1
-        n_th = -1 * p_th
-
+        if self.imbalanced_clip:
+            p_th = (1 << (width - 1)) - 1
+            n_th = -1 * p_th - 1
+        else:
+            p_th = (1 << (width - 1)) - 1
+            n_th = -1 * p_th
         p = strm.Mux(args[0] > p_th, p_th, args[0])
         n = strm.Mux(args[0] < n_th, n_th, args[0])
+
         return strm.Mux(args[0] >= 0, p, n)
 
     def __init__(self, x, dtype=None, name=None, par=1):
@@ -679,11 +683,15 @@ class multiply_add_rshift_clip(bt._ElementwiseOperator):
         sra = strm.Sra(madd, args[3])
 
         width = self.dtype.width
-        p_th = (1 << (width - 1)) - 1
-        n_th = -1 * p_th
-
+        if self.imbalanced_clip:
+            p_th = (1 << (width - 1)) - 1
+            n_th = -1 * p_th - 1
+        else:
+            p_th = (1 << (width - 1)) - 1
+            n_th = -1 * p_th
         p = strm.Mux(sra > p_th, p_th, sra)
         n = strm.Mux(sra < n_th, n_th, sra)
+
         return strm.Mux(sra >= 0, p, n)
 
     def __init__(self, x, y, z, shamt,

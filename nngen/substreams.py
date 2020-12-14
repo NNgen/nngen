@@ -80,7 +80,8 @@ def mul_rshift_clip(m, clk, rst,
                     x_datawidth, x_point, x_signed,
                     y_datawidth, y_point, y_signed,
                     mul_width=None, mul_point=None, mul_signed=None,
-                    out_width=None, out_point=None, out_signed=None):
+                    out_width=None, out_point=None, out_signed=None,
+                    imbalanced_clip=False):
 
     name = _tmp_name('mul_rshift_clip')
     datawidth = max(x_datawidth, y_datawidth)
@@ -102,8 +103,13 @@ def mul_rshift_clip(m, clk, rst,
         z = stream.Cast(z, point=mul_point)
     z = stream.Sra(z, rshift)
 
-    p_th = (1 << (out_width - 1)) - 1
-    n_th = -1 * p_th
+    if imbalanced_clip:
+        p_th = (1 << (out_width - 1)) - 1
+        n_th = -1 * p_th - 1
+    else:
+        p_th = (1 << (out_width - 1)) - 1
+        n_th = -1 * p_th
+
     p_th = p_th >> out_point
     n_th = n_th >> out_point
 
@@ -155,7 +161,8 @@ def mul_rshift_round_clip(m, clk, rst,
                           x_datawidth, x_point, x_signed,
                           y_datawidth, y_point, y_signed,
                           mul_width=None, mul_point=None, mul_signed=None,
-                          out_width=None, out_point=None, out_signed=None):
+                          out_width=None, out_point=None, out_signed=None,
+                          imbalanced_clip=False):
 
     name = _tmp_name('mul_rshift_round_clip')
     datawidth = max(x_datawidth, y_datawidth)
@@ -177,8 +184,13 @@ def mul_rshift_round_clip(m, clk, rst,
         z = stream.Cast(z, point=mul_point)
     z = stream.SraRound(z, rshift)
 
-    p_th = (1 << (out_width - 1)) - 1
-    n_th = -1 * p_th
+    if imbalanced_clip:
+        p_th = (1 << (out_width - 1)) - 1
+        n_th = -1 * p_th - 1
+    else:
+        p_th = (1 << (out_width - 1)) - 1
+        n_th = -1 * p_th
+
     p_th = p_th >> out_point
     n_th = n_th >> out_point
 
@@ -322,8 +334,13 @@ def madd_rshift_clip(m, clk, rst,
         sum = stream.Cast(sum, point=mul_point)
     sum = stream.Sra(sum, rshift)
 
-    p_th = (1 << (out_width - 1)) - 1
-    n_th = -1 * p_th
+    if imbalanced_clip:
+        p_th = (1 << (out_width - 1)) - 1
+        n_th = -1 * p_th - 1
+    else:
+        p_th = (1 << (out_width - 1)) - 1
+        n_th = -1 * p_th
+
     p_th = p_th >> out_point
     n_th = n_th >> out_point
 
