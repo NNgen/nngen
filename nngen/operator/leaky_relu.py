@@ -69,7 +69,7 @@ def get_leaky_relu_op(slope, rshift=None, dtype=None):
         slope_width = int(math.ceil(math.log(slope, 2)) + 1) + 1  # signed
         dtype_width = dtype.width if dtype is not None else 32
         mul.width = slope_width + dtype_width
-        neg = strm.Sra(mul, rshift)
+        neg = strm.SraRound(mul, rshift)
         neg.width = dtype_width
         return strm.Mux(args[0] > strm.Int(0), args[0], neg)
 
