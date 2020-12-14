@@ -226,6 +226,12 @@ def mul_rshift_round_madd(m, clk, rst,
 
     frac = stream.Mux(rshift > 0, stream.Sll(1, rshift - 1), 0)
     frac.width = mul_width
+    neg_frac = stream.Uminus(frac)
+    neg_frac.width = datawidth
+    neg_frac.latency = 0
+    frac = stream.Mux(x >= 0, frac, neg_frac)
+    frac.latency = 0
+    frac.width = datawidth
 
     z = stream.Madd(x, y, frac)
     z.latency = 4
@@ -723,6 +729,44 @@ def div_const(m, clk, rst,
     y = stream.source('y', y_datawidth, y_point, y_signed)
 
     z = stream.Div(x, y)
+    if div_width is not None:
+        z.width = div_width
+    if div_signed is not None:
+        z.signed = div_signed
+    if div_point is not None and point != div_point:
+        z = stream.Cast(z, point=div_point)
+
+    stream.sink(z, 'z')
+    return stream
+
+
+def div_const_frac(m, clk, rst,
+              x_datawidth, x_point, x_signed,
+              y_datawidth, y_point, y_signed,
+              div_width=None, div_point=None, div_signed=None):
+
+    name = _tmp_name('div_const_frac')
+    datawidth = max(x_datawidth, y_datawidth)
+    point = max(x_point, y_point)
+
+    stream = vthread.Stream(m, name, clk, rst, datawidth)
+    x = stream.source('x', x_datawidth, x_point, x_signed)
+    y = stream.source('y', y_datawidth, y_point, y_signed)
+
+    frac= stream.source('frac')
+    frac.width = datawidth
+
+    neg_frac = stream.Uminus(frac)
+    neg_frac.width = datawidth
+    neg_frac.latency = 0
+
+    frac = stream.Mux(x >= 0, frac, neg_frac)
+    frac.latency = 0
+    frac.width = datawidth
+
+    x_frac = stream.Add(x, frac)
+    x_frac.latency = 0
+    z = stream.Div(x_frac, y)
     if div_width is not None:
         z.width = div_width
     if div_signed is not None:

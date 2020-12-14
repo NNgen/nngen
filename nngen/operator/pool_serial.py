@@ -871,7 +871,7 @@ class avg_pool_serial(_pool_serial):
         x_point = act.get_op_point()
         x_signed = act.get_signed()
 
-        substrms = [('acc_rshift_round_frac',
+        substrms = [('acc_rshift_round',
                      (x_datawidth, x_point, x_signed,
                       x_datawidth, x_point, x_signed))] * self.par
 
@@ -879,7 +879,7 @@ class avg_pool_serial(_pool_serial):
             y_datawidth = max(num_vars.bit_length() + 1, 2)
             y_point = 0
             y_signed = True
-            substrms.extend([('div_const',
+            substrms.extend([('div_const_frac',
                               (x_datawidth, x_point, x_signed,
                                y_datawidth, y_point, y_signed))] * self.par)
 
@@ -904,11 +904,12 @@ class avg_pool_serial(_pool_serial):
         if self.force_div or num_vars & (num_vars - 1) != 0:
             rshift = 0
             acc.to_constant('rshift', rshift)
-            sum += (num_vars // 2)
 
             div = strm.substream(self.substreams[self.par + index])
             div.to_source('x', sum)
             div.to_constant('y', num_vars)
+            frac = num_vars//2
+            div.to_constant('frac', frac)
 
             return div.from_sink('z'), valid
 
