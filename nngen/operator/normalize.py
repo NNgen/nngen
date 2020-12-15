@@ -79,7 +79,7 @@ class scaled_add(bt._ElementwiseOperator):
         sra = strm.Sra(madd, shamt)
 
         width = self.dtype.width
-        if self.imbalanced_clip:
+        if self.asymmetric_clip:
             p_th = (1 << (width - 1)) - 1
             n_th = -1 * p_th - 1
         else:
@@ -187,7 +187,7 @@ class scaled_concat(concat):
             sra = strm.Sra(mul, shamt)
 
             width = self.dtype.width
-            if self.imbalanced_clip:
+            if self.asymmetric_clip:
                 p_th = (1 << (width - 1)) - 1
                 n_th = -1 * p_th - 1
             else:

@@ -1,3 +1,4 @@
+
 from __future__ import absolute_import
 from __future__ import print_function
 
@@ -51,7 +52,7 @@ def run(act_shape=(1, 7, 7, 7), weight_shape=(3, 3, 3, 7),
     out = ng.conv2d(act, weight, stride,
                     bias, scale,
                     rshift_mul, rshift_sum, rshift_out,
-                    act_func, padding,
+                    act_func, padding, False,
                     out_dtype, ng.int32, ng.int32,
                     'conv2d',
                     par_ich, par_och, par_col, par_row,

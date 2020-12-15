@@ -65,9 +65,6 @@ default_config = {
     # 'onchip_ram_priority': 'max_size',
     # 'onchip_ram_priority': (lambda cur, width, length, num: cur + width * length * num),
 
-    # clipping mode
-    'imbalanced_clip': False,
-
     # for debug
     'fsm_as_module': False,
     'disable_stream_cache': False,
@@ -102,7 +99,7 @@ control_reg_count = num_header_regs + 8
 control_reg_count_state = num_header_regs + 9
 control_reg_count_div = num_header_regs + 10
 
-control_reg_reserved = num_header_regs + 11 # head of reserved region
+control_reg_reserved = num_header_regs + 11  # head of reserved region
 
 control_reg_address_amount = control_reg_global_offset - 1
 control_reg_global_addr = control_reg_global_offset + 1
@@ -214,6 +211,7 @@ def _to_veriloggen_module(objs, name, config=None,
 
     return m
 
+
 def address_space_amount(mem_map):
     max_gaddr = 0
     min_gaddr = 0
@@ -226,6 +224,7 @@ def address_space_amount(mem_map):
 
     return num_bytes
 
+
 def analyze(config, objs):
     set_output(objs)
 
@@ -234,7 +233,6 @@ def analyze(config, objs):
     num_input_storages = count_input_storages(objs)
     num_output_storages = count_output_storages(objs)
 
-    set_imbalanced_clip(config, objs)
     set_default_dtype(config, objs)
 
     return objs, num_storages, num_input_storages, num_output_storages
@@ -287,10 +285,6 @@ def set_default_dtype(config, objs):
         if obj.dtype is None:
             obj.dtype = dtype_list.dtype_info('int', default_datawidth)
 
-def set_imbalanced_clip(config, objs):
-    if config['imbalanced_clip']:
-        for obj in objs:
-            obj.imbalanced_clip = True
 
 def sence_edge(m, clk, wire, rst=None, mode='posedge', name='sence'):
     tmp_reg = m.TmpRegLike(wire, prefix=name, initval=0)
@@ -1434,7 +1428,7 @@ def make_controls(config, m, clk, rst, maxi, saxi,
     )
 
     if config['measurable_main_fsm']:
-        internal_counter =  m.Reg("internal_state_counter", width=32, initval=0)
+        internal_counter = m.Reg("internal_state_counter", width=32, initval=0)
         saxi.seq.If(main_fsm.state == state_init + 1)(
             internal_counter(0),
             saxi.register[control_reg_count](0)
@@ -1730,6 +1724,7 @@ def make_reg_map(config, global_map_info, header_info):
 def index_to_bytes(index, wordsize=4):
     return index * wordsize
 
+
 def dump_main_fsm(main_fsm):
     s = []
     s.append('[State IDs in main_fsm]')
@@ -1738,6 +1733,7 @@ def dump_main_fsm(main_fsm):
         s.append("  %s" % str(value))
 
     print('\n'.join(s))
+
 
 def dump_config(config, where_from=None, output=None):
     s = []

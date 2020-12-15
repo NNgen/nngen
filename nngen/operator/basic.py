@@ -527,23 +527,28 @@ class clip(bt._ElementwiseOperator):
 
     def op(self, strm, *args, **kwargs):
         width = self.dtype.width
-        if self.imbalanced_clip:
-            p_th = (1 << (width - 1)) - 1
+
+        p_th = (1 << (width - 1)) - 1
+        if self.asymmetric_clip:
             n_th = -1 * p_th - 1
         else:
-            p_th = (1 << (width - 1)) - 1
             n_th = -1 * p_th
+
         p = strm.Mux(args[0] > p_th, p_th, args[0])
         n = strm.Mux(args[0] < n_th, n_th, args[0])
 
         return strm.Mux(args[0] >= 0, p, n)
 
-    def __init__(self, x, dtype=None, name=None, par=1):
+    def __init__(self, x, asymmetric_clip=False,
+                 dtype=None, name=None, par=1):
+
         shape = None
         bt._ElementwiseOperator.__init__(self, x,
                                          dtype=dtype, shape=shape, name=name, par=par)
+        self.asymmetric_clip = asymmetric_clip
 
     def eval(self, memo, input_dict, **kwargs):
+        kwargs['asymmetric_clip'] = self.asymmetric_clip
         kwargs['x_dtype'] = self.args[0].dtype
         return bt._ElementwiseOperator.eval(self, memo, input_dict, **kwargs)
 
@@ -683,26 +688,29 @@ class multiply_add_rshift_clip(bt._ElementwiseOperator):
         sra = strm.Sra(madd, args[3])
 
         width = self.dtype.width
-        if self.imbalanced_clip:
-            p_th = (1 << (width - 1)) - 1
+
+        p_th = (1 << (width - 1)) - 1
+        if self.asymmetric_clip:
             n_th = -1 * p_th - 1
         else:
-            p_th = (1 << (width - 1)) - 1
             n_th = -1 * p_th
+
         p = strm.Mux(sra > p_th, p_th, sra)
         n = strm.Mux(sra < n_th, n_th, sra)
 
         return strm.Mux(sra >= 0, p, n)
 
-    def __init__(self, x, y, z, shamt,
+    def __init__(self, x, y, z, shamt, asymmetric_clip=False,
                  dtype=None, sum_dtype=None, name=None, par=1):
 
         shape = None
         bt._ElementwiseOperator.__init__(self, x, y, z, shamt,
                                          dtype=dtype, shape=shape, name=name, par=par)
+        self.asymmetric_clip = asymmetric_clip
         self.sum_dtype = sum_dtype
 
     def eval(self, memo, input_dict, **kwargs):
+        kwargs['asymmetric_clip'] = self.asymmetric_clip
         kwargs['x_dtype'] = self.args[0].dtype
         kwargs['y_dtype'] = self.args[1].dtype
         kwargs['z_dtype'] = self.args[2].dtype
