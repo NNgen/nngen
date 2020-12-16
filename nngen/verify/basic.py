@@ -418,7 +418,8 @@ def rshift_round(x, y, dtype=None, name=None, par=1,
     return ret
 
 
-def clip(x, dtype=None, name=None, par=1,
+def clip(x, asymmetric_clip=False,
+         dtype=None, name=None, par=1,
          x_dtype=None):
 
     x_point = 0 if x_dtype is None else x_dtype.point
@@ -426,8 +427,12 @@ def clip(x, dtype=None, name=None, par=1,
     out_shift = out_point - x_point
 
     width = 32 if dtype is None else dtype.width
+
     p_th = (1 << (width - 1)) - 1
-    n_th = -1 * p_th
+    if asymmetric_clip:
+        n_th = -1 * p_th - 1
+    else:
+        n_th = -1 * p_th
 
     p_th = np.ones_like(x, dtype=np.int64) * [p_th]
     n_th = np.ones_like(x, dtype=np.int64) * [n_th]
@@ -492,7 +497,7 @@ def div(x, y, dtype=None, name=None, par=1,
     return ret
 
 
-def multiply_add_rshift_clip(x, y, z, shamt,
+def multiply_add_rshift_clip(x, y, z, shamt, asymmetric_clip=False,
                              dtype=None, sum_dtype=None, name=None, par=1,
                              x_dtype=None, y_dtype=None, z_dtype=None, shamt_dtype=None):
 
@@ -502,7 +507,8 @@ def multiply_add_rshift_clip(x, y, z, shamt,
             x_dtype=sum_dtype, y_dtype=z_dtype)
     v = rshift(v, shamt, dtype=sum_dtype, par=par,
                x_dtype=sum_dtype, y_dtype=shamt_dtype)
-    return clip(v, dtype=dtype, par=par,
+    return clip(v, asymmetric_clip=asymmetric_clip,
+                dtype=dtype, par=par,
                 x_dtype=sum_dtype)
 
 

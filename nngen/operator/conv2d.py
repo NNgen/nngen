@@ -68,6 +68,10 @@ class conv2d(bt._Operator):
         The type of padding algorithm to use. \
         The detailed algorithm conforms to Tensorflow.
 
+    asymmetric_clip : optional
+        If this parameter is set to True, the negative range size in clipping operations \
+        is increased by one.
+
     dtype : optional
         Output data type.
 
@@ -261,9 +265,9 @@ class conv2d(bt._Operator):
                  bias=None, scale=None,
                  rshift_mul=None, rshift_sum=None, rshift_out=None,
                  act_func=None, padding='SAME',
+                 asymmetric_clip=False,
                  dtype=None, mul_dtype=None, sum_dtype=None,
                  name=None,
-
                  # attribute
                  par_ich=1, par_och=1, par_col=1, par_row=1,
                  concur_och=None, stationary='filter',
@@ -500,6 +504,9 @@ class conv2d(bt._Operator):
 
         self.strides = tuple(strides)
         self.padding = padding
+
+        self.asymmetric_clip = asymmetric_clip
+
         self.mul_dtype = mul_dtype
         self.sum_dtype = sum_dtype
 
@@ -973,7 +980,7 @@ class conv2d(bt._Operator):
                            scale_width, scale_point, scale_signed,
                            scl_width, scl_point, scl_signed,
                            out_width, out_point, out_signed,
-                           self.imbalanced_clip))] *
+                           self.asymmetric_clip))] *
                         self.par_och * self.par_col * self.par_row)
 
         return substrms
@@ -990,6 +997,7 @@ class conv2d(bt._Operator):
                        self.par_ich * self.par_och *
                        self.par_col * self.par_row)
         return (base, filter_num_col, filter_num_row,
+                self.asymmetric_clip,
                 self.mul_dtype, self.sum_dtype,
                 self.par_ich, self.par_och, self.par_col, self.par_row,
                 num_srcs, num_weights)
@@ -3070,6 +3078,7 @@ class conv2d(bt._Operator):
         kwargs['rshift_out'] = rshift_out
         kwargs['act_func'] = self.act_func
         kwargs['padding'] = self.padding
+        kwargs['asymmetric_clip'] = self.asymmetric_clip
         kwargs['dtype'] = self.dtype
         kwargs['mul_dtype'] = self.mul_dtype
         kwargs['sum_dtype'] = self.sum_dtype
