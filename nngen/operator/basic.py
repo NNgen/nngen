@@ -528,11 +528,15 @@ class clip(bt._ElementwiseOperator):
     def op(self, strm, *args, **kwargs):
         width = self.dtype.width
 
-        p_th = (1 << (width - 1)) - 1
-        if self.asymmetric_clip:
-            n_th = -1 * p_th - 1
+        if self.dtype.signed:
+            p_th = (1 << (width - 1)) - 1
+            if self.asymmetric_clip:
+                n_th = -1 * p_th - 1
+            else:
+                n_th = -1 * p_th
         else:
-            n_th = -1 * p_th
+            p_th = (1 << width) - 1
+            n_th = 0
 
         p = strm.Mux(args[0] > p_th, p_th, args[0])
         n = strm.Mux(args[0] < n_th, n_th, args[0])
