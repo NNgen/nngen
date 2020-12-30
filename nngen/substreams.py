@@ -81,7 +81,7 @@ def mul_rshift_clip(m, clk, rst,
                     y_datawidth, y_point, y_signed,
                     mul_width=None, mul_point=None, mul_signed=None,
                     out_width=None, out_point=None, out_signed=None,
-                    imbalanced_clip=False):
+                    asymmetric_clip=False):
 
     name = _tmp_name('mul_rshift_clip')
     datawidth = max(x_datawidth, y_datawidth)
@@ -103,11 +103,10 @@ def mul_rshift_clip(m, clk, rst,
         z = stream.Cast(z, point=mul_point)
     z = stream.Sra(z, rshift)
 
-    if imbalanced_clip:
-        p_th = (1 << (out_width - 1)) - 1
+    p_th = (1 << (out_width - 1)) - 1
+    if asymmetric_clip:
         n_th = -1 * p_th - 1
     else:
-        p_th = (1 << (out_width - 1)) - 1
         n_th = -1 * p_th
 
     p_th = p_th >> out_point
@@ -162,7 +161,7 @@ def mul_rshift_round_clip(m, clk, rst,
                           y_datawidth, y_point, y_signed,
                           mul_width=None, mul_point=None, mul_signed=None,
                           out_width=None, out_point=None, out_signed=None,
-                          imbalanced_clip=False):
+                          asymmetric_clip=False):
 
     name = _tmp_name('mul_rshift_round_clip')
     datawidth = max(x_datawidth, y_datawidth)
@@ -184,11 +183,10 @@ def mul_rshift_round_clip(m, clk, rst,
         z = stream.Cast(z, point=mul_point)
     z = stream.SraRound(z, rshift)
 
-    if imbalanced_clip:
-        p_th = (1 << (out_width - 1)) - 1
+    p_th = (1 << (out_width - 1)) - 1
+    if asymmetric_clip:
         n_th = -1 * p_th - 1
     else:
-        p_th = (1 << (out_width - 1)) - 1
         n_th = -1 * p_th
 
     p_th = p_th >> out_point
@@ -311,7 +309,8 @@ def madd_rshift_clip(m, clk, rst,
                      y_datawidth, y_point, y_signed,
                      z_datawidth, z_point, z_signed,
                      sum_width=None, sum_point=None, sum_signed=None,
-                     out_width=None, out_point=None, out_signed=None):
+                     out_width=None, out_point=None, out_signed=None,
+                     asymmetric_clip=False):
 
     name = _tmp_name('madd')
     datawidth = max(x_datawidth, y_datawidth, z_datawidth)
@@ -334,11 +333,10 @@ def madd_rshift_clip(m, clk, rst,
         sum = stream.Cast(sum, point=mul_point)
     sum = stream.Sra(sum, rshift)
 
-    if imbalanced_clip:
-        p_th = (1 << (out_width - 1)) - 1
+    p_th = (1 << (out_width - 1)) - 1
+    if asymmetric_clip:
         n_th = -1 * p_th - 1
     else:
-        p_th = (1 << (out_width - 1)) - 1
         n_th = -1 * p_th
 
     p_th = p_th >> out_point

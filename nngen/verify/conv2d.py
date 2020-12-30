@@ -12,6 +12,7 @@ def conv2d(input, filter, strides,
            bias=None, scale=None,
            rshift_mul=None, rshift_sum=None, rshift_out=None,
            act_func=None, padding='SAME',
+           asymmetric_clip=False,
            dtype=None, mul_dtype=None, sum_dtype=None,
            name=None,
            par_ich=1, par_och=1, par_col=1, par_row=1,
@@ -193,7 +194,11 @@ def conv2d(input, filter, strides,
     shifted_scale = np.right_shift(scale, scl_shift)
 
     p_th = (1 << (out_width - 1)) - 1
-    n_th = -1 * p_th
+    if asymmetric_clip:
+        n_th = -1 * p_th - 1
+    else:
+        n_th = -1 * p_th
+
     p_th = p_th >> out_point
     n_th = n_th >> out_point
 
