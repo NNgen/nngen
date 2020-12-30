@@ -1002,6 +1002,12 @@ class conv2d(bt._Operator):
                 self.par_ich, self.par_och, self.par_col, self.par_row,
                 num_srcs, num_weights)
 
+
+    def __set_latency(self, strm_list, latency):
+        for x in strm_list:
+            x.latency = latency
+
+
     def get_stream_func(self):
 
         def func(strm):
@@ -1054,6 +1060,8 @@ class conv2d(bt._Operator):
 
             split_bias = strm.Split(vec_bias, datawidth, point, signed, reverse=True)
             bias_list = [strm.Mux(dup_bias, split_bias[0], value) for value in split_bias]
+            self.__set_latency(bias_list, 0)
+
 
             # scale
             datawidth = (arg_scale.get_op_width()
@@ -1068,6 +1076,7 @@ class conv2d(bt._Operator):
 
             split_scale = strm.Split(vec_scale, datawidth, point, signed, reverse=True)
             scale_list = [strm.Mux(dup_scale, split_scale[0], value) for value in split_scale]
+            self.__set_latency(scale_list, 0)
 
             # vshamt_mul
             datawidth = (arg_vshamt_mul.get_op_width()
@@ -1081,6 +1090,7 @@ class conv2d(bt._Operator):
             split_vshamt_mul = strm.Split(vec_vshamt_mul, datawidth, point, signed, reverse=True)
             vshamt_mul_list = [strm.Mux(dup_vshamt_mul, split_vshamt_mul[0], value)
                                for value in split_vshamt_mul]
+            self.__set_latency(vshamt_mul_list, 0)
 
             # vshamt_sum
             datawidth = (arg_vshamt_sum.get_op_width()
@@ -1094,6 +1104,7 @@ class conv2d(bt._Operator):
             split_vshamt_sum = strm.Split(vec_vshamt_sum, datawidth, point, signed, reverse=True)
             vshamt_sum_list = [strm.Mux(dup_vshamt_sum, split_vshamt_sum[0], value)
                                for value in split_vshamt_sum]
+            self.__set_latency(vshamt_sum_list, 0)
 
             # vshamt_out
             datawidth = (arg_vshamt_out.get_op_width()
@@ -1107,6 +1118,7 @@ class conv2d(bt._Operator):
             split_vshamt_out = strm.Split(vec_vshamt_out, datawidth, point, signed, reverse=True)
             vshamt_out_list = [strm.Mux(dup_vshamt_out, split_vshamt_out[0], value)
                                for value in split_vshamt_out]
+            self.__set_latency(vshamt_out_list, 0)
 
             # cshamt
             cshamt_mul = strm.constant(datawidth=self.cshamt_mul_value.bit_length(),
@@ -1144,6 +1156,7 @@ class conv2d(bt._Operator):
                     for i in reversed(range(len(act_line))):
                         sel = strm.Mux(col_select == i,
                                        act_line[(i + j) % src_num_col], sel)
+                        sel.latency = 0
 
                     mux_vec_act_vars.append(sel)
 
@@ -1157,6 +1170,7 @@ class conv2d(bt._Operator):
                     for i in reversed(range(len(act_line))):
                         sel = strm.Mux(row_select == i,
                                        act_line[(i + j) % src_num_row], sel)
+                        sel.latency = 0
 
                     mux_vec_act_vars.append(sel)
 
@@ -1179,6 +1193,7 @@ class conv2d(bt._Operator):
                     omit = omits[i]
                     act_vars = [strm.Mux(omit, strm.Int(0), split_vec_act_var[i])
                                 for split_vec_act_var in split_vec_act_vars]
+                    self.__set_latency(act_vars, 0)
 
                 act_vars_list.append(act_vars)
 
@@ -1218,6 +1233,7 @@ class conv2d(bt._Operator):
                         omit = omits[i]
                         filter_vars = [strm.Mux(omit, strm.Int(0), split_vec_filter_var[i])
                                        for split_vec_filter_var in split_vec_filter_vars]
+                        self.__set_latency(filter_vars, 0)
 
                     filter_vars_list.append(filter_vars)
 
@@ -1264,6 +1280,7 @@ class conv2d(bt._Operator):
 
                             for used_act_var, pmask in zip(used_act_vars, mask):
                                 masked_var = strm.Mux(pmask, strm.Int(0), used_act_var)
+                                masked_var.latency = 0
                                 masked_used_act_vars.append(masked_var)
 
                             for submul, act_var, filter_var in zip(
@@ -1338,6 +1355,7 @@ class conv2d(bt._Operator):
                         else:
                             for i, act_func_var in enumerate(act_func_vars):
                                 out_var = strm.Mux(act_func_index == i, act_func_var, out_var)
+                                out_var.latency = 0
 
                         width = self.get_op_width()
                         point = self.get_op_point()
