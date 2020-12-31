@@ -91,6 +91,7 @@ class scaled_add(bt._ElementwiseOperator):
         return strm.Mux(sra >= 0, p, n)
 
     def __init__(self, a, b, a_scale, b_scale, shamt,
+                 asymmetric_clip=False,
                  dtype=None, sum_dtype=None, name=None, par=1):
 
         shape = None
@@ -99,12 +100,14 @@ class scaled_add(bt._ElementwiseOperator):
         self.shamt = shamt
         bt._ElementwiseOperator.__init__(self, a, b,
                                          dtype=dtype, shape=shape, name=name, par=par)
+        self.asymmetric_clip = asymmetric_clip
         self.sum_dtype = sum_dtype
 
     def eval(self, memo, input_dict, **kwargs):
         kwargs['a_scale'] = self.a_scale
         kwargs['b_scale'] = self.b_scale
         kwargs['shamt'] = self.shamt
+        kwargs['asymmetric_clip'] = self.asymmetric_clip
         kwargs['sum_dtype'] = self.sum_dtype
         kwargs['a_dtype'] = self.args[0].dtype
         kwargs['b_dtype'] = self.args[1].dtype
@@ -135,6 +138,7 @@ class scaled_concat(concat):
                             ('shamt_cparam', self.shamt)])
 
     def __init__(self, values, scales, shamt, axis,
+                 asymmetric_clip=False,
                  dtype=None, mul_dtype=None, name=None):
         if not isinstance(scales, (tuple, list)):
             raise TypeError('scales must be tuple or list.')
@@ -143,6 +147,7 @@ class scaled_concat(concat):
         self.scales = list(scales)
         self.shamt = shamt
         concat.__init__(self, values, axis, dtype, name)
+        self.asymmetric_clip = asymmetric_clip
         self.mul_dtype = mul_dtype
 
     def get_stream_func(self):
@@ -402,6 +407,7 @@ class scaled_concat(concat):
     def eval(self, memo, input_dict, **kwargs):
         kwargs['scales'] = self.scales
         kwargs['shamt'] = self.shamt
+        kwargs['asymmetric_clip'] = self.asymmetric_clip
         kwargs['mul_dtype'] = self.mul_dtype
         return concat.eval(self, memo, input_dict, **kwargs)
 
