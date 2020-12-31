@@ -190,7 +190,7 @@ class _pool(bt._Operator):
             ksize_row = self.ksize[-3]
             len_act_rams = len(self.input_rams)
 
-            mask = strm.constant(datawidth=len_act_rams, signed=False)
+            mask = strm.parameter(datawidth=len_act_rams, signed=False)
 
             act_rams = self.input_rams
             out_ram = self.output_rams[0]
@@ -223,7 +223,7 @@ class _pool(bt._Operator):
 
                 act_vars_list.append(act_vars)
 
-            if len(vec_act_vars) > mask.bit_length():
+            if len(vec_act_vars) > mask.get_width():
                 raise ValueError('Not enough mask bits.')
 
             pad_value = self.get_pad_value(strm)
@@ -767,9 +767,9 @@ class _pool(bt._Operator):
 
         stream_masks = stream_pad_masks_reg
 
-        # set_constant
-        name = list(self.stream.constants.keys())[0]
-        self.stream.set_constant(comp_fsm, name, stream_masks)
+        # set_parameter
+        name = list(self.stream.parameters.keys())[0]
+        self.stream.set_parameter(comp_fsm, name, stream_masks)
         comp_fsm.set_index(comp_fsm.current - 1)
 
         # set_source
@@ -864,7 +864,7 @@ class _pool(bt._Operator):
         comp_fsm.seq.If(fsm.state == state_init)(
             comp_count(0)
         )
-        comp_fsm.seq.If(self.stream.end_flag)(
+        comp_fsm.seq.If(self.stream.source_stop)(
             comp_count.add(self.inc_out_laddr)
         )
 
@@ -1139,18 +1139,18 @@ class avg_pool(_pool):
                             self.sum_dtype.signed)
 
         if self.force_div or num_vars & (num_vars - 1) != 0:
-            addtree.to_constant('rshift', 0)
+            addtree.to_parameter('rshift', 0)
             div = strm.substream(self.substreams[self.par + index])
 
-            frac = num_vars//2
-            div.to_constant('frac', frac)
+            frac = num_vars // 2
+            div.to_parameter('frac', frac)
 
             div.to_source('x', sum)
-            div.to_constant('y', num_vars)
+            div.to_parameter('y', num_vars)
             return div.from_sink('z')
 
         rshift = int(math.log(num_vars, 2))
-        addtree.to_constant('rshift', rshift)
+        addtree.to_parameter('rshift', rshift)
 
         return sum
 

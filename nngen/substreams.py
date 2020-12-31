@@ -370,7 +370,7 @@ def mac(m, clk, rst,
     stream = vthread.Stream(m, name, clk, rst, datawidth)
     x = stream.source('x', x_datawidth, x_point, x_signed)
     y = stream.source('y', y_datawidth, y_point, y_signed)
-    size = stream.constant('size', signed=False)
+    size = stream.parameter('size', signed=False)
 
     z = x * y
     z.latency = 4
@@ -404,7 +404,7 @@ def mac_rshift(m, clk, rst,
     y = stream.source('y', y_datawidth, y_point, y_signed)
     rshift = stream.source('rshift', signed=False)
     rshift.width = int(math.ceil(math.log(datawidth, 2))) + 1
-    size = stream.constant('size', signed=False)
+    size = stream.parameter('size', signed=False)
 
     z = x * y
     z.latency = 4
@@ -439,7 +439,7 @@ def mac_rshift_round(m, clk, rst,
     y = stream.source('y', y_datawidth, y_point, y_signed)
     rshift = stream.source('rshift', signed=False)
     rshift.width = int(math.ceil(math.log(datawidth, 2))) + 1
-    size = stream.constant('size', signed=False)
+    size = stream.parameter('size', signed=False)
 
     z = x * y
     z.latency = 4
@@ -474,7 +474,7 @@ def mac_rshift_round_madd(m, clk, rst,
     y = stream.source('y', y_datawidth, y_point, y_signed)
     rshift = stream.source('rshift', signed=False)
     rshift.width = int(math.ceil(math.log(datawidth, 2))) + 1
-    size = stream.constant('size', signed=False)
+    size = stream.parameter('size', signed=False)
 
     frac = stream.Mux(rshift > 0, stream.Sll(1, rshift - 1), 0)
     frac.width = mul_width
@@ -505,7 +505,7 @@ def acc(m, clk, rst,
 
     stream = vthread.Stream(m, name, clk, rst, datawidth)
     x = stream.source('x', datawidth, point, signed)
-    size = stream.constant('size', signed=False)
+    size = stream.parameter('size', signed=False)
 
     sum, v = stream.ReduceAddValid(x, size, width=sum_width, signed=sum_signed)
     if sum_point is not None and point != sum_point:
@@ -526,7 +526,7 @@ def acc_rshift(m, clk, rst,
     x = stream.source('x', datawidth, point, signed)
     rshift = stream.source('rshift', signed=False)
     rshift.width = int(math.ceil(math.log(datawidth, 2))) + 1
-    size = stream.constant('size', signed=False)
+    size = stream.parameter('size', signed=False)
 
     sum, v = stream.ReduceAddValid(x, size, width=sum_width, signed=sum_signed)
     if sum_point is not None and point != sum_point:
@@ -549,7 +549,7 @@ def acc_rshift_round(m, clk, rst,
     x = stream.source('x', datawidth, point, signed)
     rshift = stream.source('rshift', signed=False)
     rshift.width = int(math.ceil(math.log(datawidth, 2))) + 1
-    size = stream.constant('size', signed=False)
+    size = stream.parameter('size', signed=False)
 
     sum, v = stream.ReduceAddValid(x, size, width=sum_width, signed=sum_signed)
     if sum_point is not None and point != sum_point:
@@ -572,7 +572,7 @@ def acc_rshift_round_frac(m, clk, rst,
     x = stream.source('x', datawidth, point, signed)
     rshift = stream.source('rshift', signed=False)
     rshift.width = int(math.ceil(math.log(datawidth, 2))) + 1
-    size = stream.constant('size', signed=False)
+    size = stream.parameter('size', signed=False)
 
     frac = stream.Mux(rshift > 0, stream.Sll(1, rshift - 1), 0)
     frac.width = sum_width
@@ -739,9 +739,9 @@ def div_const(m, clk, rst,
 
 
 def div_const_frac(m, clk, rst,
-              x_datawidth, x_point, x_signed,
-              y_datawidth, y_point, y_signed,
-              div_width=None, div_point=None, div_signed=None):
+                   x_datawidth, x_point, x_signed,
+                   y_datawidth, y_point, y_signed,
+                   div_width=None, div_point=None, div_signed=None):
 
     name = _tmp_name('div_const_frac')
     datawidth = max(x_datawidth, y_datawidth)
@@ -824,7 +824,7 @@ def reduce_max(m, clk, rst,
 
     stream = vthread.Stream(m, name, clk, rst, datawidth)
     x = stream.source('x', datawidth, point, signed)
-    size = stream.constant('size', signed=False)
+    size = stream.parameter('size', signed=False)
 
     if signed:
         initval = - 2 ** (datawidth - 1)
