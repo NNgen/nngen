@@ -55,7 +55,7 @@ class scaled_add(bt._ElementwiseOperator):
             mul.width = self.sum_dtype.width
             mul.signed = self.sum_dtype.signed
         else:
-            mul.width = a_datawidth + self.a_scale_cparam.bit_length()
+            mul.width = a_datawidth + vg.get_width(self.a_scale_cparam)
             mul.signed = self.dtype.signed
 
         if self.sum_dtype is not None and mul.point != self.sum_dtype.point:
@@ -67,7 +67,7 @@ class scaled_add(bt._ElementwiseOperator):
             madd.width = self.sum_dtype.width
             madd.signed = self.sum_dtype.signed
         else:
-            madd.width = max(b_datawidth + self.b_scale_cparam.bit_length(), mul.width)
+            madd.width = max(b_datawidth + vg.get_width(self.b_scale_cparam), mul.width)
             madd.signed = self.dtype.signed
 
         if self.sum_dtype is not None and madd.point != self.sum_dtype.point:
@@ -150,8 +150,8 @@ class scaled_concat(concat):
             datawidth = self.args[0].get_op_width()
 
             src = strm.source(datawidth=datawidth)
-            sel = strm.constant(datawidth=bt.log_width(len(self.scale_cparams)),
-                                signed=False)
+            sel = strm.parameter(datawidth=bt.log_width(len(self.scale_cparams)),
+                                 signed=False)
 
             scale_width = max(*[scale.width for scale in self.scale_cparams])
             scale_signed = max(*[1 if scale.signed else 0 for scale in self.scale_cparams]) == 1
@@ -320,8 +320,8 @@ class scaled_concat(concat):
         self.stream.set_source(fsm, name, self.input_rams[0], 0, copy_size)
         fsm.set_index(fsm.current - 1)
 
-        name = list(self.stream.constants.keys())[0]
-        self.stream.set_constant(fsm, name, prev_arg_select)
+        name = list(self.stream.parameters.keys())[0]
+        self.stream.set_parameter(fsm, name, prev_arg_select)
         fsm.set_index(fsm.current - 1)
 
         name = list(self.stream.sinks.keys())[0]
