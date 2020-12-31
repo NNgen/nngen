@@ -75,7 +75,7 @@ sudo apt install iverilog
 - Pyverilog: 1.2.1 or later
 - Veriloggen: 1.8.2 (earlier than 1.9.0)
 - NumPy: 1.17 or later
-- ONNX: 1.6.0 or later
+- ONNX: 1.6.0
 
 ```
 pip3 install jinja2 pyverilog veriloggen numpy onnx
