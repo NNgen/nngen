@@ -915,7 +915,7 @@ class _Operator(_Numeric):
 
                     for r, v in zip(reg, value):
                         width = (r.width if r.width is not None else 1)
-                        if v.bit_length() > width:
+                        if vg.get_width(v) > width:
                             raise ValueError(
                                 'control_param_value is too wide.')
 
@@ -925,7 +925,7 @@ class _Operator(_Numeric):
 
                 else:
                     width = (reg.width if reg.width is not None else 1)
-                    if value.bit_length() > width:
+                    if vg.get_width(value) > width:
                         raise ValueError('control_param_value is too large.')
 
                     cat_params.append(vg.Int(int(value), width, base=16))
@@ -1231,7 +1231,7 @@ class _StreamingOperator(_Operator):
                 vec_datawidth = datawidth * self.par
                 point = arg.get_op_point()
                 signed = arg.get_signed()
-                dup = strm.constant(datawidth=1, signed=False)
+                dup = strm.parameter(datawidth=1, signed=False)
                 vec_var = strm.source(datawidth=vec_datawidth, signed=False)
 
                 if self.par == 1:
@@ -1479,12 +1479,12 @@ class _StreamingOperator(_Operator):
 
         self.stream.source_join(fsm)
 
-        # set_source, set_constant (dup)
+        # set_source, set_parameter (dup)
         for (ram, source_name, dup_name,
              arg_page_comp_offset,
              arg_stride_zero, arg_omit_dma) in zip(self.input_rams,
                                                    self.stream.sources.keys(),
-                                                   self.stream.constants.keys(),
+                                                   self.stream.parameters.keys(),
                                                    arg_page_comp_offsets,
                                                    self.arg_stride_zeros, self.arg_omit_dmas):
 
@@ -1492,7 +1492,7 @@ class _StreamingOperator(_Operator):
             read_size = self.dma_size
             stride = vg.Mux(arg_stride_zero, 0, 1)
             dup = vg.Mux(arg_stride_zero, 1, 0)
-            self.stream.set_constant(fsm, dup_name, dup)
+            self.stream.set_parameter(fsm, dup_name, dup)
             fsm.set_index(fsm.current - 1)
             self.stream.set_source(fsm, source_name, ram,
                                    read_laddr, read_size, stride)
@@ -1715,7 +1715,7 @@ class _ReductionOperator(_StreamingOperator):
         return func
 
     def get_stream_reduce_output(self, strm, width, point, signed, values, omits, size):
-        carry_vars = [strm.constant(datawidth=width, point=point, signed=signed)
+        carry_vars = [strm.parameter(datawidth=width, point=point, signed=signed)
                       for carry_default_value in self.carry_default_values]
 
         data_list = [[] for carry_default_value in self.carry_default_values]
@@ -1750,7 +1750,7 @@ class _ReductionOperator(_StreamingOperator):
             vec_datawidth = datawidth * self.par
             point = arg.get_op_point()
             signed = arg.get_signed()
-            dup = strm.constant(datawidth=1, signed=False)
+            dup = strm.parameter(datawidth=1, signed=False)
             vec_var = strm.source(datawidth=vec_datawidth, signed=False)
 
             if self.par == 1:
@@ -1764,10 +1764,10 @@ class _ReductionOperator(_StreamingOperator):
         point = self.get_op_point()
         signed = self.get_signed()
 
-        size = strm.constant(datawidth=self.reduce_size.bit_length(),
-                             signed=False)
+        size = strm.parameter(datawidth=vg.get_width(self.reduce_size),
+                              signed=False)
 
-        omit_mask = strm.constant(datawidth=self.par, signed=False)
+        omit_mask = strm.parameter(datawidth=self.par, signed=False)
         omit_counter = strm.Counter(size=size)
         omits = [strm.Ands(b, omit_counter == size - 1)
                  for b in omit_mask]
@@ -2052,17 +2052,17 @@ class _ReductionOperator(_StreamingOperator):
             [carry_var(ram_value) for carry_var, ram_value in zip(carry_vars, ram_values)]
         )
 
-        # set_constant (carry)
+        # set_parameter (carry)
         for name, carry_var in zip(
-                list(self.stream.constants.keys())[len(self.stream.sources) + 2:], carry_vars):
-            self.stream.set_constant(fsm, name, carry_var)
+                list(self.stream.parameters.keys())[len(self.stream.sources) + 2:], carry_vars):
+            self.stream.set_parameter(fsm, name, carry_var)
 
-        # set_source, set_constant (dup)
+        # set_source, set_parameter (dup)
         for (ram, source_name, dup_name,
              arg_page_comp_offset,
              arg_stride_zero, arg_omit_dma) in zip(self.input_rams,
                                                    self.stream.sources.keys(),
-                                                   self.stream.constants.keys(),
+                                                   self.stream.parameters.keys(),
                                                    arg_page_comp_offsets,
                                                    self.arg_stride_zeros, self.arg_omit_dmas):
 
@@ -2070,7 +2070,7 @@ class _ReductionOperator(_StreamingOperator):
             read_size = self.reduce_size
             stride = vg.Mux(arg_stride_zero, 0, 1)
             dup = vg.Mux(arg_stride_zero, 1, 0)
-            self.stream.set_constant(fsm, dup_name, dup)
+            self.stream.set_parameter(fsm, dup_name, dup)
             fsm.set_index(fsm.current - 1)
             self.stream.set_source(fsm, source_name, ram,
                                    read_laddr, read_size, stride)
@@ -2084,18 +2084,18 @@ class _ReductionOperator(_StreamingOperator):
             self.stream.set_sink(fsm, name, ram, write_laddr, write_size)
             fsm.set_index(fsm.current - 1)
 
-        # set_constant (size)
-        name = list(self.stream.constants.keys())[len(self.stream.sources)]
-        self.stream.set_constant(fsm, name, self.reduce_size)
+        # set_parameter (size)
+        name = list(self.stream.parameters.keys())[len(self.stream.sources)]
+        self.stream.set_parameter(fsm, name, self.reduce_size)
 
-        # set_constant (omit_mask)
-        name = list(self.stream.constants.keys())[len(self.stream.sources) + 1]
-        self.stream.set_constant(fsm, name, self.stream_omit_mask)
+        # set_parameter (omit_mask)
+        name = list(self.stream.parameters.keys())[len(self.stream.sources) + 1]
+        self.stream.set_parameter(fsm, name, self.stream_omit_mask)
 
-        # set_constant (carry)
+        # set_parameter (carry)
         for name, carry_var in zip(
-                list(self.stream.constants.keys())[len(self.stream.sources) + 2:], carry_vars):
-            self.stream.set_constant(fsm, name, carry_var)
+                list(self.stream.parameters.keys())[len(self.stream.sources) + 2:], carry_vars):
+            self.stream.set_parameter(fsm, name, carry_var)
 
         fsm.goto_next()
 
@@ -3129,7 +3129,7 @@ def get_maxi_addrwidth(obj):
 
 
 def out_rcast(strm, v, width, point, signed):
-    if v.bit_length() < width:
+    if vg.get_width(v) < width:
         v.width = width
 
     return strm.ReinterpretCast(v, width, point, signed)

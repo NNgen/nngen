@@ -240,18 +240,18 @@ class upsampling2d(bt._ElementwiseOperator):
 
         self.stream.source_join(fsm)
 
-        # set_source, set_constant (dup)
+        # set_source, set_parameter (dup)
         for (source_name, dup_name,
              arg_page_comp_offset,
              ram, wrap_mode) in zip(self.stream.sources.keys(),
-                                    self.stream.constants.keys(),
+                                    self.stream.parameters.keys(),
                                     arg_page_comp_offsets,
                                     self.input_rams, self.wrap_modes):
             read_laddr = arg_page_comp_offset
             read_size = self.dma_size
             stride = vg.Mux(wrap_mode == 2, 0, 1)
             dup = vg.Mux(wrap_mode == 2, 1, 0)
-            self.stream.set_constant(fsm, dup_name, dup)
+            self.stream.set_parameter(fsm, dup_name, dup)
             fsm.set_index(fsm.current - 1)
             self.stream.set_source(fsm, source_name, ram,
                                    read_laddr, read_size, stride)
