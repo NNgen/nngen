@@ -51,7 +51,7 @@ def run(act_shape=(1, 7, 7, 7), weight_shape=(3, 3, 3, 7),
     out = ng.conv2d(act, weight, stride,
                     bias, scale,
                     rshift_mul, rshift_sum, rshift_out,
-                    act_func, 'SAME',
+                    act_func, 'SAME', False,
                     out_dtype, ng.int32, ng.int32,
                     'conv2d',
                     par_ich, par_och, par_col, par_row,
@@ -102,7 +102,8 @@ def run(act_shape=(1, 7, 7, 7), weight_shape=(3, 3, 3, 7),
     tmp_addr = check_addr + size_check
 
     memimg_datawidth = 32
-    mem = np.zeros([1024 * 1024 * 8 // (memimg_datawidth // 8)], dtype=np.int64)
+    #mem = np.zeros([1024 * 1024 * 8 // (memimg_datawidth // 8)], dtype=np.int64)
+    mem = np.zeros([1024 * 1024 * 128 // (memimg_datawidth // 8)], dtype=np.int64)
     mem = mem + [100]
 
     axi.set_memory(mem, vact, memimg_datawidth,

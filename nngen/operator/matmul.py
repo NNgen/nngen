@@ -177,6 +177,7 @@ class matmul(conv2d.conv2d):
                  transposed_a=False, transposed_b=False,
                  rshift_mul=None, rshift_sum=None, rshift_out=None,
                  act_func=None,
+                 asymmetric_clip=False,
                  dtype=None, mul_dtype=None, sum_dtype=None,
                  name=None,
                  par_left_col=1, par_left_row=1, par_out_col=1,
@@ -223,6 +224,7 @@ class matmul(conv2d.conv2d):
                                bias, scale,
                                rshift_mul, rshift_sum, rshift_out,
                                act_func, padding,
+                               asymmetric_clip,
                                dtype, mul_dtype, sum_dtype,
                                name,
                                par_left_col, par_out_col, par_left_row, 1,
@@ -309,6 +311,7 @@ class matmul(conv2d.conv2d):
         kwargs['rshift_sum'] = rshift_sum
         kwargs['rshift_out'] = rshift_out
         kwargs['act_func'] = self.act_func
+        kwargs['asymmetric_clip'] = self.asymmetric_clip
         kwargs['dtype'] = self.dtype
         kwargs['mul_dtype'] = self.mul_dtype
         kwargs['sum_dtype'] = self.sum_dtype

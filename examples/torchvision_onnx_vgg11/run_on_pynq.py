@@ -56,7 +56,7 @@ overlay.ip_dict
 # In[5]:
 
 
-ip = ng.nngen_core(overlay, ipname)
+ip = ng.nngen_ip(overlay, ipname)
 
 
 # In[6]:
@@ -89,7 +89,7 @@ buf[param_offset:param_offset + param_size] = param.view(np.uint8)
 # In[8]:
 
 
-ip.set_global_buffer(buf)
+ip.set_global_offset(buf)
 
 
 # In[9]:
@@ -120,3 +120,4 @@ top10_index = np.argsort(output)[::-1][:10]
 
 for index in top10_index:
     print(index, labels[index], 'score:', output[index])
+

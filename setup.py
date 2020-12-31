@@ -21,7 +21,7 @@ setup(name='nngen',
       package_data={'nngen': ['VERSION'], },
       install_requires=['Jinja2>=2.10',
                         'pyverilog>=1.2.1',
-                        'veriloggen>=1.8.2',
+                        'veriloggen>=1.8.2,<1.9.0',
                         'numpy>=1.17',
                         'onnx>=1.6.0'],
       extras_require={

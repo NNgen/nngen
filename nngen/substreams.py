@@ -80,7 +80,8 @@ def mul_rshift_clip(m, clk, rst,
                     x_datawidth, x_point, x_signed,
                     y_datawidth, y_point, y_signed,
                     mul_width=None, mul_point=None, mul_signed=None,
-                    out_width=None, out_point=None, out_signed=None):
+                    out_width=None, out_point=None, out_signed=None,
+                    asymmetric_clip=False):
 
     name = _tmp_name('mul_rshift_clip')
     datawidth = max(x_datawidth, y_datawidth)
@@ -103,7 +104,11 @@ def mul_rshift_clip(m, clk, rst,
     z = stream.Sra(z, rshift)
 
     p_th = (1 << (out_width - 1)) - 1
-    n_th = -1 * p_th
+    if asymmetric_clip:
+        n_th = -1 * p_th - 1
+    else:
+        n_th = -1 * p_th
+
     p_th = p_th >> out_point
     n_th = n_th >> out_point
 
@@ -151,6 +156,57 @@ def mul_rshift_round(m, clk, rst,
     return stream
 
 
+def mul_rshift_round_clip(m, clk, rst,
+                          x_datawidth, x_point, x_signed,
+                          y_datawidth, y_point, y_signed,
+                          mul_width=None, mul_point=None, mul_signed=None,
+                          out_width=None, out_point=None, out_signed=None,
+                          asymmetric_clip=False):
+
+    name = _tmp_name('mul_rshift_round_clip')
+    datawidth = max(x_datawidth, y_datawidth)
+    point = max(x_point, y_point)
+
+    stream = vthread.Stream(m, name, clk, rst, datawidth)
+    x = stream.source('x', x_datawidth, x_point, x_signed)
+    y = stream.source('y', y_datawidth, y_point, y_signed)
+    rshift = stream.source('rshift', signed=False)
+    rshift.width = int(math.ceil(math.log(datawidth, 2))) + 1
+
+    z = x * y
+    z.latency = 4
+    if mul_width is not None:
+        z.width = mul_width
+    if mul_signed is not None:
+        z.signed = mul_signed
+    if mul_point is not None and point != mul_point:
+        z = stream.Cast(z, point=mul_point)
+    z = stream.SraRound(z, rshift)
+
+    p_th = (1 << (out_width - 1)) - 1
+    if asymmetric_clip:
+        n_th = -1 * p_th - 1
+    else:
+        n_th = -1 * p_th
+
+    p_th = p_th >> out_point
+    n_th = n_th >> out_point
+
+    p = stream.Mux(z > p_th, p_th, z)
+    n = stream.Mux(z < n_th, n_th, z)
+    z = stream.Mux(z >= 0, p, n)
+
+    if out_width is not None:
+        z.width = out_width
+    if out_signed is not None:
+        z.signed = out_signed
+    if out_point is not None and z.point != out_point:
+        z = stream.Cast(z, point=out_point)
+
+    stream.sink(z, 'z')
+    return stream
+
+
 def mul_rshift_round_madd(m, clk, rst,
                           x_datawidth, x_point, x_signed,
                           y_datawidth, y_point, y_signed,
@@ -168,6 +224,12 @@ def mul_rshift_round_madd(m, clk, rst,
 
     frac = stream.Mux(rshift > 0, stream.Sll(1, rshift - 1), 0)
     frac.width = mul_width
+    neg_frac = stream.Uminus(frac)
+    neg_frac.width = datawidth
+    neg_frac.latency = 0
+    frac = stream.Mux(x >= 0, frac, neg_frac)
+    frac.latency = 0
+    frac.width = datawidth
 
     z = stream.Madd(x, y, frac)
     z.latency = 4
@@ -247,7 +309,8 @@ def madd_rshift_clip(m, clk, rst,
                      y_datawidth, y_point, y_signed,
                      z_datawidth, z_point, z_signed,
                      sum_width=None, sum_point=None, sum_signed=None,
-                     out_width=None, out_point=None, out_signed=None):
+                     out_width=None, out_point=None, out_signed=None,
+                     asymmetric_clip=False):
 
     name = _tmp_name('madd')
     datawidth = max(x_datawidth, y_datawidth, z_datawidth)
@@ -271,7 +334,11 @@ def madd_rshift_clip(m, clk, rst,
     sum = stream.Sra(sum, rshift)
 
     p_th = (1 << (out_width - 1)) - 1
-    n_th = -1 * p_th
+    if asymmetric_clip:
+        n_th = -1 * p_th - 1
+    else:
+        n_th = -1 * p_th
+
     p_th = p_th >> out_point
     n_th = n_th >> out_point
 
@@ -671,6 +738,44 @@ def div_const(m, clk, rst,
     return stream
 
 
+def div_const_frac(m, clk, rst,
+              x_datawidth, x_point, x_signed,
+              y_datawidth, y_point, y_signed,
+              div_width=None, div_point=None, div_signed=None):
+
+    name = _tmp_name('div_const_frac')
+    datawidth = max(x_datawidth, y_datawidth)
+    point = max(x_point, y_point)
+
+    stream = vthread.Stream(m, name, clk, rst, datawidth)
+    x = stream.source('x', x_datawidth, x_point, x_signed)
+    y = stream.source('y', y_datawidth, y_point, y_signed)
+
+    frac= stream.source('frac')
+    frac.width = datawidth
+
+    neg_frac = stream.Uminus(frac)
+    neg_frac.width = datawidth
+    neg_frac.latency = 0
+
+    frac = stream.Mux(x >= 0, frac, neg_frac)
+    frac.latency = 0
+    frac.width = datawidth
+
+    x_frac = stream.Add(x, frac)
+    x_frac.latency = 0
+    z = stream.Div(x_frac, y)
+    if div_width is not None:
+        z.width = div_width
+    if div_signed is not None:
+        z.signed = div_signed
+    if div_point is not None and point != div_point:
+        z = stream.Cast(z, point=div_point)
+
+    stream.sink(z, 'z')
+    return stream
+
+
 def op3_tree(op, initval, latency, *args):
     if len(args) == 0:
         return initval
@@ -721,15 +826,13 @@ def reduce_max(m, clk, rst,
     x = stream.source('x', datawidth, point, signed)
     size = stream.constant('size', signed=False)
 
-    def func(a, b):
-        return vg.Mux(a > b, a, b)
-
     if signed:
         initval = - 2 ** (datawidth - 1)
     else:
         initval = 0
 
-    data, valid = stream.ReduceCustomValid(func, x, size, initval)
+    data, valid = stream.ReduceMaxValid(x, size, initval=initval,
+                                        width=datawidth, signed=signed)
 
     stream.sink(data, 'data')
     stream.sink(valid, 'valid')

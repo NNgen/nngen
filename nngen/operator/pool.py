@@ -1060,6 +1060,7 @@ class _pool(bt._Operator):
         kwargs['dtype'] = self.dtype
         kwargs['name'] = self.name
         kwargs['par'] = self.par
+        kwargs['value_dtype'] = self.args[0].dtype
 
         method = self.get_eval_method()
         ret = method(value, ksize, strides, **kwargs)
@@ -1104,15 +1105,14 @@ class avg_pool(_pool):
         x_point = act.get_op_point()
         x_signed = act.get_signed()
 
-        # +1 port for rounding
         substrms = [('add_tree_rshift_round',
-                     (x_datawidth, x_point, x_signed, num_vars + 1))] * self.par
+                     (x_datawidth, x_point, x_signed, num_vars))] * self.par
 
         if self.force_div or num_vars & (num_vars - 1) != 0:
             y_datawidth = max(num_vars.bit_length() + 1, 2)
             y_point = 0
             y_signed = True
-            substrms.extend([('div_const',
+            substrms.extend([('div_const_frac',
                               (x_datawidth, x_point, x_signed,
                                y_datawidth, y_point, y_signed))] * self.par)
 
@@ -1140,17 +1140,17 @@ class avg_pool(_pool):
 
         if self.force_div or num_vars & (num_vars - 1) != 0:
             addtree.to_constant('rshift', 0)
-            # for rounding
-            addtree.to_source('var%d' % (i + 1), num_vars // 2)
             div = strm.substream(self.substreams[self.par + index])
+
+            frac = num_vars//2
+            div.to_constant('frac', frac)
+
             div.to_source('x', sum)
             div.to_constant('y', num_vars)
             return div.from_sink('z')
 
         rshift = int(math.log(num_vars, 2))
         addtree.to_constant('rshift', rshift)
-        # for rounding
-        addtree.to_source('var%d' % (i + 1), 0)
 
         return sum
 

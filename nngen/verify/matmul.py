@@ -12,6 +12,7 @@ def matmul(a, b,
            transposed_a=False, transposed_b=True,
            rshift_mul=None, rshift_sum=None, rshift_out=None,
            act_func=None,
+           asymmetric_clip=False,
            dtype=None, mul_dtype=None, sum_dtype=None,
            name=None,
            par_left_col=1, par_left_row=1, par_out_col=1,
@@ -138,7 +139,11 @@ def matmul(a, b,
     shifted_scale = np.right_shift(scale, scl_shift)
 
     p_th = (1 << (c_width - 1)) - 1
-    n_th = -1 * p_th
+    if asymmetric_clip:
+        n_th = -1 * p_th - 1
+    else:
+        n_th = -1 * p_th
+
     p_th = p_th >> c_point
     n_th = n_th >> c_point
 
