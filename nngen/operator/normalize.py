@@ -8,6 +8,8 @@ from collections import OrderedDict
 import veriloggen as vg
 
 import nngen.basic_types as bt
+import nngen.util as util
+
 from . import basic
 from . import concat
 
@@ -78,19 +80,14 @@ class scaled_add(bt._ElementwiseOperator):
                                      signed=False)
         sra = strm.Sra(madd, shamt)
 
-        width = self.dtype.width
-        if self.asymmetric_clip:
-            p_th = (1 << (width - 1)) - 1
-            n_th = -1 * p_th - 1
-        else:
-            p_th = (1 << (width - 1)) - 1
-            n_th = -1 * p_th
+        p_th, n_th = util.clip_threshold(self.dtype.width, self.dtype.signed, self.asymmetric_clip)
         p = strm.Mux(sra > p_th, p_th, sra)
         n = strm.Mux(sra < n_th, n_th, sra)
 
         return strm.Mux(sra >= 0, p, n)
 
     def __init__(self, a, b, a_scale, b_scale, shamt,
+                 asymmetric_clip=False,
                  dtype=None, sum_dtype=None, name=None, par=1):
 
         shape = None
@@ -99,12 +96,14 @@ class scaled_add(bt._ElementwiseOperator):
         self.shamt = shamt
         bt._ElementwiseOperator.__init__(self, a, b,
                                          dtype=dtype, shape=shape, name=name, par=par)
+        self.asymmetric_clip = asymmetric_clip
         self.sum_dtype = sum_dtype
 
     def eval(self, memo, input_dict, **kwargs):
         kwargs['a_scale'] = self.a_scale
         kwargs['b_scale'] = self.b_scale
         kwargs['shamt'] = self.shamt
+        kwargs['asymmetric_clip'] = self.asymmetric_clip
         kwargs['sum_dtype'] = self.sum_dtype
         kwargs['a_dtype'] = self.args[0].dtype
         kwargs['b_dtype'] = self.args[1].dtype
@@ -135,6 +134,7 @@ class scaled_concat(concat):
                             ('shamt_cparam', self.shamt)])
 
     def __init__(self, values, scales, shamt, axis,
+                 asymmetric_clip=False,
                  dtype=None, mul_dtype=None, name=None):
         if not isinstance(scales, (tuple, list)):
             raise TypeError('scales must be tuple or list.')
@@ -143,6 +143,7 @@ class scaled_concat(concat):
         self.scales = list(scales)
         self.shamt = shamt
         concat.__init__(self, values, axis, dtype, name)
+        self.asymmetric_clip = asymmetric_clip
         self.mul_dtype = mul_dtype
 
     def get_stream_func(self):
@@ -186,13 +187,7 @@ class scaled_concat(concat):
                                          signed=False)
             sra = strm.Sra(mul, shamt)
 
-            width = self.dtype.width
-            if self.asymmetric_clip:
-                p_th = (1 << (width - 1)) - 1
-                n_th = -1 * p_th - 1
-            else:
-                p_th = (1 << (width - 1)) - 1
-                n_th = -1 * p_th
+            p_th, n_th = util.clip_threshold(self.dtype.width, self.dtype.signed, self.asymmetric_clip)
             p = strm.Mux(sra > p_th, p_th, sra)
             n = strm.Mux(sra < n_th, n_th, sra)
             dst = strm.Mux(sra >= 0, p, n)
@@ -401,6 +396,7 @@ class scaled_concat(concat):
 
     def eval(self, memo, input_dict, **kwargs):
         kwargs['scales'] = self.scales
+        kwargs['asymmetric_clip'] = self.asymmetric_clip
         kwargs['shamt'] = self.shamt
         kwargs['mul_dtype'] = self.mul_dtype
         return concat.eval(self, memo, input_dict, **kwargs)
@@ -444,25 +440,25 @@ class scaled_multiply(bt._ElementwiseOperator):
                                      signed=False)
         sra = strm.Sra(mul, shamt)
 
-        width = self.dtype.width
-        p_th = (1 << (width - 1)) - 1
-        n_th = -1 * p_th
-
+        p_th, n_th = util.clip_threshold(self.dtype.width, self.dtype.signed, self.asymmetric_clip)
         p = strm.Mux(sra > p_th, p_th, sra)
         n = strm.Mux(sra < n_th, n_th, sra)
         return strm.Mux(sra >= 0, p, n)
 
     def __init__(self, a, b, shamt,
+                 asymmetric_clip=False,
                  dtype=None, mul_dtype=None, name=None, par=1):
 
         shape = None
         self.shamt = shamt
         bt._ElementwiseOperator.__init__(self, a, b,
                                          dtype=dtype, shape=shape, name=name, par=par)
+        self.asymmetric_clip = asymmetric_clip
         self.mul_dtype = mul_dtype
 
     def eval(self, memo, input_dict, **kwargs):
         kwargs['shamt'] = self.shamt
+        kwargs['asymmetric_clip'] = self.asymmetric_clip
         kwargs['mul_dtype'] = self.mul_dtype
         kwargs['a_dtype'] = self.args[0].dtype
         kwargs['b_dtype'] = self.args[1].dtype
@@ -507,25 +503,25 @@ class scaled_div(bt._ElementwiseOperator):
         if self.div_dtype is not None and div.point != self.div_dtype.point:
             div = strm.Cast(div, point=self.div_dtype.point)
 
-        width = self.dtype.width
-        p_th = (1 << (width - 1)) - 1
-        n_th = -1 * p_th
-
+        p_th, n_th = util.clip_threshold(self.dtype.width, self.dtype.signed, self.asymmetric_clip)
         p = strm.Mux(div > p_th, p_th, div)
         n = strm.Mux(div < n_th, n_th, div)
         return strm.Mux(div >= 0, p, n)
 
     def __init__(self, a, b, shamt,
+                 asymmetric_clip=False,
                  dtype=None, div_dtype=None, name=None, par=1):
 
         shape = None
         self.shamt = shamt
         bt._ElementwiseOperator.__init__(self, a, b,
                                          dtype=dtype, shape=shape, name=name, par=par)
+        self.asymmetric_clip = asymmetric_clip
         self.div_dtype = div_dtype
 
     def eval(self, memo, input_dict, **kwargs):
         kwargs['shamt'] = self.shamt
+        kwargs['asymmetric_clip'] = self.asymmetric_clip
         kwargs['div_dtype'] = self.div_dtype
         kwargs['a_dtype'] = self.args[0].dtype
         kwargs['b_dtype'] = self.args[1].dtype

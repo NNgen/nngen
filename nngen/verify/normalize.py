@@ -16,6 +16,7 @@ def normalize(x, y, z, shamt,
 
 
 def scaled_add(a, b, a_scale, b_scale, shamt,
+               asymmetric_clip=False,
                dtype=None, sum_dtype=None, name=None, par=1,
                a_dtype=None, b_dtype=None):
 
@@ -27,11 +28,13 @@ def scaled_add(a, b, a_scale, b_scale, shamt,
                   x_dtype=sum_dtype, y_dtype=sum_dtype)
     v = basic.rshift(v, shamt, dtype=sum_dtype, par=par,
                      x_dtype=sum_dtype)
-    return basic.clip(v, dtype=dtype, par=par,
+    return basic.clip(v, asymmetric_clip=asymmetric_clip,
+                      dtype=dtype, par=par,
                       x_dtype=sum_dtype)
 
 
 def scaled_concat(values, scales, shamt, axis,
+                  asymmetric_clip=False,
                   dtype=None, mul_dtype=None, name=None):
 
     scaled_values = []
@@ -39,7 +42,8 @@ def scaled_concat(values, scales, shamt, axis,
         v = basic.multiply(value, scale, dtype=mul_dtype)
         v = basic.rshift(v, shamt, dtype=mul_dtype,
                          x_dtype=mul_dtype)
-        v = basic.clip(v, dtype=dtype,
+        v = basic.clip(v, asymmetric_clip=asymmetric_clip,
+                       dtype=dtype,
                        x_dtype=mul_dtype)
         scaled_values.append(v)
 
@@ -47,6 +51,7 @@ def scaled_concat(values, scales, shamt, axis,
 
 
 def scaled_multiply(a, b, shamt,
+                    asymmetric_clip=False,
                     dtype=None, mul_dtype=None, name=None, par=1,
                     a_dtype=None, b_dtype=None):
 
@@ -54,11 +59,13 @@ def scaled_multiply(a, b, shamt,
                        x_dtype=a_dtype, y_dtype=b_dtype)
     v = basic.rshift(v, shamt, dtype=mul_dtype, par=par,
                      x_dtype=mul_dtype)
-    return basic.clip(v, dtype=dtype, par=par,
+    return basic.clip(v, asymmetric_clip=asymmetric_clip,
+                      dtype=dtype, par=par,
                       x_dtype=mul_dtype)
 
 
 def scaled_div(a, b, shamt,
+               asymmetric_clip=False,
                dtype=None, div_dtype=None, name=None, par=1,
                a_dtype=None, b_dtype=None):
 
@@ -66,5 +73,6 @@ def scaled_div(a, b, shamt,
                      x_dtype=a_dtype)
     v = basic.div(a, b, dtype=div_dtype, par=par,
                   x_dtype=a_dtype, y_dtype=b_dtype)
-    return basic.clip(v, dtype=dtype, par=par,
+    return basic.clip(v, asymmetric_clip=asymmetric_clip,
+                      dtype=dtype, par=par,
                       x_dtype=div_dtype)
