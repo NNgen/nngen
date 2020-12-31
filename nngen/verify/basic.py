@@ -427,17 +427,9 @@ def clip(x, asymmetric_clip=False,
     out_shift = out_point - x_point
 
     width = 32 if dtype is None else dtype.width
+    signed = True if dtype is None else dtype.signed
 
-    if dtype.signed:
-        p_th = (1 << (width - 1)) - 1
-        if asymmetric_clip:
-            n_th = -1 * p_th - 1
-        else:
-            n_th = -1 * p_th
-    else:
-        p_th = (1 << width) - 1
-        n_th = 0
-
+    p_th, n_th = util.clip_threshold(width, signed, asymmetric_clip)
     p_th = np.ones_like(x, dtype=np.int64) * [p_th]
     n_th = np.ones_like(x, dtype=np.int64) * [n_th]
 

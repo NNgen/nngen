@@ -209,3 +209,17 @@ def aligned_size(size, chunk_size):
 
 def is_elementwise_operator(obj):
     return isinstance(obj, bt._ElementwiseOperator)
+
+
+def clip_threshold(width, signed, asymmetric_clip=False):
+    if signed:
+        p_th = (1 << (width - 1)) - 1
+        if asymmetric_clip:
+            n_th = -1 * p_th - 1
+        else:
+            n_th = -1 * p_th
+    else:
+        p_th = (1 << width) - 1
+        n_th = 0
+
+    return p_th, n_th
