@@ -23,7 +23,7 @@ setup(name='nngen',
                         'pyverilog>=1.2.1',
                         'veriloggen>=1.8.2,<1.9.0',
                         'numpy>=1.17',
-                        'onnx>=1.6.0'],
+                        'onnx==1.6.0'],
       extras_require={
           'test': ['pytest>=3.2', 'pytest-pythonpath>=0.7'],
       },
