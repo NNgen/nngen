@@ -36,6 +36,13 @@ class conv2d(bt._Operator):
     scale : optional
         Tensor for scaling to outputs.
 
+    rshift_mul : optional
+        Arithmetic shift right can be performed on the result of \
+        activation and kernel multiplication as needed. \
+        Designation of shift amount can select constant and vector. \
+        The constants are register generated and \
+        the vector is configured in RAM.
+
     rshift_sum : optional
         Arithmetic shift right can be performed on the result of \
         accumulation as needed. \
@@ -127,6 +134,11 @@ class conv2d(bt._Operator):
         If set to less than the minimum required word length \
         (depends on the scaling parameter size), the set value is ignored.
 
+    vshamt_mul_ram_size : optional
+        Specifies the word length of the RAM that stores the arithmetic right shift value \
+        for the result of activation and multiplication of kernel parameters. \
+        The setting value is ignored if it is set to the minimum required word length or less.
+
     vshamt_sum_ram_size : optional
         Specifies the word length of the RAM that stores the arithmetic right shift value \
         for the accumulation result. \
@@ -169,11 +181,15 @@ class conv2d(bt._Operator):
         scale = (' scale:%s' % str(self.args[self.args_dict['scale']].shape)
                  if 'scale' in self.args_dict else '')
 
+        vshamt_mul = (' vshamt_mul:%s' % str(self.args[self.args_dict['vshamt_mul']].shape)
+                      if 'vshamt_mul' in self.args_dict else '')
         vshamt_sum = (' vshamt_sum:%s' % str(self.args[self.args_dict['vshamt_sum']].shape)
                       if 'vshamt_sum' in self.args_dict else '')
         vshamt_out = (' vshamt_out:%s' % str(self.args[self.args_dict['vshamt_out']].shape)
                       if 'vshamt_out' in self.args_dict else '')
 
+        cshamt_mul = (' cshamt_mul:%s' % self.cshamt_mul
+                      if self.cshamt_mul is not None else '')
         cshamt_sum = (' cshamt_sum:%s' % self.cshamt_sum
                       if self.cshamt_sum is not None else '')
         cshamt_out = (' cshamt_out:%s' % self.cshamt_out
@@ -212,6 +228,8 @@ class conv2d(bt._Operator):
                          if self.bias_ram_size is not None else '')
         scale_ram_size = (' scale_ram_size:%d' % self.scale_ram_size
                           if self.scale_ram_size is not None else '')
+        vshamt_mul_ram_size = (' vshamt_mul_ram_size:%d' % self.vshamt_mul_ram_size
+                               if self.vshamt_mul_ram_size is not None else '')
         vshamt_sum_ram_size = (' vshamt_sum_ram_size:%d' % self.vshamt_sum_ram_size
                                if self.vshamt_sum_ram_size is not None else '')
         vshamt_out_ram_size = (' vshamt_out_ram_size:%d' % self.vshamt_out_ram_size
@@ -231,14 +249,14 @@ class conv2d(bt._Operator):
         ret = [' strides:%s padding:%s' % (strides, padding)]
         ret.extend([str(s)
                     for s in (bias, scale,
-                              vshamt_sum, vshamt_out,
-                              cshamt_sum, cshamt_out,
+                              vshamt_mul, vshamt_sum, vshamt_out,
+                              cshamt_mul, cshamt_sum, cshamt_out,
                               act_func, mul_dtype, sum_dtype,
                               par_ich, par_och, par_col, par_row,
                               concur_och, stationary,
                               input_ram_size, filter_ram_size,
                               bias_ram_size, scale_ram_size,
-                              vshamt_sum_ram_size, vshamt_out_ram_size,
+                              vshamt_mul_ram_size, vshamt_sum_ram_size, vshamt_out_ram_size,
                               out_ram_size,
                               keep_input, keep_filter)])
         return ''.join(ret)
@@ -261,12 +279,6 @@ class conv2d(bt._Operator):
 
                  # for matmul
                  input_shape=None, filter_shape=None, out_shape=None):
-
-        if rshift_mul is not None:
-            raise ValueError('rshift_mul option is obsoleted.')
-
-        if vshamt_mul_ram_size is not None:
-            raise ValueError('rshift_mul option is obsoleted.')
 
         if isinstance(padding, str) and padding != 'SAME' and padding != 'VALID':
             raise ValueError("padding options must be 'SAME', 'VALID', int, tuple, or list.")
@@ -361,6 +373,16 @@ class conv2d(bt._Operator):
                     (scale.shape[-1] != 1 and scale.shape[-1] != shape[-1])):
                 raise ValueError("shape of scale must be (1,) or (num_och,)")
 
+        if rshift_mul is None:
+            vshamt_mul = None
+            cshamt_mul = None
+        elif isinstance(rshift_mul, int):
+            vshamt_mul = None
+            cshamt_mul = rshift_mul
+        else:
+            vshamt_mul = rshift_mul
+            cshamt_mul = None
+
         if rshift_sum is None:
             vshamt_sum = None
             cshamt_sum = None
@@ -381,6 +403,11 @@ class conv2d(bt._Operator):
             vshamt_out = rshift_out
             cshamt_out = None
 
+        if vshamt_mul is not None:
+            if (bt.get_rank(vshamt_mul.shape) > 1 or
+                    (vshamt_mul.shape[-1] != 1 and vshamt_mul.shape[-1] != shape[-1])):
+                raise ValueError("shape of vshamt_mul must be (1,) or (num_och,)")
+
         if vshamt_sum is not None:
             if (bt.get_rank(vshamt_sum.shape) > 1 or
                     (vshamt_sum.shape[-1] != 1 and vshamt_sum.shape[-1] != shape[-1])):
@@ -390,6 +417,11 @@ class conv2d(bt._Operator):
             if (bt.get_rank(vshamt_out.shape) > 1 or
                     (vshamt_out.shape[-1] != 1 and vshamt_out.shape[-1] != shape[-1])):
                 raise ValueError("shape of vshamt_out must be (1,) or (num_och,)")
+
+        if cshamt_mul is not None:
+            if not isinstance(cshamt_mul, int):
+                raise ValueError("cshamt_mul must be int, not '%s'" %
+                                 str(type(cshamt_mul)))
 
         if cshamt_sum is not None:
             if not isinstance(cshamt_sum, int):
@@ -418,6 +450,12 @@ class conv2d(bt._Operator):
         else:
             self.has_scale = False
 
+        if vshamt_mul is not None:
+            args.append(vshamt_mul)
+            self.has_vshamt_mul = True
+        else:
+            self.has_vshamt_mul = False
+
         if vshamt_sum is not None:
             args.append(vshamt_sum)
             self.has_vshamt_sum = True
@@ -430,6 +468,7 @@ class conv2d(bt._Operator):
         else:
             self.has_vshamt_out = False
 
+        self.cshamt_mul = cshamt_mul
         self.cshamt_sum = cshamt_sum
         self.cshamt_out = cshamt_out
 
@@ -442,6 +481,10 @@ class conv2d(bt._Operator):
 
         if self.has_scale:
             self.args_dict['scale'] = args_count
+            args_count += 1
+
+        if self.has_vshamt_mul:
+            self.args_dict['vshamt_mul'] = args_count
             args_count += 1
 
         if self.has_vshamt_sum:
@@ -480,29 +523,33 @@ class conv2d(bt._Operator):
         self.filter_ram_size = filter_ram_size
         self.bias_ram_size = bias_ram_size
         self.scale_ram_size = scale_ram_size
+        self.vshamt_mul_ram_size = vshamt_mul_ram_size
         self.vshamt_sum_ram_size = vshamt_sum_ram_size
         self.vshamt_out_ram_size = vshamt_out_ram_size
         self.out_ram_size = out_ram_size
         self.disable_keep_input = disable_keep_input
-        conv2d.attribute(self, None, None,
+        conv2d.attribute(self, None, None, None,
                          par_ich, par_och, par_col, par_row,
                          concur_och,
                          stationary,
                          input_ram_size, filter_ram_size,
                          bias_ram_size, scale_ram_size,
-                         vshamt_sum_ram_size, vshamt_out_ram_size,
+                         vshamt_mul_ram_size, vshamt_sum_ram_size, vshamt_out_ram_size,
                          out_ram_size,
                          disable_keep_input)
 
-    def attribute(self, cshamt_sum=None, cshamt_out=None,
+    def attribute(self, cshamt_mul=None, cshamt_sum=None, cshamt_out=None,
                   par_ich=None, par_och=None, par_col=None, par_row=None,
                   concur_och=None,
                   stationary=None,
                   input_ram_size=None, filter_ram_size=None,
                   bias_ram_size=None, scale_ram_size=None,
-                  vshamt_sum_ram_size=None, vshamt_out_ram_size=None,
+                  vshamt_mul_ram_size=None, vshamt_sum_ram_size=None, vshamt_out_ram_size=None,
                   out_ram_size=None,
                   disable_keep_input=None):
+
+        if cshamt_mul is not None:
+            self.cshamt_mul = cshamt_mul
 
         if cshamt_sum is not None:
             self.cshamt_sum = cshamt_sum
@@ -593,6 +640,12 @@ class conv2d(bt._Operator):
 
             self.scale_ram_size = scale_ram_size
 
+        if vshamt_mul_ram_size is not None:
+            if vshamt_mul_ram_size is not None and vshamt_mul_ram_size < 1:
+                raise ValueError('vshamt_mul_ram_size must be greater than 0')
+
+            self.vshamt_mul_ram_size = vshamt_mul_ram_size
+
         if vshamt_sum_ram_size is not None:
             if vshamt_sum_ram_size is not None and vshamt_sum_ram_size < 1:
                 raise ValueError('vshamt_sum_ram_size must be greater than 0')
@@ -654,6 +707,8 @@ class conv2d(bt._Operator):
                     if 'bias' in self.args_dict else None)
         arg_scale = (self.args[self.args_dict['scale']]
                      if 'scale' in self.args_dict else None)
+        arg_vshamt_mul = (self.args[self.args_dict['vshamt_mul']]
+                          if 'vshamt_mul' in self.args_dict else None)
         arg_vshamt_sum = (self.args[self.args_dict['vshamt_sum']]
                           if 'vshamt_sum' in self.args_dict else None)
         arg_vshamt_out = (self.args[self.args_dict['vshamt_out']]
@@ -733,6 +788,15 @@ class conv2d(bt._Operator):
             scale_min_size = None
             scale_width = None
 
+        if arg_vshamt_mul is not None:
+            vshamt_mul_min_size = arg_vshamt_mul.get_aligned_shape()[-1]
+            if self.vshamt_mul_ram_size is not None and vshamt_mul_min_size < self.vshamt_mul_ram_size:
+                vshamt_mul_min_size = self.vshamt_mul_ram_size
+            vshamt_mul_width = arg_vshamt_mul.get_ram_width() * self.par_och
+        else:
+            vshamt_mul_min_size = None
+            vshamt_mul_width = None
+
         if arg_vshamt_sum is not None:
             vshamt_sum_min_size = arg_vshamt_sum.get_aligned_shape()[-1]
             if self.vshamt_sum_ram_size is not None and vshamt_sum_min_size < self.vshamt_sum_ram_size:
@@ -780,6 +844,10 @@ class conv2d(bt._Operator):
         # scale
         if scale_min_size is not None:
             inputs.append((scale_width, scale_min_size))
+
+        # vshamt_mul
+        if vshamt_mul_min_size is not None:
+            inputs.append((vshamt_mul_width, vshamt_mul_min_size))
 
         # vshamt_sum
         if vshamt_sum_min_size is not None:
@@ -891,7 +959,10 @@ class conv2d(bt._Operator):
                 y_datawidth, y_point, y_signed,
                 mul_width, mul_point, mul_signed)
 
-        mulname = 'mul'
+        if mul_point == 0:
+            mulname = 'mul_rshift_round_madd'
+        else:
+            mulname = 'mul_rshift_round'
 
         substrms = [(mulname, args)] * (num_weights * self.par_ich *
                                         self.par_och * self.par_col * self.par_row)
@@ -944,6 +1015,8 @@ class conv2d(bt._Operator):
                         if 'bias' in self.args_dict else None)
             arg_scale = (self.args[self.args_dict['scale']]
                          if 'scale' in self.args_dict else None)
+            arg_vshamt_mul = (self.args[self.args_dict['vshamt_mul']]
+                              if 'vshamt_mul' in self.args_dict else None)
             arg_vshamt_sum = (self.args[self.args_dict['vshamt_sum']]
                               if 'vshamt_sum' in self.args_dict else None)
             arg_vshamt_out = (self.args[self.args_dict['vshamt_out']]
@@ -1003,6 +1076,20 @@ class conv2d(bt._Operator):
             scale_list = [strm.Mux(dup_scale, split_scale[0], value) for value in split_scale]
             self.__set_latency(scale_list, 0)
 
+            # vshamt_mul
+            datawidth = (arg_vshamt_mul.get_op_width()
+                         if arg_vshamt_mul is not None else self.get_op_width())
+            vec_datawidth = datawidth * self.par_och
+            point = 0
+            signed = False
+            dup_vshamt_mul = strm.parameter(datawidth=1, signed=False)
+            vec_vshamt_mul = strm.source(datawidth=vec_datawidth, signed=False)
+
+            split_vshamt_mul = strm.Split(vec_vshamt_mul, datawidth, point, signed, reverse=True)
+            vshamt_mul_list = [strm.Mux(dup_vshamt_mul, split_vshamt_mul[0], value)
+                               for value in split_vshamt_mul]
+            self.__set_latency(vshamt_mul_list, 0)
+
             # vshamt_sum
             datawidth = (arg_vshamt_sum.get_op_width()
                          if arg_vshamt_sum is not None else self.get_op_width())
@@ -1032,6 +1119,8 @@ class conv2d(bt._Operator):
             self.__set_latency(vshamt_out_list, 0)
 
             # cshamt
+            cshamt_mul = strm.parameter(datawidth=vg.get_width(self.cshamt_mul_value),
+                                       signed=False)
             cshamt_sum = strm.parameter(datawidth=vg.get_width(self.cshamt_sum_value),
                                        signed=False)
             cshamt_out = strm.parameter(datawidth=vg.get_width(self.cshamt_out_value),
@@ -1165,9 +1254,9 @@ class conv2d(bt._Operator):
 
                     # output channel parallel
                     for oc, (filter_vars_list, bias, scale,
-                             vshamt_sum, vshamt_out) in enumerate(zip(
+                             vshamt_mul, vshamt_sum, vshamt_out) in enumerate(zip(
                             filter_vars_list_och, bias_list, scale_list,
-                                 vshamt_sum_list, vshamt_out_list)):
+                                 vshamt_mul_list, vshamt_sum_list, vshamt_out_list)):
 
                         mul_vars = []
 
@@ -1203,6 +1292,7 @@ class conv2d(bt._Operator):
                                 mul = strm.substream(submul)
                                 mul.to_source('x', act_var)
                                 mul.to_source('y', filter_var)
+                                mul.to_source('rshift', vshamt_mul + cshamt_mul)
                                 mul_var = mul.from_sink('z')
                                 mul_vars.append(mul_var)
 
@@ -1290,6 +1380,8 @@ class conv2d(bt._Operator):
                     if 'bias' in self.args_dict else None)
         arg_scale = (self.args[self.args_dict['scale']]
                      if 'scale' in self.args_dict else None)
+        arg_vshamt_mul = (self.args[self.args_dict['vshamt_mul']]
+                          if 'vshamt_mul' in self.args_dict else None)
         arg_vshamt_sum = (self.args[self.args_dict['vshamt_sum']]
                           if 'vshamt_sum' in self.args_dict else None)
         arg_vshamt_out = (self.args[self.args_dict['vshamt_out']]
@@ -1316,6 +1408,9 @@ class conv2d(bt._Operator):
         scale_num = (int(math.ceil(arg_scale.shape[-1] / self.par_och))
                      if arg_scale is not None else 0)
 
+        vshamt_mul_scala = 1 if arg_vshamt_mul is not None and arg_vshamt_mul.shape[-1] == 1 else 0
+        vshamt_mul_num = (int(math.ceil(arg_vshamt_mul.shape[-1] / self.par_och))
+                          if arg_vshamt_mul is not None else 0)
         vshamt_sum_scala = 1 if arg_vshamt_sum is not None and arg_vshamt_sum.shape[-1] == 1 else 0
         vshamt_sum_num = (int(math.ceil(arg_vshamt_sum.shape[-1] / self.par_och))
                           if arg_vshamt_sum is not None else 0)
@@ -1323,6 +1418,7 @@ class conv2d(bt._Operator):
         vshamt_out_num = (int(math.ceil(arg_vshamt_out.shape[-1] / self.par_och))
                           if arg_vshamt_out is not None else 0)
 
+        cshamt_mul_value = 0 if self.cshamt_mul is None else self.cshamt_mul
         cshamt_sum_value = 0 if self.cshamt_sum is None else self.cshamt_sum
         cshamt_out_value = 0 if self.cshamt_out is None else self.cshamt_out
 
@@ -1600,10 +1696,13 @@ class conv2d(bt._Operator):
                             ('bias_num', bias_num),
                             ('scale_scala', scale_scala),
                             ('scale_num', scale_num),
+                            ('vshamt_mul_scala', vshamt_mul_scala),
+                            ('vshamt_mul_num', vshamt_mul_num),
                             ('vshamt_sum_scala', vshamt_sum_scala),
                             ('vshamt_sum_num', vshamt_sum_num),
                             ('vshamt_out_scala', vshamt_out_scala),
                             ('vshamt_out_num', vshamt_out_num),
+                            ('cshamt_mul_value', cshamt_mul_value),
                             ('cshamt_sum_value', cshamt_sum_value),
                             ('cshamt_out_value', cshamt_out_value),
                             ('act_func_index', act_func_index),
@@ -1669,6 +1768,8 @@ class conv2d(bt._Operator):
                     if 'bias' in self.args_dict else None)
         arg_scale = (self.args[self.args_dict['scale']]
                      if 'scale' in self.args_dict else None)
+        arg_vshamt_mul = (self.args[self.args_dict['vshamt_mul']]
+                          if 'vshamt_mul' in self.args_dict else None)
         arg_vshamt_sum = (self.args[self.args_dict['vshamt_sum']]
                           if 'vshamt_sum' in self.args_dict else None)
         arg_vshamt_out = (self.args[self.args_dict['vshamt_out']]
@@ -1699,6 +1800,9 @@ class conv2d(bt._Operator):
         scale_ram = (self.input_rams[len(act_rams) + len(filter_rams) +
                                      self.args_dict['scale'] - num_basic_args]
                      if 'scale' in self.args_dict else None)
+        vshamt_mul_ram = (self.input_rams[len(act_rams) + len(filter_rams) +
+                                          self.args_dict['vshamt_mul'] - num_basic_args]
+                          if 'vshamt_mul' in self.args_dict else None)
         vshamt_sum_ram = (self.input_rams[len(act_rams) + len(filter_rams) +
                                           self.args_dict['vshamt_sum'] - num_basic_args]
                           if 'vshamt_sum' in self.args_dict else None)
@@ -1950,6 +2054,16 @@ class conv2d(bt._Operator):
         # --------------------
         # ReadVshamt phase
         # --------------------
+        if vshamt_mul_ram is not None:
+            vshamt_mul_read_size = self.vshamt_mul_num
+            vshamt_mul_laddr = 0
+            vshamt_mul_gaddr = self.arg_objaddrs[self.args_dict['vshamt_mul']]
+
+            bt.bus_lock(self.maxi, fsm)
+            bt.dma_read(self.maxi, fsm, vshamt_mul_ram, vshamt_mul_laddr,
+                        vshamt_mul_gaddr, vshamt_mul_read_size, port=1)
+            bt.bus_unlock(self.maxi, fsm)
+
         if vshamt_sum_ram is not None:
             vshamt_sum_read_size = self.vshamt_sum_num
             vshamt_sum_laddr = 0
@@ -2264,14 +2378,41 @@ class conv2d(bt._Operator):
             self.stream.set_source_empty(comp_fsm, name, default_scale)
             comp_fsm.set_index(comp_fsm.current - 1)
 
+        # set_parameter and set_source (vshamt_mul)
+        if vshamt_mul_ram is not None:
+            name = list(self.stream.parameters.keys())[7]
+            dup_vshamt_mul = self.vshamt_mul_scala
+            self.stream.set_parameter(comp_fsm, name, dup_vshamt_mul)
+            comp_fsm.set_index(comp_fsm.current - 1)
+
+            name = list(self.stream.sources.keys())[2]
+            local = vg.Mux(vshamt_mul_read_size == 1, 0, och_count_buf)
+            stride = vg.Mux(vshamt_mul_read_size == 1, 0, 1)
+            pat = ((self.stream_reduce_size, 0),
+                   (next_stream_num_ops, stride))
+            self.stream.set_source_pattern(comp_fsm, name, vshamt_mul_ram,
+                                           local, pat)
+            comp_fsm.set_index(comp_fsm.current - 1)
+
+        else:
+            name = list(self.stream.parameters.keys())[7]
+            dup_vshamt_mul = 1
+            self.stream.set_parameter(comp_fsm, name, dup_vshamt_mul)
+            comp_fsm.set_index(comp_fsm.current - 1)
+
+            name = list(self.stream.sources.keys())[2]
+            default_vshamt_mul = 0
+            self.stream.set_source_empty(comp_fsm, name, default_vshamt_mul)
+            comp_fsm.set_index(comp_fsm.current - 1)
+
         # set_parameter and set_source (vshamt_sum)
         if vshamt_sum_ram is not None:
-            name = list(self.stream.parameters.keys())[7]
+            name = list(self.stream.parameters.keys())[8]
             dup_vshamt_sum = self.vshamt_sum_scala
             self.stream.set_parameter(comp_fsm, name, dup_vshamt_sum)
             comp_fsm.set_index(comp_fsm.current - 1)
 
-            name = list(self.stream.sources.keys())[2]
+            name = list(self.stream.sources.keys())[3]
             local = vg.Mux(vshamt_sum_read_size == 1, 0, och_count_buf)
             stride = vg.Mux(vshamt_sum_read_size == 1, 0, 1)
             pat = ((self.stream_reduce_size, 0),
@@ -2281,24 +2422,24 @@ class conv2d(bt._Operator):
             comp_fsm.set_index(comp_fsm.current - 1)
 
         else:
-            name = list(self.stream.parameters.keys())[7]
+            name = list(self.stream.parameters.keys())[8]
             dup_vshamt_sum = 1
             self.stream.set_parameter(comp_fsm, name, dup_vshamt_sum)
             comp_fsm.set_index(comp_fsm.current - 1)
 
-            name = list(self.stream.sources.keys())[2]
+            name = list(self.stream.sources.keys())[3]
             default_vshamt_sum = 0
             self.stream.set_source_empty(comp_fsm, name, default_vshamt_sum)
             comp_fsm.set_index(comp_fsm.current - 1)
 
         # set_parameter and set_source (vshamt_out)
         if vshamt_out_ram is not None:
-            name = list(self.stream.parameters.keys())[8]
+            name = list(self.stream.parameters.keys())[9]
             dup_vshamt_out = self.vshamt_out_scala
             self.stream.set_parameter(comp_fsm, name, dup_vshamt_out)
             comp_fsm.set_index(comp_fsm.current - 1)
 
-            name = list(self.stream.sources.keys())[3]
+            name = list(self.stream.sources.keys())[4]
             local = vg.Mux(vshamt_out_read_size == 1, 0, och_count_buf)
             stride = vg.Mux(vshamt_out_read_size == 1, 0, 1)
             pat = ((self.stream_reduce_size, 0),
@@ -2308,28 +2449,33 @@ class conv2d(bt._Operator):
             comp_fsm.set_index(comp_fsm.current - 1)
 
         else:
-            name = list(self.stream.parameters.keys())[8]
+            name = list(self.stream.parameters.keys())[9]
             dup_vshamt_out = 1
             self.stream.set_parameter(comp_fsm, name, dup_vshamt_out)
             comp_fsm.set_index(comp_fsm.current - 1)
 
-            name = list(self.stream.sources.keys())[3]
+            name = list(self.stream.sources.keys())[4]
             default_vshamt_out = 0
             self.stream.set_source_empty(comp_fsm, name, default_vshamt_out)
             comp_fsm.set_index(comp_fsm.current - 1)
 
+        # set_parameter (cshamt_mul)
+        name = list(self.stream.parameters.keys())[10]
+        self.stream.set_parameter(comp_fsm, name, self.cshamt_mul_value)
+        comp_fsm.set_index(comp_fsm.current - 1)
+
         # set_parameter (cshamt_sum)
-        name = list(self.stream.parameters.keys())[9]
+        name = list(self.stream.parameters.keys())[11]
         self.stream.set_parameter(comp_fsm, name, self.cshamt_sum_value)
         comp_fsm.set_index(comp_fsm.current - 1)
 
         # set_parameter (cshamt_out)
-        name = list(self.stream.parameters.keys())[10]
+        name = list(self.stream.parameters.keys())[12]
         self.stream.set_parameter(comp_fsm, name, self.cshamt_out_value)
         comp_fsm.set_index(comp_fsm.current - 1)
 
         # set_parameter (act_func_index)
-        name = list(self.stream.parameters.keys())[11]
+        name = list(self.stream.parameters.keys())[13]
         self.stream.set_parameter(comp_fsm, name, self.act_func_index)
         comp_fsm.set_index(comp_fsm.current - 1)
 
@@ -2339,7 +2485,7 @@ class conv2d(bt._Operator):
             act_page_comp_offset_bufs_dup.extend(
                 [act_page_comp_offset_buf] * src_num_col)
 
-        stream_act_names = list(self.stream.sources.keys())[4:4 + num_srcs]
+        stream_act_names = list(self.stream.sources.keys())[5:5 + num_srcs]
         for name, ram, stream_act_local, act_page_comp_offset_buf in zip(
                 stream_act_names, act_rams,
                 stream_act_locals, act_page_comp_offset_bufs_dup):
@@ -2351,7 +2497,7 @@ class conv2d(bt._Operator):
             comp_fsm.set_index(comp_fsm.current - 1)
 
         # set_source (filter)
-        stream_filter_names = list(self.stream.sources.keys())[4 + num_srcs:]
+        stream_filter_names = list(self.stream.sources.keys())[5 + num_srcs:]
 
         for name, ram in zip(stream_filter_names, filter_rams):
             local = filter_page_comp_offset_buf
@@ -2934,6 +3080,8 @@ class conv2d(bt._Operator):
         bias = args[self.args_dict['bias']] if self.has_bias else None
         scale = args[self.args_dict['scale']] if self.has_scale else None
 
+        rshift_mul = (args[self.args_dict['vshamt_mul']]
+                      if self.has_vshamt_mul else self.cshamt_mul)
         rshift_sum = (args[self.args_dict['vshamt_sum']]
                       if self.has_vshamt_sum else self.cshamt_sum)
         rshift_out = (args[self.args_dict['vshamt_out']]
@@ -2941,6 +3089,7 @@ class conv2d(bt._Operator):
 
         kwargs['bias'] = bias
         kwargs['scale'] = scale
+        kwargs['rshift_mul'] = rshift_mul
         kwargs['rshift_sum'] = rshift_sum
         kwargs['rshift_out'] = rshift_out
         kwargs['act_func'] = self.act_func
