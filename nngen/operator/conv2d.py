@@ -2456,7 +2456,7 @@ class conv2d(bt._Operator):
         comp_fsm.If(col_count >= self.max_col_count).goto_init()
 
         # sync with WriteOut control
-        comp_fsm.seq.If(self.stream.source_stop)(
+        comp_fsm.seq.If(self.stream.sink_stop)(
             sync_comp_count.add(self.par_col)
         )
         comp_fsm.seq.If(fsm.state == state_init)(
