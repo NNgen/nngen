@@ -25,12 +25,6 @@ def matmul(a, b,
            a_dtype=None, b_dtype=None,
            bias_dtype=None, scale_dtype=None):
 
-    if rshift_mul is not None:
-        raise ValueError('rshift_mul option is obsoleted.')
-
-    if vshamt_mul_ram_size is not None:
-        raise ValueError('rshift_mul option is obsoleted.')
-
     if transposed_a:
         a = a.transpose()
 
@@ -69,6 +63,19 @@ def matmul(a, b,
             new_scale[i] = scale[0]
         scale = new_scale
 
+    if rshift_mul is None:
+        rshift_mul = np.zeros([c_shape[-1]], dtype=np.int64)
+    elif not isinstance(rshift_mul, np.ndarray):
+        new_rshift_mul = np.zeros([c_shape[-1]], dtype=np.int64)
+        for i in range(new_rshift_mul.shape[-1]):
+            new_rshift_mul[i] = rshift_mul
+        rshift_mul = new_rshift_mul
+    elif len(rshift_mul.shape) == 1 and rshift_mul.shape[0] == 1:
+        new_rshift_mul = np.zeros([c_shape[-1]], dtype=np.int64)
+        for i in range(new_rshift_mul.shape[-1]):
+            new_rshift_mul[i] = rshift_mul[0]
+        rshift_mul = new_rshift_mul
+
     if rshift_sum is None:
         rshift_sum = np.zeros([c_shape[-1]], dtype=np.int64)
     elif not isinstance(rshift_sum, np.ndarray):
@@ -94,6 +101,14 @@ def matmul(a, b,
         for i in range(new_rshift_out.shape[-1]):
             new_rshift_out[i] = rshift_out[0]
         rshift_out = new_rshift_out
+
+    rshift_mul_pow = np.where(rshift_mul > np.zeros_like(rshift_mul, dtype=np.int64),
+                              rshift_mul - 1,
+                              np.zeros_like(rshift_mul))
+    rshift_mul_round = np.where(rshift_mul > np.zeros_like(rshift_mul, dtype=np.int64),
+                                np.power(np.ones_like(rshift_mul, dtype=np.int64) * 2,
+                                         rshift_mul_pow),
+                                np.zeros_like(rshift_mul, dtype=np.int64))
 
     rshift_sum_pow = np.where(rshift_sum > np.zeros_like(rshift_sum, dtype=np.int64),
                               rshift_sum - 1,
@@ -139,9 +154,11 @@ def matmul(a, b,
         v = a.reshape([a.shape[0], 1, a.shape[1]])
         mul = np.multiply(v, w)
         mul = np.right_shift(mul, mul_shift)
+        mul = np.add(mul, rshift_mul_round.reshape([rshift_mul_round.shape[-1], 1]))
+        mul = np.right_shift(mul, rshift_mul.reshape([rshift_mul.shape[-1], 1]))
         return np.add.reduce(mul, axis=2)
 
-    if mul_shift == 0:
+    if mul_shift == 0 and rshift_mul_round.all() == 0 and rshift_mul.all() == 0:
         my_matmul = my_matmul_by_matmul
     else:
         my_matmul = my_matmul_by_multiply

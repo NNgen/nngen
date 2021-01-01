@@ -101,11 +101,15 @@ class matmul(conv2d.conv2d):
         scale = (' scale:%s' % str(self.args[self.args_dict['scale']].shape)
                  if 'scale' in self.args_dict else '')
 
+        vshamt_mul = (' vshamt_mul:%s' % str(self.args[self.args_dict['vshamt_mul']].shape)
+                      if 'vshamt_mul' in self.args_dict else '')
         vshamt_sum = (' vshamt_sum:%s' % str(self.args[self.args_dict['vshamt_sum']].shape)
                       if 'vshamt_sum' in self.args_dict else '')
         vshamt_out = (' vshamt_out:%s' % str(self.args[self.args_dict['vshamt_out']].shape)
                       if 'vshamt_out' in self.args_dict else '')
 
+        cshamt_mul = (' cshamt_mul:%s' % self.cshamt_mul
+                      if self.cshamt_mul is not None else '')
         cshamt_sum = (' cshamt_sum:%s' % self.cshamt_sum
                       if self.cshamt_sum is not None else '')
         cshamt_out = (' cshamt_out:%s' % self.cshamt_out
@@ -136,6 +140,8 @@ class matmul(conv2d.conv2d):
                          if self.bias_ram_size is not None else '')
         scale_ram_size = (' scale_ram_size:%d' % self.scale_ram_size
                           if self.scale_ram_size is not None else '')
+        vshamt_mul_ram_size = (' vshamt_mul_ram_size:%d' % self.vshamt_mul_ram_size
+                               if self.vshamt_mul_ram_size is not None else '')
         vshamt_sum_ram_size = (' vshamt_sum_ram_size:%d' % self.vshamt_sum_ram_size
                                if self.vshamt_sum_ram_size is not None else '')
         vshamt_out_ram_size = (' vshamt_out_ram_size:%d' % self.vshamt_out_ram_size
@@ -154,14 +160,14 @@ class matmul(conv2d.conv2d):
 
         ret = [str(s)
                for s in (bias, scale,
-                         vshamt_sum, vshamt_out,
-                         cshamt_sum, cshamt_out,
+                         vshamt_mul, vshamt_sum, vshamt_out,
+                         cshamt_mul, cshamt_sum, cshamt_out,
                          act_func, mul_dtype, sum_dtype,
                          par_left_col, par_left_row, par_out_col,
                          concur_out_col, stationary,
                          left_ram_size, right_ram_size,
                          bias_ram_size, scale_ram_size,
-                         vshamt_sum_ram_size, vshamt_out_ram_size,
+                         vshamt_mul_ram_size, vshamt_sum_ram_size, vshamt_out_ram_size,
                          out_ram_size,
                          keep_left, keep_right)]
         return ''.join(ret)
@@ -230,13 +236,13 @@ class matmul(conv2d.conv2d):
                                disable_keep_left,
                                input_shape, filter_shape, out_shape)
 
-    def attribute(self, cshamt_sum=None, cshamt_out=None,
+    def attribute(self, cshamt_mul=None, cshamt_sum=None, cshamt_out=None,
                   par_left_col=None, par_out_col=None, par_left_row=None,
                   concur_out_col=None,
                   stationary=None,
                   left_ram_size=None, right_ram_size=None,
                   bias_ram_size=None, scale_ram_size=None,
-                  vshamt_sum_ram_size=None, vshamt_out_ram_size=None,
+                  vshamt_mul_ram_size=None, vshamt_sum_ram_size=None, vshamt_out_ram_size=None,
                   out_ram_size=None,
                   par_ich=None, par_och=None, par_col=None, par_row=None,
                   concur_och=None,
@@ -263,12 +269,12 @@ class matmul(conv2d.conv2d):
         if par_left_row is None:
             par_left_row = par_col
 
-        conv2d.conv2d.attribute(self, cshamt_sum, cshamt_out,
+        conv2d.conv2d.attribute(self, cshamt_mul, cshamt_sum, cshamt_out,
                                 par_left_col, par_out_col, par_left_row, None,
                                 concur_out_col, stationary,
                                 left_ram_size, right_ram_size,
                                 bias_ram_size, scale_ram_size,
-                                vshamt_sum_ram_size, vshamt_out_ram_size,
+                                vshamt_mul_ram_size, vshamt_sum_ram_size, vshamt_out_ram_size,
                                 out_ram_size,
                                 disable_keep_left)
 
@@ -290,6 +296,8 @@ class matmul(conv2d.conv2d):
         bias = args[self.args_dict['bias']] if self.has_bias else None
         scale = args[self.args_dict['scale']] if self.has_scale else None
 
+        rshift_mul = (args[self.args_dict['vshamt_mul']]
+                      if self.has_vshamt_mul else self.cshamt_mul)
         rshift_sum = (args[self.args_dict['vshamt_sum']]
                       if self.has_vshamt_sum else self.cshamt_sum)
         rshift_out = (args[self.args_dict['vshamt_out']]
@@ -299,6 +307,7 @@ class matmul(conv2d.conv2d):
         kwargs['scale'] = scale
         kwargs['transposed_a'] = self.transposed_a
         kwargs['transposed_b'] = self.transposed_b
+        kwargs['rshift_mul'] = rshift_mul
         kwargs['rshift_sum'] = rshift_sum
         kwargs['rshift_out'] = rshift_out
         kwargs['act_func'] = self.act_func

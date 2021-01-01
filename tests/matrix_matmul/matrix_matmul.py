@@ -69,7 +69,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
 
     # verification data
     va = np.arange(a.length, dtype=np.int64).reshape(a.shape) % [5]
-    vb = np.arange(b.length, dtype=np.int64).reshape(b.shape) % [5] - [3]
+    vb = np.arange(b.length, dtype=np.int64).reshape(b.shape) % [7] - [2]
 
     if bias is not None:
         vbias = np.arange(bias.length,
@@ -200,7 +200,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
                      params=m.connect_params(targ),
                      ports=m.connect_ports(targ))
 
-    # simulation.setup_waveform(m, uut)
+    simulation.setup_waveform(m, uut)
     simulation.setup_clock(m, clk, hperiod=5)
     init = simulation.setup_reset(m, resetn, m.make_reset(), period=100, polarity='low')
 
