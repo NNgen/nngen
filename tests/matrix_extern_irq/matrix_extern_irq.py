@@ -120,7 +120,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
         araddr_irq_ier = ng.control_reg_interrupt_ier * 4
         araddr_irq_isr = ng.control_reg_interrupt_isr * 4
         araddr_irq_iar = ng.control_reg_interrupt_iar * 4
-        _saxi.write(araddr_irq_ier , 3) # irq enable
+        _saxi.write(araddr_irq_ier, 3)  # irq enable
 
         start_time = time_counter.value
         ng.sim.start(_saxi)
@@ -136,7 +136,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
             print('# verify: FAILED')
             vthread.finish()
         print('# irq stat = %d' % irq_stat)
-        _saxi.write(araddr_irq_iar , 2) # irq acknowledge: just irq stat ack_bit negation
+        _saxi.write(araddr_irq_iar, 2)  # irq acknowledge: just irq stat ack_bit negation
 
         # from extern-send
         araddr = ng.control_reg_extern_send * 4
@@ -170,7 +170,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
             print('# verify: FAILED')
             vthread.finish()
         print('# irq stat = %d' % irq_stat)
-        _saxi.write(araddr_irq_iar , 0xff) # irq acknowledge: all of irq stat nagetion
+        _saxi.write(araddr_irq_iar, 0xff)  # irq acknowledge: all of irq stat nagetion
 
         # from extern-send
         araddr = ng.control_reg_extern_send * 4
@@ -201,9 +201,9 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
             print('# verify: FAILED')
             vthread.finish()
         print('# irq stat = %d' % irq_stat)
-        _saxi.write(araddr_irq_iar, 1) # irq acknowledge: irq stat busy_bit negation
+        _saxi.write(araddr_irq_iar, 1)  # irq acknowledge: irq stat busy_bit negation
 
-        #ng.sim.wait(_saxi)
+        # ng.sim.wait(_saxi)
         end_time = time_counter.value
 
         print('# end')

@@ -24,7 +24,7 @@ bias_dtype = ng.int32
 scale_dtype = ng.int32
 out_dtype = ng.int32
 conv2d_stride = 1
-rshift_mul = 2
+
 rshift_sum = None
 rshift_out = 4
 with_relu = False
@@ -54,7 +54,7 @@ def test(request, silent=True):
                                       bias_dtype, scale_dtype,
                                       out_dtype,
                                       conv2d_stride,
-                                      rshift_mul, rshift_sum, rshift_out,
+                                      rshift_sum, rshift_out,
                                       with_relu,
                                       par_ich, par_och, concur_och, stationary,
                                       input_ram_size, filter_ram_size,
@@ -76,7 +76,7 @@ if __name__ == '__main__':
                                       bias_dtype, scale_dtype,
                                       out_dtype,
                                       conv2d_stride,
-                                      rshift_mul, rshift_sum, rshift_out,
+                                      rshift_sum, rshift_out,
                                       with_relu,
                                       par_ich, par_och, concur_och, stationary,
                                       input_ram_size, filter_ram_size,

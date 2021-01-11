@@ -137,7 +137,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
         awaddr_irq_ier = ng.control_reg_interrupt_ier * 4
         araddr_irq_isr = ng.control_reg_interrupt_isr * 4
         awaddr_irq_iar = ng.control_reg_interrupt_iar * 4
-        _saxi.write(awaddr_irq_ier , 3) # irq enable
+        _saxi.write(awaddr_irq_ier, 3)  # irq enable
 
         ng.sim.sw_rst(_saxi)
 
@@ -239,7 +239,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
         # from extern-send
 
         irq_join(_saxi, 1)
-        #ng.sim.wait(_saxi)
+        # ng.sim.wait(_saxi)
         end_time = time_counter.value
 
         print('# end')
@@ -296,7 +296,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
 
         print('# 2nd software reset (during Master AXI transaction)')
 
-        irq_join(_saxi, 1) # irq busy by software reset
+        irq_join(_saxi, 1)  # irq busy by software reset
 
         # restart
         ng.sim.start(_saxi)
@@ -344,7 +344,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
 
         # termination
         irq_join(_saxi, 1)
-        #ng.sim.wait(_saxi)
+        # ng.sim.wait(_saxi)
         end_time = time_counter.value
 
         print('# end')

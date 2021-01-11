@@ -38,8 +38,8 @@ def run(a_shape=(15, 15),
 
     # verification data
     va = np.arange(a.length, dtype=np.int32)
-    va = va*2 - a.length
-    va = va * [(2**(a_dtype.width-1)-1), ]
+    va = va * 2 - a.length
+    va = va * [(2**(a_dtype.width - 1) - 1), ]
     va = va // a.length
     va = va.reshape(a.shape)
 

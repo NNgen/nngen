@@ -245,7 +245,7 @@ class conv2d(bt._Operator):
 
     def __init__(self, input, filter, strides,
                  bias=None, scale=None,
-                 rshift_mul=None, rshift_sum=None, rshift_out=None,
+                 rshift_sum=None, rshift_out=None,
                  act_func=None, padding='SAME',
                  asymmetric_clip=False,
                  dtype=None, mul_dtype=None, sum_dtype=None,
@@ -261,12 +261,6 @@ class conv2d(bt._Operator):
 
                  # for matmul
                  input_shape=None, filter_shape=None, out_shape=None):
-
-        if rshift_mul is not None:
-            raise ValueError('rshift_mul option is obsoleted.')
-
-        if vshamt_mul_ram_size is not None:
-            raise ValueError('rshift_mul option is obsoleted.')
 
         if isinstance(padding, str) and padding != 'SAME' and padding != 'VALID':
             raise ValueError("padding options must be 'SAME', 'VALID', int, tuple, or list.")

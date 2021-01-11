@@ -23,7 +23,7 @@ b_dtype = ng.int32
 bias_dtype = ng.int32
 scale_dtype = ng.int32
 c_dtype = ng.int32
-rshift_mul = None
+
 rshift_sum = None
 rshift_out = None
 act_func = None
@@ -50,7 +50,7 @@ def test(request, silent=True):
                                   a_dtype, b_dtype,
                                   bias_dtype, scale_dtype,
                                   c_dtype,
-                                  rshift_mul, rshift_sum, rshift_out,
+                                  rshift_sum, rshift_out,
                                   act_func,
                                   par_left_col, par_left_row, par_out_col,
                                   concur_out_col, stationary,
@@ -71,7 +71,7 @@ if __name__ == '__main__':
                                   a_dtype, b_dtype,
                                   bias_dtype, scale_dtype,
                                   c_dtype,
-                                  rshift_mul, rshift_sum, rshift_out,
+                                  rshift_sum, rshift_out,
                                   act_func,
                                   par_left_col, par_left_row, par_out_col,
                                   concur_out_col, stationary,

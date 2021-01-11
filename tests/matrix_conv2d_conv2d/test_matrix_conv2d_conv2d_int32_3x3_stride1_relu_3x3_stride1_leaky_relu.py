@@ -32,10 +32,10 @@ tmp_dtype = ng.int32
 out_dtype = ng.int32
 stride1 = (1, 1, 1, 1)
 stride2 = (1, 1, 1, 1)
-rshift_mul1 = None
+
 rshift_sum1 = None
 rshift_out1 = None
-rshift_mul2 = None
+
 rshift_sum2 = None
 rshift_out2 = None
 act_func1 = ng.relu
@@ -79,8 +79,8 @@ def test(request, silent=True):
                                     tmp_dtype,
                                     out_dtype,
                                     stride1, stride2,
-                                    rshift_mul1, rshift_sum1, rshift_out1,
-                                    rshift_mul2, rshift_sum2, rshift_out2,
+                                    rshift_sum1, rshift_out1,
+                                    rshift_sum2, rshift_out2,
                                     act_func1, act_func2,
                                     par_ich1, par_och1, par_col1, par_row1,
                                     concur_och1, stationary1,
@@ -110,8 +110,8 @@ if __name__ == '__main__':
                                     tmp_dtype,
                                     out_dtype,
                                     stride1, stride2,
-                                    rshift_mul1, rshift_sum1, rshift_out1,
-                                    rshift_mul2, rshift_sum2, rshift_out2,
+                                    rshift_sum1, rshift_out1,
+                                    rshift_sum2, rshift_out2,
                                     act_func1, act_func2,
                                     par_ich1, par_och1, par_col1, par_row1,
                                     concur_och1, stationary1,

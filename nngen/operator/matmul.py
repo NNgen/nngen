@@ -169,7 +169,7 @@ class matmul(conv2d.conv2d):
     def __init__(self, a, b,
                  bias=None, scale=None,
                  transposed_a=False, transposed_b=False,
-                 rshift_mul=None, rshift_sum=None, rshift_out=None,
+                 rshift_sum=None, rshift_out=None,
                  act_func=None,
                  asymmetric_clip=False,
                  dtype=None, mul_dtype=None, sum_dtype=None,
@@ -216,7 +216,7 @@ class matmul(conv2d.conv2d):
 
         conv2d.conv2d.__init__(self, input, filter, strides,
                                bias, scale,
-                               rshift_mul, rshift_sum, rshift_out,
+                               rshift_sum, rshift_out,
                                act_func, padding,
                                asymmetric_clip,
                                dtype, mul_dtype, sum_dtype,
