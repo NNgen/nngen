@@ -883,17 +883,13 @@ class conv2d(bt._Operator):
 
         args = (x_datawidth, x_point, x_signed,
                 y_datawidth, y_point, y_signed,
-                mul_width, mul_point, mul_signed)
+                sum_width, sum_point, sum_signed,
+                sum_width, sum_point, sum_signed)
 
-        mulname = 'mul'
+        maddname = 'madd'
+        substrms = [(maddname, args)] * (num_weights * self.par_ich *
+                                         self.par_och * self.par_col * self.par_row)
 
-        substrms = [(mulname, args)] * (num_weights * self.par_ich *
-                                        self.par_och * self.par_col * self.par_row)
-
-        substrms.extend([('add_tree',
-                          (sum_width, sum_point, sum_signed,
-                           num_weights * self.par_ich))] *
-                        self.par_och * self.par_col * self.par_row)
         substrms.extend([('acc_rshift_round_frac',
                           (sum_width, sum_point, sum_signed,
                            sum_width, sum_point, sum_signed))] *
@@ -1163,7 +1159,7 @@ class conv2d(bt._Operator):
                             filter_vars_list_och, bias_list, scale_list,
                                  vshamt_sum_list, vshamt_out_list)):
 
-                        mul_vars = []
+                        prev_madd_var = strm.Int(0)
 
                         # input channel parallel
                         for ic, (act_vars, filter_vars) in enumerate(zip(
@@ -1186,7 +1182,7 @@ class conv2d(bt._Operator):
                                 masked_var.latency = 0
                                 masked_used_act_vars.append(masked_var)
 
-                            for submul, act_var, filter_var in zip(
+                            for submadd, act_var, filter_var in zip(
                                     self.substreams[
                                         num_weights *
                                         (pos_row * self.par_col * self.par_och * self.par_ich +
@@ -1194,34 +1190,18 @@ class conv2d(bt._Operator):
                                          oc * self.par_ich + ic):],
                                     masked_used_act_vars, filter_vars):
 
-                                mul = strm.substream(submul)
-                                mul.to_source('x', act_var)
-                                mul.to_source('y', filter_var)
-                                mul_var = mul.from_sink('z')
-                                mul_vars.append(mul_var)
+                                madd = strm.substream(submadd)
+                                madd.to_source('x', act_var)
+                                madd.to_source('y', filter_var)
+                                madd.to_source('z', prev_madd_var)
+                                prev_madd_var = madd.from_sink('sum')
 
                         # add, scale, bias, vshamt_sum, vshamt_out
-                        mul_vars_group = [mul_vars[i:i + num_weights]
-                                          for i in range(0, len(mul_vars), num_weights)]
-                        reshape_mul_vars = []
-                        for vs in zip(*mul_vars_group):
-                            for v in vs:
-                                reshape_mul_vars.append(v)
-
-                        addtree = strm.substream(self.substreams[
-                            num_weights *
-                            self.par_row * self.par_col * self.par_och * self.par_ich +
-                            pos_row * self.par_col * self.par_och +
-                            pos_col * self.par_och + oc])
-                        for i, mul_var in enumerate(reshape_mul_vars):
-                            addtree.to_source('var%d' % i, mul_var)
-
-                        sum_var = addtree.from_sink('sum')
+                        sum_var = prev_madd_var
 
                         acc = strm.substream(self.substreams[
                             num_weights *
                             self.par_row * self.par_col * self.par_och * self.par_ich +
-                            self.par_row * self.par_col * self.par_och +
                             pos_row * self.par_col * self.par_och +
                             pos_col * self.par_och + oc])
                         acc.to_source('x', sum_var)
@@ -1236,7 +1216,7 @@ class conv2d(bt._Operator):
                         mul = strm.substream(self.substreams[
                             num_weights *
                             self.par_row * self.par_col * self.par_och * self.par_ich +
-                            self.par_row * self.par_col * self.par_och * 2 +
+                            self.par_row * self.par_col * self.par_och +
                             pos_row * self.par_col * self.par_och +
                             pos_col * self.par_och + oc])
                         mul.to_source('x', out_var)
