@@ -862,15 +862,23 @@ class _Operator(_Numeric):
         addrwidth = int(math.ceil(math.log(length, 2)))
         self.control_param_index_reg = self.m.Reg(self._name('control_param_index'),
                                                   addrwidth, initval=0)
+        val_len = 0
+        for name in self.collect_all_control_param_names():
+            dst = getattr(self, name)
+            if isinstance(dst, (tuple, list)):
+                for i, d in enumerate(dst):
+                    val_len = max(val_len, d.width)
+            else:
+                val_len = max(val_len, dst.width)
 
         pattern_dict = defaultdict(list)
         for i, values in enumerate(control_param_list):
             for name, value in values.items():
                 if isinstance(value, (tuple, list)):
-                    lst = [(self.control_param_index_reg == i, v) for v in value]
+                    lst = [(self.control_param_index_reg == i, vg.Int(v, width=val_len, base=16)) for v in value]
                     pattern_dict[name].append(lst)
                 else:
-                    pattern_dict[name].append((self.control_param_index_reg == i, value))
+                    pattern_dict[name].append((self.control_param_index_reg == i, vg.Int(value, width=val_len, base=16)))
 
         for name in self.collect_all_control_param_names():
             dst = getattr(self, name)
