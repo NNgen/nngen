@@ -28,12 +28,11 @@ def matmul(a, b,
     if transposed_a:
         a = a.transpose()
 
-    if not transposed_b:
-        b = b.transpose()
+    #if not transposed_b:
+    #    b = b.transpose()
 
     if a.shape[1] != b.shape[1]:
-        raise ValueError("shape mismatch: %s != %s" %
-                         str(a.shape), str(b.shape))
+        raise ValueError("shape mismatch: %s != %s" %(str(a.shape), str(b.shape)))
 
     c_shape = (a.shape[0], b.shape[0])
 
