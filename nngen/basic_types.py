@@ -866,7 +866,7 @@ class _Operator(_Numeric):
         for name in self.collect_all_control_param_names():
             dst = getattr(self, name)
             if isinstance(dst, (tuple, list)):
-                for i, d in enumerate(dst):
+                for d in dst:
                     val_len = max(val_len, d.width)
             else:
                 val_len = max(val_len, dst.width)
