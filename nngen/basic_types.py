@@ -1508,6 +1508,8 @@ class _StreamingOperator(_Operator):
 
         fsm.goto_next()
 
+        dma_wait_write(self.maxi, fsm)
+
         self.stream.run(fsm)
 
         state_comp_end = fsm.current

@@ -120,6 +120,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
 
     memory = axi.AxiMultiportMemoryModel(m, 'memory', clk, rst, numports=2,
                                          datawidth=axi_datawidth,
+                                         write_delay=100,
                                          memimg=mem, memimg_name=memimg_name,
                                          memimg_datawidth=memimg_datawidth)
 
