@@ -1508,7 +1508,8 @@ class _StreamingOperator(_Operator):
 
         fsm.goto_next()
 
-        dma_wait_write(self.maxi, fsm)
+        # waiting for previous DMA write completion
+        dma_wait_write_idle(self.maxi, fsm)
 
         self.stream.run(fsm)
 
@@ -2100,6 +2101,8 @@ class _ReductionOperator(_StreamingOperator):
             self.stream.set_constant(fsm, name, carry_var)
 
         fsm.goto_next()
+
+        dma_wait_write_idle(self.maxi, fsm)
 
         self.stream.run(fsm)
 
@@ -3022,6 +3025,10 @@ def dma_wait_read(maxi, fsm):
 
 def dma_wait_write(maxi, fsm):
     return maxi.dma_wait_write(fsm)
+
+
+def dma_wait_write_idle(maxi, fsm):
+    return maxi.dma_wait_write_idle(fsm)
 
 
 def dma_wait(maxi, fsm):

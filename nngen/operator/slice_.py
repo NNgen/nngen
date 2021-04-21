@@ -382,6 +382,9 @@ class slice_(bt._Operator):
 
         fsm.If(comp_fsm.state == comp_state_init).goto_next()
 
+        # waiting for previous DMA write completion
+        bt.dma_wait_write_idle(self.maxi, comp_fsm)
+
         # local address
         comp_fsm(
             stream_act_local(self.stream_local),

@@ -267,6 +267,9 @@ class upsampling2d(bt._ElementwiseOperator):
 
         fsm.goto_next()
 
+        # waiting for previous DMA write completion
+        dma_wait_write_idle(self.maxi, fsm)
+
         self.stream.run(fsm)
 
         state_comp_end = fsm.current

@@ -7,11 +7,6 @@ import functools
 import math
 import numpy as np
 
-if sys.version_info.major < 3:
-    from itertools import izip_longest as zip_longest
-else:
-    from itertools import zip_longest
-
 # the next line can be removed after installation
 sys.path.insert(0, os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
@@ -23,29 +18,32 @@ import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 
 
-def run(a_shape=(15, 15), b_shape=(15, 15),
-        a_dtype=ng.int32, b_dtype=ng.int32, c_dtype=ng.int32,
-        par=1, axi_datawidth=32, silent=False,
+def run(act_shape=(1, 7, 7, 15),
+        act_dtype=ng.int32, out_dtype=ng.int32,
+        ksize=(1, 2, 2, 1), stride=(1, 2, 2, 1),
+        par=1, value_ram_size=None, out_ram_size=None,
+        axi_datawidth=32, silent=False,
         filename=None, simtype='iverilog', outputfile=None):
 
     # create target hardware
-    a = ng.placeholder(a_dtype, shape=a_shape, name='a')
-    b = ng.placeholder(b_dtype, shape=b_shape, name='b')
-    c = ng.add(a, b, dtype=c_dtype, par=par, name='c')
+    act = ng.placeholder(act_dtype, shape=act_shape, name='act')
+    out = ng.avg_pool(act, ksize=ksize,
+                      strides=stride,
+                      sum_dtype=ng.int32, dtype=out_dtype, par=par,
+                      value_ram_size=value_ram_size, out_ram_size=out_ram_size)
 
-    targ = ng.to_veriloggen([c], 'matrix_add', silent=silent,
+    targ = ng.to_veriloggen([out], 'matrix_avg_pool', silent=silent,
                             config={'maxi_datawidth': axi_datawidth})
 
     # verification data
-    va = np.arange(a.length, dtype=np.int64).reshape(a.shape) % [5]
-    vb = (np.arange(b.length, dtype=np.int64).reshape(b.shape) + [100]) % [6]
+    vact = np.arange(act.length, dtype=np.int64).reshape(act.shape) % [100] - [40]
 
-    eval_outs = ng.eval([c], a=va, b=vb)
-    vc = eval_outs[0]
+    eval_outs = ng.eval([out], act=vact)
+    vout = eval_outs[0]
 
     # to memory image
-    size_max = int(math.ceil(max(a.memory_size, b.memory_size, c.memory_size) / 4096)) * 4096
-    check_addr = max(a.addr, b.addr, c.addr) + size_max
+    size_max = int(math.ceil(max(act.memory_size, out.memory_size) / 4096)) * 4096
+    check_addr = max(act.addr, out.addr) + size_max
     size_check = size_max
     tmp_addr = check_addr + size_check
 
@@ -53,15 +51,12 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
     mem = np.zeros([1024 * 1024 * 8 // (memimg_datawidth // 8)], dtype=np.int64)
     mem = mem + [100]
 
-    axi.set_memory(mem, va, memimg_datawidth,
-                   a_dtype.width, a.addr,
-                   max(int(math.ceil(axi_datawidth / a_dtype.width)), par))
-    axi.set_memory(mem, vb, memimg_datawidth,
-                   b_dtype.width, b.addr,
-                   max(int(math.ceil(axi_datawidth / b_dtype.width)), par))
-    axi.set_memory(mem, vc, memimg_datawidth,
-                   c_dtype.width, check_addr,
-                   max(int(math.ceil(axi_datawidth / c_dtype.width)), par))
+    axi.set_memory(mem, vact, memimg_datawidth,
+                   act_dtype.width, act.addr,
+                   max(int(math.ceil(axi_datawidth / act_dtype.width)), par))
+    axi.set_memory(mem, vout, memimg_datawidth,
+                   out_dtype.width, check_addr,
+                   max(int(math.ceil(axi_datawidth / out_dtype.width)), par))
 
     # test controller
     m = Module('test')
@@ -80,7 +75,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
 
     memory = axi.AxiMultiportMemoryModel(m, 'memory', clk, rst, numports=2,
                                          datawidth=axi_datawidth,
-                                         write_delay=100,
+                                         write_delay=400,
                                          memimg=mem, memimg_name=memimg_name,
                                          memimg_datawidth=memimg_datawidth)
 
@@ -98,8 +93,6 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
     seq(
         time_counter.inc()
     )
-
-    num_rep = functools.reduce(lambda x, y: x * y, c.shape[:-1], 1)
 
     def ctrl():
         for i in range(100):
@@ -120,18 +113,26 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
 
         # verify
         ok = True
-        for i in range(num_rep):
-            for j in range(c.shape[-1]):
-                orig = memory.read_word(i * c.aligned_shape[-1] + j,
-                                        c.addr, c_dtype.width)
-                check = memory.read_word(i * c.aligned_shape[-1] + j,
-                                         check_addr, c_dtype.width)
+        for bat in range(out.shape[0]):
+            for y in range(out.shape[1]):
+                for x in range(out.shape[2]):
+                    for ch in range(out.shape[3]):
+                        orig = memory.read_word(bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
+                                                y * out.aligned_shape[2] * out.aligned_shape[3] +
+                                                x * out.aligned_shape[3] + ch,
+                                                out.addr, out_dtype.width)
+                        check = memory.read_word(bat * out.aligned_shape[1] * out.aligned_shape[2] * out.aligned_shape[3] +
+                                                 y * out.aligned_shape[2] * out.aligned_shape[3] +
+                                                 x * out.aligned_shape[3] + ch,
+                                                 check_addr, out_dtype.width)
 
-                if vthread.verilog.NotEql(orig, check):
-                    print('NG', i, j, orig, check)
-                    ok = False
-                # else:
-                #    print('OK', i, j, orig, check)
+                        if vthread.verilog.NotEql(orig, check):
+                            print('NG (', bat, y, x, ch,
+                                  ') orig: ', orig, ' check: ', check)
+                            ok = False
+                        # else:
+                        #    print('OK (', bat, y, x, ch,
+                        #          ') orig: ', orig, ' check: ', check)
 
         if ok:
             print('# verify: PASSED')

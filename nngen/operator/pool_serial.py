@@ -531,6 +531,9 @@ class _pool_serial(_pool):
 
         fsm.If(comp_fsm.state == comp_state_init).goto_next()
 
+        # waiting for previous DMA write completion
+        bt.dma_wait_write_idle(self.maxi, comp_fsm)
+
         # local address
         comp_fsm(
             stream_act_local(self.local_pad_offset)
@@ -636,6 +639,9 @@ class _pool_serial(_pool):
         name = list(self.stream.sinks.keys())[0]
         local = stream_out_local + out_page_comp_offset_buf
         self.stream.set_sink(comp_fsm, name, out_ram, local, self.stream_size)
+
+        # waiting for previous DMA write
+        bt.dma_wait_write_idle(self.maxi, fsm) ### ???
 
         # stream run (async)
         self.stream.run(comp_fsm)
