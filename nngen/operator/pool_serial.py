@@ -640,9 +640,6 @@ class _pool_serial(_pool):
         local = stream_out_local + out_page_comp_offset_buf
         self.stream.set_sink(comp_fsm, name, out_ram, local, self.stream_size)
 
-        # waiting for previous DMA write
-        bt.dma_wait_write_idle(self.maxi, fsm) ### ???
-
         # stream run (async)
         self.stream.run(comp_fsm)
 
