@@ -1377,7 +1377,7 @@ class _StreamingOperator(_Operator):
                                            self.maxi.addrwidth, initval=0)
                                 for i, _ in enumerate(self.arg_objaddrs)]
 
-        arg_page_size = min(ram.length for ram in self.input_rams) // 2
+        arg_page_sizes = [ram.length // 2 for ram in self.input_rams]
         out_page_size = self.output_rams[0].length // 2
 
         skip_read = self.m.Reg(self._name('skip_read'), initval=0)
@@ -1564,12 +1564,15 @@ class _StreamingOperator(_Operator):
             arg_repeat_sizes.append(self.arg_repeat_sizes[i: i + max_rank])
 
         for (arg_offsets, arg_incs,
-             arg_page, arg_page_comp_offset, arg_page_dma_offset,
+             arg_page, arg_page_comp_offset,
+             arg_page_dma_offset,
+             arg_page_size,
              arg_stride_zero, arg_omit_dma,
              trip_counts, trip_sizes,
              repeat_counts, repeat_sizes, arg) in zip(arg_gaddr_offsets, arg_addr_incs,
                                                       arg_pages, arg_page_comp_offsets,
                                                       arg_page_dma_offsets,
+                                                      arg_page_sizes,
                                                       self.arg_stride_zeros, self.arg_omit_dmas,
                                                       arg_trip_counts, arg_trip_sizes,
                                                       arg_repeat_counts, arg_repeat_sizes,
@@ -1921,7 +1924,7 @@ class _ReductionOperator(_StreamingOperator):
                                            self.maxi.addrwidth, initval=0)
                                 for i, _ in enumerate(self.arg_objaddrs)]
 
-        arg_page_size = min(ram.length for ram in self.input_rams) // 2
+        arg_page_sizes = [ram.length // 2 for ram in self.input_rams]
         out_page_size = self.output_rams[0].length // 2
 
         skip_read = self.m.Reg(self._name('skip_read'), initval=0)
@@ -2157,12 +2160,15 @@ class _ReductionOperator(_StreamingOperator):
             arg_repeat_sizes.append(self.arg_repeat_sizes[i: i + max_rank])
 
         for (arg_offsets, arg_incs,
-             arg_page, arg_page_comp_offset, arg_page_dma_offset,
+             arg_page, arg_page_comp_offset,
+             arg_page_dma_offset,
+             arg_page_size,
              arg_stride_zero, arg_omit_dma,
              trip_counts, trip_sizes,
              repeat_counts, repeat_sizes, arg) in zip(arg_gaddr_offsets, arg_addr_incs,
                                                       arg_pages, arg_page_comp_offsets,
                                                       arg_page_dma_offsets,
+                                                      arg_page_sizes,
                                                       self.arg_stride_zeros, self.arg_omit_dmas,
                                                       arg_trip_counts, arg_trip_sizes,
                                                       arg_repeat_counts, arg_repeat_sizes,
@@ -2351,6 +2357,7 @@ class _Reshape(_Operator):
                 all_mul *= s
 
         if use_minus_one:
+            shape = list(shape)
             shape[minus_one_index] = length // all_mul
 
         shape = tuple(shape)

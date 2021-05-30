@@ -190,7 +190,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
     init = simulation.setup_reset(m, resetn, m.make_reset(), period=100, polarity='low')
 
     init.add(
-        Delay(1000000),
+        Delay(2000000),
         Systask('finish'),
     )
 
