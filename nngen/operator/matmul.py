@@ -178,7 +178,7 @@ class matmul(conv2d.conv2d):
                  concur_out_col=None, stationary='right',
                  left_ram_size=None, right_ram_size=None,
                  bias_ram_size=None, scale_ram_size=None,
-                 vshamt_mul_ram_size=None, vshamt_sum_ram_size=None, vshamt_out_ram_size=None,
+                 vshamt_sum_ram_size=None, vshamt_out_ram_size=None,
                  out_ram_size=None,
                  disable_keep_left=False):
 
