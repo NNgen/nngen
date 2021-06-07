@@ -2114,6 +2114,9 @@ class conv2d(bt._Operator):
 
         fsm.If(comp_fsm.state == comp_state_init).goto_next()
 
+        # waiting for previous DMA write completion
+        bt.dma_wait_write_idle(self.maxi, comp_fsm)
+
         # py_offset
         py_offset = input_row_count
         self.stream.set_parameter(comp_fsm, 'py_offset', py_offset)

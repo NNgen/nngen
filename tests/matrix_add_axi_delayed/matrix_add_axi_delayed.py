@@ -78,53 +78,15 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
 
     memimg_name = 'memimg_' + outputfile
 
-    #memory = axi.AxiMemoryModel(m, 'memory', clk, rst,
-    #                            datawidth=axi_datawidth,
-    #                            memimg=mem, memimg_name=memimg_name,
-    #                            memimg_datawidth=memimg_datawidth)
-    #memory.connect(ports, 'maxi')
-
-    # split read/write ports into dedicated AXI interfaces
-    w_ports = {}
-    for name, port in ports.items():
-        w_name = 'w_' + port.name
-        if (name.startswith('maxi_aw') or
-            name.startswith('maxi_w') or name.startswith('maxi_b')):
-            if isinstance(port, Reg):
-                w_port = m.RegLike(port, name=w_name)
-                port.connect(w_port)
-            else:
-                w_port = m.WireLike(port, name=w_name)
-                w_port.connect(port)
-        else:
-            w_port = m.WireLike(port, name=w_name)
-            if isinstance(port, Wire):
-                w_port.assign(0)
-        w_ports[w_name] = w_port
-
-    r_ports = {}
-    for name, port in ports.items():
-        r_name = 'r_' + port.name
-        if name.startswith('maxi_ar') or name.startswith('maxi_r'):
-            if isinstance(port, Reg):
-                r_port = m.RegLike(port, name=r_name)
-                port.connect(r_port)
-            else:
-                r_port = m.WireLike(port, name=r_name)
-                r_port.connect(port)
-        else:
-            r_port = m.WireLike(port, name=r_name)
-            if isinstance(port, Wire):
-                r_port.assign(0)
-        r_ports[r_name] = r_port
-
     memory = axi.AxiMultiportMemoryModel(m, 'memory', clk, rst, numports=2,
                                          datawidth=axi_datawidth,
+                                         write_delay=100,
                                          memimg=mem, memimg_name=memimg_name,
                                          memimg_datawidth=memimg_datawidth)
 
-    memory.connect(0, w_ports, 'w_maxi')
-    memory.connect(1, r_ports, 'r_maxi')
+    r_ports, w_ports = axi.split_read_write(m, ports, 'maxi')
+    memory.connect(0, r_ports, 'r_maxi')
+    memory.connect(1, w_ports, 'w_maxi')
 
     # AXI-Slave controller
     _saxi = vthread.AXIMLite(m, '_saxi', clk, rst, noio=True)
@@ -190,7 +152,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
     init = simulation.setup_reset(m, resetn, m.make_reset(), period=100, polarity='low')
 
     init.add(
-        Delay(2000000),
+        Delay(1000000),
         Systask('finish'),
     )
 
