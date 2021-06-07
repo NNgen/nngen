@@ -3,6 +3,7 @@ from __future__ import print_function
 from __future__ import division
 
 import math
+import itertools
 from collections import OrderedDict
 
 import veriloggen as vg
@@ -104,8 +105,8 @@ class conv2d(bt._Operator):
 
     stationary : optional
         Designate data flow to MAC. \
-        In 'weight' mode, the weight data supplied to the MAC is fixed, \
-        while in 'act' mode, the input data is fixed.
+        In 'filter' mode, the weight data supplied to the MAC is fixed, \
+        while in 'input' mode, the input data is fixed.
 
     input_ram_size : optional
         Specify the word length of the input data RAM. \
@@ -255,7 +256,7 @@ class conv2d(bt._Operator):
                  concur_och=None, stationary='filter',
                  input_ram_size=None, filter_ram_size=None,
                  bias_ram_size=None, scale_ram_size=None,
-                 vshamt_mul_ram_size=None, vshamt_sum_ram_size=None, vshamt_out_ram_size=None,
+                 vshamt_sum_ram_size=None, vshamt_out_ram_size=None,
                  out_ram_size=None,
                  disable_keep_input=False,
 
@@ -653,15 +654,14 @@ class conv2d(bt._Operator):
         arg_vshamt_out = (self.args[self.args_dict['vshamt_out']]
                           if 'vshamt_out' in self.args_dict else None)
 
-        act = arg_input
-        act_shape = to_aligned_shape(act, self.input_shape)
-        act_num_ch = act_shape[-1]
-        act_num_col = act_shape[-2]
-        act_num_row = act_shape[-3]
-        act_num_bat = act_shape[-4]
+        input_shape = to_aligned_shape(arg_input, self.input_shape)
+        input_num_ch = input_shape[-1]
+        input_num_col = input_shape[-2]
+        input_num_row = input_shape[-3]
+        input_num_bat = input_shape[-4]
 
-        filter = arg_filter
-        filter_shape = to_aligned_shape(filter, self.filter_shape)
+        filter_shape = to_aligned_shape(arg_filter, self.filter_shape)
+        filter_num_ich = filter_shape[-1]
         filter_num_col = filter_shape[-2]
         filter_num_row = filter_shape[-3]
         filter_num_och = filter_shape[-4]
@@ -674,98 +674,138 @@ class conv2d(bt._Operator):
 
         stride_col = self.strides[-2]  # width
         stride_row = self.strides[-3]  # height
-        src_num_col = filter_num_col + stride_col * (self.par_col - 1)
-        src_num_row = filter_num_row + stride_row * (self.par_row - 1)
 
         req_concur_och = self.get_req_concur_och()
 
-        # in set_thread_args, keep_input is determined precisely
+        # input
+        aligned_input_num_ch = bt.align_word(input_num_ch,
+                                             arg_input.get_word_alignment())
+
+        # 'keep_input' is calculated again in set_thread_args().
         keep_input = (not self.disable_keep_input and
                       self.stationary == 'filter' and
-                      act_num_row <= filter_num_row and
-                      act_num_bat == 1)
-        input_double = 2 if not keep_input else 1
+                      input_num_row <= filter_num_row and
+                      input_num_bat == 1)
+
+        num_input_ch_word = int(math.ceil(aligned_input_num_ch / self.par_ich))
+
+        if keep_input:
+            input_min_size = num_input_ch_word * input_num_col * filter_num_row
+        else:
+            input_min_size = num_input_ch_word * input_num_col * (filter_num_row + stride_row)
+
+        if self.input_ram_size is not None:
+            if self.input_ram_size < input_min_size:
+                raise ValueError('Too small input_ram_size: %d < %d' %
+                                 (self.input_ram_size, input_min_size))
+            input_min_size = self.input_ram_size
+
+        input_width = arg_input.get_ram_width() * self.par_ich
+
+        # filter
+        aligned_filter_num_ich = bt.align_word(input_num_ch,
+                                               arg_filter.get_word_alignment())
 
         keep_filter = out_num_ch <= req_concur_och
-        filter_double = 2 if not keep_filter else 1
 
-        aligned_act_num_ch = bt.align_word(act_num_ch,
-                                           act.get_word_alignment())
-        input_min_size = (int(math.ceil(aligned_act_num_ch / self.par_ich)) *
-                          int(math.ceil(act_num_col / src_num_col)) * input_double)
-        if self.input_ram_size is not None and input_min_size < self.input_ram_size:
-            input_min_size = self.input_ram_size
-        input_width = act.get_ram_width() * self.par_ich
+        num_filter_ch_word = int(math.ceil(aligned_filter_num_ich / self.par_ich))
 
-        aligned_filter_num_ich = bt.align_word(act_num_ch,
-                                               filter.get_word_alignment())
+        num_filter_block = (req_concur_och // self.par_och
+                            if self.par_och is not None else req_concur_och)
 
-        num_filter_blocks = (req_concur_och // self.par_och
-                             if self.par_och is not None else req_concur_och)
+        if keep_filter:
+            filter_min_size = (num_filter_ch_word * filter_num_col * filter_num_row *
+                               num_filter_block)
+        else:
+            filter_min_size = (num_filter_ch_word * filter_num_col * filter_num_row *
+                               num_filter_block * 2)
 
-        filter_min_size = (int(math.ceil(aligned_filter_num_ich / self.par_ich)) *
-                           num_filter_blocks * filter_double)
-        if self.filter_ram_size is not None and filter_min_size < self.filter_ram_size:
+        if self.filter_ram_size is not None:
+            if self.filter_ram_size < filter_min_size:
+                raise ValueError('Too small filter_ram_size: %d < %d' %
+                                 (self.filter_ram_size, filter_min_size))
             filter_min_size = self.filter_ram_size
-        filter_width = filter.get_ram_width() * self.par_ich
 
+        filter_width = arg_filter.get_ram_width() * self.par_ich
+
+        # bias
         if arg_bias is not None:
             bias_min_size = arg_bias.get_aligned_shape()[-1]
-            if self.bias_ram_size is not None and bias_min_size < self.bias_ram_size:
+            if self.bias_ram_size is not None:
+                if self.bias_ram_size < bias_min_size:
+                    raise ValueError('Too small bias_ram_size: %d < %d' %
+                                     (self.bias_ram_size, bias_min_size))
                 bias_min_size = self.bias_ram_size
+
             bias_width = arg_bias.get_ram_width() * self.par_och
         else:
             bias_min_size = None
             bias_width = None
 
+        # scale
         if arg_scale is not None:
             scale_min_size = arg_scale.get_aligned_shape()[-1]
-            if self.scale_ram_size is not None and scale_min_size < self.scale_ram_size:
+            if self.scale_ram_size is not None:
+                if self.scale_ram_size < scale_min_size:
+                    raise ValueError('Too small scale_ram_size: %d < %d' %
+                                     (self.scale_ram_size, scale_min_size))
                 scale_min_size = self.scale_ram_size
+
             scale_width = arg_scale.get_ram_width() * self.par_och
         else:
             scale_min_size = None
             scale_width = None
 
+        # vshamt_sum
         if arg_vshamt_sum is not None:
             vshamt_sum_min_size = arg_vshamt_sum.get_aligned_shape()[-1]
-            if self.vshamt_sum_ram_size is not None and vshamt_sum_min_size < self.vshamt_sum_ram_size:
+            if self.vshamt_sum_ram_size is not None:
+                if self.vshamt_sum_ram_size < vshamt_sum_min_size:
+                    raise ValueError('Too small vshamt_sum_ram_size: %d < %d' %
+                                     (self.vshamt_sum_ram_size, vshamt_sum_min_size))
                 vshamt_sum_min_size = self.vshamt_sum_ram_size
+
             vshamt_sum_width = arg_vshamt_sum.get_ram_width() * self.par_och
         else:
             vshamt_sum_min_size = None
             vshamt_sum_width = None
 
+        # vshamt_out
         if arg_vshamt_out is not None:
             vshamt_out_min_size = arg_vshamt_out.get_aligned_shape()[-1]
-            if self.vshamt_out_ram_size is not None and vshamt_out_min_size < self.vshamt_out_ram_size:
+            if self.vshamt_out_ram_size is not None:
+                if self.vshamt_out_ram_size < vshamt_out_min_size:
+                    raise ValueError('Too small vshamt_out_ram_size: %d < %d' %
+                                     (self.vshamt_out_ram_size, vshamt_out_min_size))
                 vshamt_out_min_size = self.vshamt_out_ram_size
+
             vshamt_out_width = arg_vshamt_out.get_ram_width() * self.par_och
         else:
             vshamt_out_min_size = None
             vshamt_out_width = None
 
+        # out
         if self.stationary == 'filter':
-            output_min_size = num_filter_blocks * out_num_col * 2
+            output_min_size = num_filter_block * out_num_col * 2
         else:
             och_max = max(out_num_ch, req_concur_och)
             output_min_size = (int(math.ceil(och_max / self.par_och)) *
                                out_num_col * 2)
-        if self.out_ram_size is not None and output_min_size < self.out_ram_size:
+
+        if self.out_ram_size is not None:
+            if self.out_ram_size < output_min_size:
+                raise ValueError('Too small out_ram_size: %d < %d' %
+                                     (self.out_ram_size, out_min_size))
             output_min_size = self.out_ram_size
+
         output_width = self.get_ram_width() * self.par_och
 
-        stride_col = self.strides[-2]  # width
-        stride_row = self.strides[-3]  # height
-
         inputs = []
-        # act
-        inputs.extend([(input_width, input_min_size)] *
-                      src_num_col * src_num_row)
+        # input
+        inputs.extend([(input_width, input_min_size)] * self.par_col * self.par_row)
 
         # weight
-        inputs.extend([(filter_width, filter_min_size)] *
-                      filter_num_col * filter_num_row * self.par_och)
+        inputs.extend([(filter_width, filter_min_size)] * self.par_och)
 
         # bias
         if bias_min_size is not None:
@@ -792,6 +832,65 @@ class conv2d(bt._Operator):
 
         return inputs, outputs, temps
 
+    def get_input_rams(self):
+        return self.input_rams[:self.par_col * self.par_row]
+
+    def get_filter_rams(self):
+        return self.input_rams[self.par_col * self.par_row:
+                               self.par_col * self.par_row + self.par_och]
+
+    def get_bias_ram(self):
+        if 'bias' not in self.args_dict:
+            return None
+        return self.input_rams[self.par_col * self.par_row + self.par_och +
+                               self.args_dict['bias'] - 2]
+
+    def get_scale_ram(self):
+        if 'scale' not in self.args_dict:
+            return None
+        return self.input_rams[self.par_col * self.par_row + self.par_och +
+                               self.args_dict['scale'] - 2]
+
+    def get_vshamt_sum_ram(self):
+        if 'vshamt_sum' not in self.args_dict:
+            return None
+        return self.input_rams[self.par_col * self.par_row + self.par_och +
+                               self.args_dict['vshamt_sum'] - 2]
+
+    def get_vshamt_out_ram(self):
+        if 'vshamt_out' not in self.args_dict:
+            return None
+        return self.input_rams[self.par_col * self.par_row + self.par_och +
+                               self.args_dict['vshamt_out'] - 2]
+
+    def get_output_rams(self):
+        return self.output_rams
+
+    def packing_dsp(self):
+        arg_input = self.args[0]
+        arg_filter = self.args[1]
+
+        input_width = arg_input.get_op_width()
+        input_point = arg_input.get_op_point()
+
+        filter_width = arg_filter.get_op_width()
+        filter_point = arg_filter.get_op_point()
+
+        if self.mul_dtype is not None:
+            mul_width = self.mul_dtype.width
+        else:
+            mul_width = input_width + filter_width
+
+        if self.mul_dtype is not None:
+            mul_point = self.mul_dtype.point
+        else:
+            mul_point = self.get_op_point()
+
+        return (self.par_och > 1 and
+                input_width <= 8 and input_point == 0 and
+                filter_width <= 8 and filter_point == 0 and
+                mul_width == input_width + filter_width and mul_point == 0)
+
     def get_min_concur_och(self):
         if self.maxi.datawidth < self.get_ram_width():
             min_concur_och = 1
@@ -814,116 +913,117 @@ class conv2d(bt._Operator):
         return req_concur_och
 
     def get_required_substreams(self):
-        arg_scale = (self.args[self.args_dict['scale']]
-                     if 'scale' in self.args_dict else None)
+#        arg_input = self.args[0]
+#        arg_filter = self.args[1]
+#        arg_bias = (self.args[self.args_dict['bias']]
+#                    if 'bias' in self.args_dict else None)
+#        arg_scale = (self.args[self.args_dict['scale']]
+#                     if 'scale' in self.args_dict else None)
+#
+#        input_width = arg_input.get_op_width()
+#        input_point = arg_input.get_op_point()
+#        input_signed = arg_input.get_signed()
+#
+#        filter_width = arg_filter.get_op_width()
+#        filter_point = arg_filter.get_op_point()
+#        filter_signed = arg_filter.get_signed()
+#
+#        if self.mul_dtype is not None:
+#            mul_width = self.mul_dtype.width
+#        else:
+#            mul_width = input_width + filter_width
+#
+#        if self.mul_dtype is not None:
+#            mul_point = self.mul_dtype.point
+#        else:
+#            mul_point = self.get_op_point()
+#
+#        if self.mul_dtype is not None:
+#            mul_signed = self.mul_dtype.signed
+#        else:
+#            mul_signed = self.get_signed()
+#
+#        if self.sum_dtype is not None:
+#            sum_width = self.sum_dtype.width
+#        else:
+#            sum_width = max(arg_bias.get_op_width(), mul_width)
+#
+#        if self.sum_dtype is not None:
+#            sum_point = self.sum_dtype.point
+#        else:
+#            sum_point = mul_point
+#
+#        if self.sum_dtype is not None:
+#            sum_signed = self.sum_dtype.signed
+#        else:
+#            sum_signed = mul_signed
+#
+#        if arg_scale is not None:
+#            scale_width = arg_scale.get_op_width()
+#        else:
+#            scale_width = self.get_op_width()
+#
+#        if arg_scale is not None:
+#            scale_point = arg_scale.get_op_point()
+#        else:
+#            scale_point = self.get_op_point()
+#
+#        if arg_scale is not None:
+#            scale_signed = arg_scale.get_signed()
+#        else:
+#            scale_signed = self.get_signed()
+#
+#        scl_width = sum_width + scale_width
+#        scl_point = max(sum_point, scale_point)
+#        scl_signed = sum_signed and scale_signed
 
-        x_datawidth = self.args[0].get_op_width()
-        x_point = self.args[0].get_op_point()
-        x_signed = self.args[0].get_signed()
-        y_datawidth = self.args[1].get_op_width()
-        y_point = self.args[1].get_op_point()
-        y_signed = self.args[1].get_signed()
+#        out_width = self.get_op_width()
+#        out_point = self.get_op_point()
+#        out_signed = self.get_signed()
 
-        if self.mul_dtype is not None:
-            mul_width = self.mul_dtype.width
-        else:
-            mul_width = x_datawidth + y_datawidth
+        substrms = []
 
-        if self.mul_dtype is not None:
-            mul_point = self.mul_dtype.point
-        else:
-            mul_point = self.get_op_point()
-
-        if self.mul_dtype is not None:
-            mul_signed = self.mul_dtype.signed
-        else:
-            mul_signed = self.get_signed()
-
-        if self.sum_dtype is not None:
-            sum_width = self.sum_dtype.width
-        else:
-            sum_width = mul_width
-
-        if self.sum_dtype is not None:
-            sum_point = self.sum_dtype.point
-        else:
-            sum_point = mul_point
-
-        if self.sum_dtype is not None:
-            sum_signed = self.sum_dtype.signed
-        else:
-            sum_signed = mul_signed
-
-        if arg_scale is not None:
-            scale_width = arg_scale.get_op_width()
-        else:
-            scale_width = self.get_op_width()
-
-        if arg_scale is not None:
-            scale_point = arg_scale.get_op_point()
-        else:
-            scale_point = self.get_op_point()
-
-        if arg_scale is not None:
-            scale_signed = arg_scale.get_signed()
-        else:
-            scale_signed = self.get_signed()
-
-        scl_width = sum_width + scale_width
-        scl_point = max(sum_point, scale_point)
-        scl_signed = sum_signed and scale_signed
-
-        out_width = self.get_op_width()
-        out_point = self.get_op_point()
-        out_signed = self.get_signed()
-
-        filter_num_col = self.filter_shape[-2]
-        filter_num_row = self.filter_shape[-3]
-        num_weights = filter_num_col * filter_num_row
-
-        args = (x_datawidth, x_point, x_signed,
-                y_datawidth, y_point, y_signed,
-                sum_width, sum_point, sum_signed,
-                sum_width, sum_point, sum_signed)
-
-        maddname = 'madd'
-        substrms = [(maddname, args)] * (num_weights * self.par_ich *
-                                         self.par_och * self.par_col * self.par_row)
-
-        substrms.extend([('acc_rshift_round_frac',
-                          (sum_width, sum_point, sum_signed,
-                           sum_width, sum_point, sum_signed))] *
-                        self.par_och * self.par_col * self.par_row)
-        substrms.extend([('mul_rshift_round_clip',
-                          (sum_width, sum_point, sum_signed,
-                           scale_width, scale_point, scale_signed,
-                           scl_width, scl_point, scl_signed,
-                           out_width, out_point, out_signed,
-                           self.asymmetric_clip))] *
-                        self.par_och * self.par_col * self.par_row)
+#        # packing 2 MACs in 1 DSP
+#        if self.packing_dsp():
+#            madd_name = 'madd'
+#            madd_args = (input_width, 0, input_signed,
+#                         filter_width * 2 + input_width, 0, filter_signed,
+#                         mul_width * 2, 0, mul_signed,
+#                         mul_width * 2, 0, mul_signed)
+#            substrms.extend([(madd_name, madd_args)] *
+#                            self.par_ich * self.par_och // 2 * self.par_col * self.par_row)
+#
+#        else:
+#            madd_name = 'madd'
+#            madd_args = (input_width, input_point, input_signed,
+#                         filter_width, filter_point, filter_signed,
+#                         mul_width, mul_point, mul_signed,
+#                         mul_width, mul_point, mul_signed)
+#            substrms.extend([(madd_name, madd_args)] *
+#                            self.par_ich * self.par_och * self.par_col * self.par_row)
+#
+#        acc_name = 'acc_rshift_round_frac'
+#        acc_args = (sum_width, sum_point, sum_signed,
+#                    sum_width, sum_point, sum_signed)
+#        substrms.extend([(acc_name, acc_args)] *
+#                        self.par_och * self.par_col * self.par_row)
+#
+#        scl_name = 'mul_rshift_round_clip'
+#        scl_args = (sum_width, sum_point, sum_signed,
+#                    scale_width, scale_point, scale_signed,
+#                    scl_width, scl_point, scl_signed,
+#                    out_width, out_point, out_signed,
+#                    self.asymmetric_clip)
+#        substrms.extend([(scl_name, scl_args)] *
+#                        self.par_och * self.par_col * self.par_row)
 
         return substrms
 
     def get_stream_hash(self):
         base = bt._Operator.get_stream_hash(self)
-        filter_num_col = self.filter_shape[-2]
-        filter_num_row = self.filter_shape[-3]
-        stride_col = self.strides[-2]  # width
-        stride_row = self.strides[-3]  # height
-        num_srcs = ((filter_num_col + stride_col * (self.par_col - 1)) *
-                    (filter_num_row + stride_row * (self.par_row - 1)))
-        num_weights = (filter_num_col * filter_num_row *
-                       self.par_ich * self.par_och *
-                       self.par_col * self.par_row)
-        return (base, filter_num_col, filter_num_row,
-                self.asymmetric_clip,
-                self.mul_dtype, self.sum_dtype,
+        return (base, self.mul_dtype, self.sum_dtype,
                 self.par_ich, self.par_och, self.par_col, self.par_row,
-                num_srcs, num_weights)
-
-    def __set_latency(self, strm_list, latency):
-        for x in strm_list:
-            x.latency = latency
+                self.asymmetric_clip)
 
     def get_stream_func(self):
 
@@ -941,319 +1041,340 @@ class conv2d(bt._Operator):
 
             filter_num_col = self.filter_shape[-2]
             filter_num_row = self.filter_shape[-3]
+
             stride_col = self.strides[-2]  # width
             stride_row = self.strides[-3]  # height
-            src_num_col = filter_num_col + stride_col * (self.par_col - 1)
-            src_num_row = filter_num_row + stride_row * (self.par_row - 1)
-            num_srcs = src_num_col * src_num_row
-            num_weights = filter_num_col * filter_num_row
 
-            # constant
-            size = strm.parameter(datawidth=vg.get_width(self.stream_reduce_size),
-                                  signed=False)
-            col_select = strm.parameter(datawidth=bt.log_width(src_num_col),
-                                       signed=False)
-            row_select = strm.parameter(datawidth=bt.log_width(src_num_row),
-                                       signed=False)
-            mask = strm.parameter(datawidth=num_srcs, signed=False)
+            # parameter
+            py_offset = strm.parameter('py_offset', datawidth=bt.log_width(self.input_num_row), signed=False)
 
-            omit_mask = strm.parameter(datawidth=self.par_ich, signed=False)
-            omit_counter = strm.Counter(size=size)
-            omits = [strm.Ands(b, omit_counter == size - 1)
-                     for b in omit_mask]
+            # counters
+            reduce_counter = strm.Counter(size=self.stream_reduce_size)
+
+            kx_cond = reduce_counter == self.stream_reduce_size - 1
+            kx_cond.latency = 0
+            kx_counter = strm.Counter(size=self.filter_num_col, enable=kx_cond)
+
+            ky_cond = kx_counter == self.filter_num_col - 1
+            ky_cond.latency = 0
+            ky_cond = strm.Ands(ky_cond, kx_cond)
+            ky_cond.latency = 0
+            ky_counter = strm.Counter(size=self.filter_num_row, enable=ky_cond)
+
+            px_cond = reduce_counter == self.stream_reduce_size - 1
+            px_cond.latency = 0
+            px_counter = strm.Counter(size=self.px_size, step=self.px_step, enable=px_cond)
+
+            # ich_mask
+            if self.par_ich > 1:
+                ich_mask_var = strm.parameter('ich_mask', datawidth=self.par_ich, signed=False)
+                ich_masks = [strm.Ands(b, reduce_counter == self.stream_reduce_size - 1)
+                             for b in ich_mask_var]
+                util.set_latency(ich_masks, 0)
+
+            # px_mask and ky_mask for padding
+            px_masks = []
+            px_pos = px_counter
+            for col in range(self.par_col):
+                px_mask_left = px_pos < self.pad_col_left
+                px_mask_left.latency = 0
+                px_mask_right = px_pos >= self.pad_col_right
+                px_mask_right.latency = 0
+                px_mask = strm.Ors(px_mask_left, px_mask_right)
+                px_mask.latency = 0
+                px_masks.append(px_mask)
+                px_pos = px_pos + self.stride_col
+                px_pos.latency = 0
+
+            ky_masks = []
+            ky_pos = py_offset + ky_counter
+            for row in range(self.par_row):
+                ky_mask_top = ky_pos < self.pad_row_top
+                ky_mask_top.latency = 0
+                ky_mask_bottom = ky_pos >= self.pad_row_bottom
+                ky_mask_bottom.latency = 0
+                ky_mask = strm.Ors(ky_mask_top, ky_mask_bottom)
+                ky_mask.latency = 0
+                ky_masks.append(ky_mask)
+                ky_pos = ky_counter + self.stride_row
+                ky_pos.latency = 0
 
             # bias
-            datawidth = (arg_bias.get_op_width()
-                         if arg_bias is not None else self.get_op_width())
-            vec_datawidth = datawidth * self.par_och
-            point = (arg_bias.get_op_point()
-                     if arg_bias is not None else self.get_op_point())
-            signed = (arg_bias.get_signed()
-                      if arg_bias is not None else self.get_signed())
-            dup_bias = strm.parameter(datawidth=1, signed=False)
-            vec_bias = strm.source(datawidth=vec_datawidth, signed=False)
+            bias_width = (arg_bias.get_op_width()
+                          if arg_bias is not None else self.get_op_width())
+            bias_point = (arg_bias.get_op_point()
+                          if arg_bias is not None else self.get_op_point())
+            bias_signed = (arg_bias.get_signed()
+                           if arg_bias is not None else self.get_signed())
+            vec_bias_width = bias_width * self.par_och
 
-            split_bias = strm.Split(vec_bias, datawidth, point, signed, reverse=True)
-            bias_list = [strm.Mux(dup_bias, split_bias[0], value) for value in split_bias]
-            self.__set_latency(bias_list, 0)
+            vec_bias = strm.source('vec_bias', datawidth=vec_bias_width, signed=False)
 
+            split_bias_list = strm.Split(vec_bias,
+                                         bias_width, bias_point, bias_signed, reverse=True)
+            bias_list = [strm.Mux(self.dup_bias, split_bias[0], value) for value in split_bias_list]
+            util.set_latency(bias_list, 0)
 
             # scale
-            datawidth = (arg_scale.get_op_width()
-                         if arg_scale is not None else self.get_op_width())
-            vec_datawidth = datawidth * self.par_och
-            point = (arg_scale.get_op_point()
-                     if arg_scale is not None else self.get_op_point())
-            signed = (arg_scale.get_signed()
-                      if arg_scale is not None else self.get_signed())
-            dup_scale = strm.parameter(datawidth=1, signed=False)
-            vec_scale = strm.source(datawidth=vec_datawidth, signed=False)
+            scale_width = (arg_scale.get_op_width()
+                           if arg_scale is not None else self.get_op_width())
+            scale_point = (arg_scale.get_op_point()
+                           if arg_scale is not None else self.get_op_point())
+            scale_signed = (arg_scale.get_signed()
+                            if arg_scale is not None else self.get_signed())
+            vec_scale_width = scale_width * self.par_och
 
-            split_scale = strm.Split(vec_scale, datawidth, point, signed, reverse=True)
-            scale_list = [strm.Mux(dup_scale, split_scale[0], value) for value in split_scale]
-            self.__set_latency(scale_list, 0)
+            vec_scale = strm.source('vec_scale', datawidth=vec_scale_width, signed=False)
+
+            split_scale_list = strm.Split(vec_scale,
+                                          scale_width, scale_point, scale_signed, reverse=True)
+            scale_list = [strm.Mux(self.dup_scale, split_scale[0], value) for value in split_scale_list]
+            util.set_latency(scale_list, 0)
 
             # vshamt_sum
-            datawidth = (arg_vshamt_sum.get_op_width()
+            vshamt_sum_width = (arg_vshamt_sum.get_op_width()
                          if arg_vshamt_sum is not None else self.get_op_width())
-            vec_datawidth = datawidth * self.par_och
-            point = 0
-            signed = False
-            dup_vshamt_sum = strm.parameter(datawidth=1, signed=False)
-            vec_vshamt_sum = strm.source(datawidth=vec_datawidth, signed=False)
+            vshamt_sum_point = 0
+            vshamt_sum_signed = False
+            vec_vshamt_sum_width = vshamt_sum_width * self.par_och
 
-            split_vshamt_sum = strm.Split(vec_vshamt_sum, datawidth, point, signed, reverse=True)
-            vshamt_sum_list = [strm.Mux(dup_vshamt_sum, split_vshamt_sum[0], value)
+            vec_vshamt_sum = strm.source('vec_vshamt_sum', datawidth=vec_vshamt_sum_width, signed=False)
+
+            split_vshamt_sum_list = strm.Split(vec_vshamt_sum,
+                                               vshamt_sum_width, vshamt_sum_point, vshamt_sum_signed, reverse=True)
+            vshamt_sum_list = [strm.Mux(self.dup_vshamt_sum, split_vshamt_sum[0], value)
                                for value in split_vshamt_sum]
-            self.__set_latency(vshamt_sum_list, 0)
+            util.set_latency(vshamt_sum_list, 0)
 
             # vshamt_out
-            datawidth = (arg_vshamt_out.get_op_width()
+            vshamt_out_width = (arg_vshamt_out.get_op_width()
                          if arg_vshamt_out is not None else self.get_op_width())
-            vec_datawidth = datawidth * self.par_och
-            point = 0
-            signed = False
-            dup_vshamt_out = strm.parameter(datawidth=1, signed=False)
-            vec_vshamt_out = strm.source(datawidth=vec_datawidth, signed=False)
+            vshamt_out_point = 0
+            vshamt_out_signed = False
+            vec_vshamt_out_width = vshamt_out_width * self.par_och
 
-            split_vshamt_out = strm.Split(vec_vshamt_out, datawidth, point, signed, reverse=True)
-            vshamt_out_list = [strm.Mux(dup_vshamt_out, split_vshamt_out[0], value)
+            vec_vshamt_out = strm.source('vec_vshamt_out', datawidth=vec_vshamt_out_width, signed=False)
+
+            split_vshamt_out_list = strm.Split(vec_vshamt_out,
+                                               vshamt_out_width, vshamt_out_point, vshamt_out_signed, reverse=True)
+            vshamt_out_list = [strm.Mux(self.dup_vshamt_out, split_vshamt_out[0], value)
                                for value in split_vshamt_out]
-            self.__set_latency(vshamt_out_list, 0)
+            util.set_latency(vshamt_out_list, 0)
 
-            # cshamt
-            cshamt_sum = strm.parameter(datawidth=vg.get_width(self.cshamt_sum_value),
-                                       signed=False)
-            cshamt_out = strm.parameter(datawidth=vg.get_width(self.cshamt_out_value),
-                                       signed=False)
+            # vec_input
+            input_width = arg_input.get_op_width()
+            input_point = arg_input.get_op_point()
+            input_signed = arg_input.get_signed()
+            vec_input_width = arg_input.get_op_width() * self.par_ich
 
-            act_func_index_width = max(len(self.shared_attrs['act_func']).bit_length(), 1)
-            act_func_index = strm.parameter(datawidth=act_func_index_width, signed=False)
+            vec_input_vars = [strm.source('vec_input_%d' % i, datawidth=vec_input_width, signed=False)
+                              for i in range(self.par_col * self.par_row)]
 
-            # act
-            act_rams = self.input_rams[:num_srcs]
+            # vec_input -> input [(ich0, ich1, ...), (ich0, ich1, ...), ...]
+            input_vars_list = [strm.Split(vec_input_var,
+                                          input_width, input_point, input_signed, reverse=True)
+                               for vec_input_var in vec_input_vars]
 
-            # vec_act
-            datawidth = arg_input.get_op_width()
-            vec_datawidth = arg_input.get_op_width() * self.par_ich
-            point = arg_input.get_op_point()
-            signed = arg_input.get_signed()
+            # apply masks
+            mask_indexes = itertools.product(ky_masks, px_masks)
 
-            vec_act_vars = []
-            for act_ram in act_rams:
-                vec_act_var = strm.source(datawidth=vec_datawidth, signed=False)
-                vec_act_vars.append(vec_act_var)
+            new_input_vars_list = []
+            for input_vars, mask_index in zip(input_vars_list, mask_indexes):
+                if self.par_ich > 1:
+                    ich_mask = ich_masks[i]
+                    input_vars = [strm.Mux(ich_mask, strm.Int(0), input_var)
+                                for input_var in input_vars]
+                    util.set_latency(input_vars)
 
-            # vec_act MUX (col)
-            vec_act_vars = line_to_2d(vec_act_vars, src_num_col)
+                px_mask = px_masks[mask_index[1]]
+                input_vars = [strm.Mux(px_mask, strm.Int(0), input_var)
+                              for input_var in input_vars]
+                util.set_latency(input_vars)
 
-            mux_vec_act_vars = []
-            for act_line in vec_act_vars:
-                for j in range(src_num_col):
-                    sel = 0
+                ky_mask = ky_masks[mask_index[0]]
+                input_vars = [strm.Mux(ky_mask, strm.Int(0), input_var)
+                              for input_var in input_vars]
+                util.set_latency(input_vars)
 
-                    for i in reversed(range(len(act_line))):
-                        sel = strm.Mux(col_select == i,
-                                       act_line[(i + j) % src_num_col], sel)
-                        sel.latency = 0
+                new_input_vars_list.append(input_vars)
 
-                    mux_vec_act_vars.append(sel)
-
-            # vec_act MUX (row)
-            vec_act_vars = transpose_2d(line_to_2d(mux_vec_act_vars, src_num_col))
-            mux_vec_act_vars = []
-            for act_line in vec_act_vars:
-                for j in range(src_num_row):
-                    sel = 0
-
-                    for i in reversed(range(len(act_line))):
-                        sel = strm.Mux(row_select == i,
-                                       act_line[(i + j) % src_num_row], sel)
-                        sel.latency = 0
-
-                    mux_vec_act_vars.append(sel)
-
-            mux_vec_act_vars = transpose_2d(line_to_2d(mux_vec_act_vars, src_num_row))
-            vec_act_vars = []
-            for l in mux_vec_act_vars:
-                vec_act_vars.extend(l)
-
-            # vec_act -> act
-            act_vars_list = []
-            split_vec_act_vars = [strm.Split(vec_act_var,
-                                             datawidth, point, signed, reverse=True)
-                                  for vec_act_var in vec_act_vars]
-
-            for i in range(self.par_ich):
-                if self.par_ich == 1:
-                    act_vars = [strm.ReinterpretCast(vec_act_var, datawidth, point, signed)
-                                for vec_act_var in vec_act_vars]
-                else:
-                    omit = omits[i]
-                    act_vars = [strm.Mux(omit, strm.Int(0), split_vec_act_var[i])
-                                for split_vec_act_var in split_vec_act_vars]
-                    self.__set_latency(act_vars, 0)
-
-                act_vars_list.append(act_vars)
-
-            # filter
-            filter_rams = self.input_rams[num_srcs:
-                                          num_srcs + num_weights * self.par_och]
+            input_vars_list = new_input_vars_list
 
             # vec_filter
-            datawidth = arg_filter.get_op_width()
-            vec_datawidth = arg_filter.get_op_width() * self.par_ich
-            point = arg_filter.get_op_point()
-            signed = arg_filter.get_signed()
+            filter_width = arg_filter.get_op_width()
+            filter_point = arg_filter.get_op_point()
+            filter_signed = arg_filter.get_signed()
+            vec_filter_width = arg_filter.get_op_width() * self.par_ich
 
-            vec_filter_vars_all = []
-            for filter_ram in filter_rams:
-                vec_filter_var = strm.source(datawidth=vec_datawidth, signed=False)
-                vec_filter_vars_all.append(vec_filter_var)
+            vec_filter_vars = [strm.source('vec_filter_%d' % i, datawidth=vec_filter_width, signed=False)
+                               for i in range(self.par_och)]
 
-            vec_filter_vars_och = [vec_filter_vars_all[i:i + num_weights]
-                                   for i in range(0, len(vec_filter_vars_all), num_weights)]
+            # vec_filter -> filter [(ich0, ich1, ...), (ich0, ich1, ...), ...]
+            filter_vars_list = [strm.Split(vec_filter_var,
+                                           filter_width, filter_point, filter_signed, reverse=True)
+                                for vec_filter_var in vec_filter_vars]
 
-            # vec_filter -> filter
-            filter_vars_list_och = []
-            for vec_filter_vars in vec_filter_vars_och:
 
-                filter_vars_list = []
-                split_vec_filter_vars = [strm.Split(vec_filter_var,
-                                                    datawidth, point, signed, reverse=True)
-                                         for vec_filter_var in vec_filter_vars]
+            if self.mul_dtype is not None:
+                mul_width = self.mul_dtype.width
+            else:
+                mul_width = input_width + filter_width
 
-                for i in range(self.par_ich):
-                    if self.par_ich == 1:
-                        filter_vars = [strm.ReinterpretCast(vec_filter_var,
-                                                            datawidth, point, signed)
-                                       for vec_filter_var in vec_filter_vars]
-                    else:
-                        omit = omits[i]
-                        filter_vars = [strm.Mux(omit, strm.Int(0), split_vec_filter_var[i])
-                                       for split_vec_filter_var in split_vec_filter_vars]
-                        self.__set_latency(filter_vars, 0)
+            if self.mul_dtype is not None:
+                mul_point = self.mul_dtype.point
+            else:
+                mul_point = self.get_op_point()
 
-                    filter_vars_list.append(filter_vars)
+            if self.mul_dtype is not None:
+                mul_signed = self.mul_dtype.signed
+            else:
+                mul_signed = self.get_signed()
 
-                filter_vars_list_och.append(filter_vars_list)
+            if self.sum_dtype is not None:
+                sum_width = self.sum_dtype.width
+            else:
+                sum_width = max(arg_bias.get_op_width(), mul_width)
 
-            mask_2d = line_to_2d(mask, src_num_col)
+            if self.sum_dtype is not None:
+                sum_point = self.sum_dtype.point
+            else:
+                sum_point = mul_point
 
-            # pixel parallel
-            for pos_row in range(self.par_row):
-                for pos_col in range(self.par_col):
+            if self.sum_dtype is not None:
+                sum_signed = self.sum_dtype.signed
+            else:
+                sum_signed = mul_signed
 
-                    mask = []
-                    for mask_row in mask_2d[pos_row * stride_row:
-                                            pos_row * stride_row + filter_num_row]:
-                        mask.extend(mask_row[pos_col * stride_col:
-                                             pos_col * stride_col + filter_num_col])
+            if arg_scale is not None:
+                scale_width = arg_scale.get_op_width()
+            else:
+                scale_width = self.get_op_width()
 
-                    out_vars = []
-                    out_valids = []
+            if arg_scale is not None:
+                scale_point = arg_scale.get_op_point()
+            else:
+                scale_point = self.get_op_point()
 
-                    # output channel parallel
-                    for oc, (filter_vars_list, bias, scale,
-                             vshamt_sum, vshamt_out) in enumerate(zip(
-                            filter_vars_list_och, bias_list, scale_list,
-                                 vshamt_sum_list, vshamt_out_list)):
+            if arg_scale is not None:
+                scale_signed = arg_scale.get_signed()
+            else:
+                scale_signed = self.get_signed()
 
-                        prev_madd_var = strm.Int(0)
+            scl_width = sum_width + scale_width
+            scl_point = max(sum_point, scale_point)
+            scl_signed = sum_signed and scale_signed
 
-                        # input channel parallel
-                        for ic, (act_vars, filter_vars) in enumerate(zip(
-                                act_vars_list, filter_vars_list)):
+            out_width = self.get_op_width()
+            out_point = self.get_op_point()
+            out_signed = self.get_signed()
 
-                            act_vars_2d = line_to_2d(act_vars, src_num_col)
-                            used_act_vars = []
-                            masked_used_act_vars = []
-                            for act_row in act_vars_2d[pos_row * stride_row:
-                                                       pos_row * stride_row + filter_num_row]:
-                                used_act_vars.extend(act_row[pos_col * stride_col:
-                                                             pos_col * stride_col + filter_num_col])
+            # 2D output-stationary systolic array
+            for out_index, input_vars in enumerate(input_vars_list):
+                psums = []
+                if self.packing_dsp():
+                    # packing 2 MACs in 1 DSP
+                    for och in range(0, len(filter_vars_list), 2):
+                        filter_vars_a = filter_vars_list[och]
+                        filter_vars_b = filter_vars_list[och + 1]
+                        filter_vars = [strm.Or(strm.Sll(filter_var_b, filter_width + input_width), filter_var_a)
+                                       for filter_var_a, filter_var_b in zip(filter_vars_a, filter_vars_b)]
+                        util.set_latency(filter_vars, 0)
 
-                            # mul
-                            if len(used_act_vars) > len(mask):
-                                raise ValueError('Not enough mask bits.')
+                        psum = strm.Int(0)
+                        for input_var, filter_var in zip(input_vars, filter_vars):
+                            psum = strm.Madd(input_var, filter_var, psum_var)
 
-                            for used_act_var, pmask in zip(used_act_vars, mask):
-                                masked_var = strm.Mux(pmask, strm.Int(0), used_act_var)
-                                masked_var.latency = 0
-                                masked_used_act_vars.append(masked_var)
+                        psums.extend(strm.Split(psum,
+                                                filter_width + input_width, 0,
+                                                filter_signed or input_signed))
 
-                            for submadd, act_var, filter_var in zip(
-                                    self.substreams[
-                                        num_weights *
-                                        (pos_row * self.par_col * self.par_och * self.par_ich +
-                                           pos_col * self.par_och * self.par_ich +
-                                         oc * self.par_ich + ic):],
-                                    masked_used_act_vars, filter_vars):
+                else:
+                    # 1 MAC in 1 DSP
+                    for och in range(len(filter_vars_list)):
+                        filter_vars = filter_vars_list[och]
+                        bias = bias_list[och]
+                        scale = scale_list[och]
+                        vshamt_sum = vshamt_sum_list[och]
+                        shamt_sum = vshamt_sum + cshamt_sum_value
+                        shamt_sum.latency = 0
+                        vshamt_out = vshamt_out_list[och]
+                        shamt_out = vshamt_out + cshamt_out_value
+                        shamt_out.latency = 0
 
-                                madd = strm.substream(submadd)
-                                madd.to_source('x', act_var)
-                                madd.to_source('y', filter_var)
-                                madd.to_source('z', prev_madd_var)
-                                prev_madd_var = madd.from_sink('sum')
+                        psum = strm.Int(0)
+                        for input_var, filter_var in zip(input_vars, filter_vars):
+                            psum = strm.Madd(input_var, filter_var, psum_var)
 
-                        # add, scale, bias, vshamt_sum, vshamt_out
-                        sum_var = prev_madd_var
+                        psums.append(psum)
 
-                        acc = strm.substream(self.substreams[
-                            num_weights *
-                            self.par_row * self.par_col * self.par_och * self.par_ich +
-                            pos_row * self.par_col * self.par_och +
-                            pos_col * self.par_och + oc])
-                        acc.to_source('x', sum_var)
-                        acc.to_source('rshift', vshamt_sum + cshamt_sum)
-                        acc.to_parameter('size', size)
-                        out_var = acc.from_sink('sum')
-                        out_valid = acc.from_sink('valid')
-                        out_valids.append(out_valid)
+                out_vars = []
+                for och in range(len(filter_vars_list)):
+                    psum = psums[och]
+                    bias = bias_list[och]
+                    scale = scale_list[och]
+                    vshamt_sum = vshamt_sum_list[och]
+                    shamt_sum = vshamt_sum + cshamt_sum_value
+                    shamt_sum.latency = 0
+                    vshamt_out = vshamt_out_list[och]
+                    shamt_out = vshamt_out + cshamt_out_value
+                    shamt_out.latency = 0
 
-                        out_var += bias
+                    acc, valid = strm.ReduceAddValid(psum, self.stream_reduce_size, width=sum_width, signed=sum_signed)
+                    if psum.point != sum_point:
+                        acc = strm.Cast(acc, point=sum_point)
 
-                        mul = strm.substream(self.substreams[
-                            num_weights *
-                            self.par_row * self.par_col * self.par_och * self.par_ich +
-                            self.par_row * self.par_col * self.par_och +
-                            pos_row * self.par_col * self.par_och +
-                            pos_col * self.par_och + oc])
-                        mul.to_source('x', out_var)
-                        mul.to_source('y', scale)
-                        mul.to_source('rshift', vshamt_out + cshamt_out)
+                    frac = strm.Mux(shamt_sum > 0, strm.Sll(1, shamt_sum - 1), 0)
+                    frac.width = sum_width
+                    rshift_acc = strm.Sra(acc + frac, shamt_sum)
 
-                        out_var = mul.from_sink('z')
+                    scaled_acc = strm.Mul(rshift_acc, scale)
+                    rshift_scaled_acc = strm.SraRound(scaled_acc, shamt_out)
 
-                        act_func_vars = []
-                        for act_func in self.shared_attrs['act_func'].values():
-                            if act_func is not None:
-                                act_func_vars.append(act_func.op(strm, out_var))
-                            else:
-                                act_func_vars.append(out_var)
+                    clip_width = out_width
+                    clip_point = out_point
+                    clip_signed = out_signed
+                    p_th, n_th = util.clip_threshold(clip_width, clip_signed, self.asymmetric_clip)
 
-                        if len(act_func_vars) == 1:
-                            out_var = act_func_vars[0]
+                    if clip_point > 0:
+                        p_th = p_th >> clip_point
+                        n_th = n_th >> clip_point
+                    elif clip_point < 0:
+                        p_th = p_th << -clip_point
+                        n_th = n_th << -clip_point
+
+                    z = rshift_scaled_acc_a
+                    p = stream.Mux(z > p_th, p_th, z)
+                    p.latency = 0
+                    n = stream.Mux(z < n_th, n_th, z)
+                    n.latency = 0
+                    z = stream.Mux(z >= 0, p, n)
+                    z.latency = 0
+
+                    act_func_vars = []
+                    for act_func in self.shared_attrs['act_func'].values():
+                        if act_func is not None:
+                            act_func_vars.append(act_func.op(strm, z))
                         else:
-                            for i, act_func_var in enumerate(act_func_vars):
-                                out_var = strm.Mux(act_func_index == i, act_func_var, out_var)
-                                out_var.latency = 0
+                            act_func_vars.append(z)
 
-                        width = self.get_op_width()
-                        point = self.get_op_point()
-                        signed = self.get_signed()
-
-                        out_var = bt.out_rcast(strm, out_var, width, point, signed)
-                        out_vars.append(out_var)
-
-                    # out_vars -> vec_out_var
-                    if self.par_och == 1:
-                        vec_out_var = out_vars[0]
+                    if len(act_func_vars) == 1:
+                        out_var = act_func_vars[0]
                     else:
-                        vec_out_var = strm.Cat(*reversed(out_vars))
+                        for i, act_func_var in enumerate(act_func_vars):
+                            out_var = strm.Mux(self.act_func_index == i, act_func_var, out_var)
+                            out_var.latency = 0
 
-                    vec_out_valid = out_valids[0]
-                    strm.sink(vec_out_var, when=vec_out_valid)
+                    out_var = bt.out_rcast(strm.out_var, width, point, signed)
+                    out_vars.append(out_var)
+
+                # out_vars -> vec_out_var
+                if self.par_och == 1:
+                    vec_out_var = out_vars[0]
+                else:
+                    vec_out_var = strm.Cat(*reversed(out_vars))
+                    vec_out_var.latency = 0
+
+                strm.sink('vec_out_%d' % out_index, vec_out_var, when=valid)
 
         return func
 
@@ -1269,32 +1390,31 @@ class conv2d(bt._Operator):
         arg_vshamt_out = (self.args[self.args_dict['vshamt_out']]
                           if 'vshamt_out' in self.args_dict else None)
 
-        act = arg_input
+        input_shape = self.input_shape
+        input_num_ch = input_shape[-1]
+        input_num_col = input_shape[-2]
+        input_num_row = input_shape[-3]
+        input_num_bat = input_shape[-4]
 
-        act_shape = self.input_shape
-        act_num_ch = act_shape[-1]
-        act_num_col = act_shape[-2]
-        act_num_row = act_shape[-3]
-        act_num_bat = act_shape[-4]
-
-        filter = arg_filter
         filter_shape = self.filter_shape
         filter_num_col = filter_shape[-2]
         filter_num_row = filter_shape[-3]
         filter_num_och = filter_shape[-4]
 
-        bias_scala = 1 if arg_bias is not None and arg_bias.shape[-1] == 1 else 0
-        bias_num = (int(math.ceil(arg_bias.shape[-1] / self.par_och))
+        dup_bias = 1 if arg_bias is not None and arg_bias.shape[-1] == 1 else 0
+        bias_len = (int(math.ceil(arg_bias.shape[-1] / self.par_och))
                     if arg_bias is not None else 0)
-        scale_scala = 1 if arg_scale is not None and arg_scale.shape[-1] == 1 else 0
-        scale_num = (int(math.ceil(arg_scale.shape[-1] / self.par_och))
+
+        dup_scale = 1 if arg_scale is not None and arg_scale.shape[-1] == 1 else 0
+        scale_len = (int(math.ceil(arg_scale.shape[-1] / self.par_och))
                      if arg_scale is not None else 0)
 
-        vshamt_sum_scala = 1 if arg_vshamt_sum is not None and arg_vshamt_sum.shape[-1] == 1 else 0
-        vshamt_sum_num = (int(math.ceil(arg_vshamt_sum.shape[-1] / self.par_och))
+        dup_vshamt_sum = 1 if arg_vshamt_sum is not None and arg_vshamt_sum.shape[-1] == 1 else 0
+        vshamt_sum_len = (int(math.ceil(arg_vshamt_sum.shape[-1] / self.par_och))
                           if arg_vshamt_sum is not None else 0)
-        vshamt_out_scala = 1 if arg_vshamt_out is not None and arg_vshamt_out.shape[-1] == 1 else 0
-        vshamt_out_num = (int(math.ceil(arg_vshamt_out.shape[-1] / self.par_och))
+
+        dup_vshamt_out = 1 if arg_vshamt_out is not None and arg_vshamt_out.shape[-1] == 1 else 0
+        vshamt_out_len = (int(math.ceil(arg_vshamt_out.shape[-1] / self.par_och))
                           if arg_vshamt_out is not None else 0)
 
         cshamt_sum_value = 0 if self.cshamt_sum is None else self.cshamt_sum
@@ -1347,23 +1467,19 @@ class conv2d(bt._Operator):
         self.pad_row_top_value = pad_row_top
         self.pad_row_bottom_value = pad_row_bottom
 
-        # actual concur_och based on the RAM sizes
-        src_num_col = filter_num_col + stride_col * (self.par_col - 1)
-        src_num_row = filter_num_row + stride_row * (self.par_row - 1)
-        num_srcs = src_num_col * src_num_row
-        num_weights = filter_num_col * filter_num_row
-        filter_rams = self.input_rams[num_srcs:
-                                      num_srcs + num_weights * self.par_och]
-        out_rams = self.output_rams
-        out_ram_size = out_rams[0].length
-
+        # calculate concur_och
+        filter_rams = self.input_rams[self.par_col * self.par_row:
+                                      self.par_col * self.par_row + self.par_och]
         filter_ram_size = filter_rams[0].length
         flimit = (filter_ram_size //
-                  int(math.ceil((act_num_ch / self.par_ich))) // 2 *
-                  self.par_och)
-        olimit = (out_ram_size // out_num_col // 2) * self.par_och
-        concur_och = min(flimit, olimit)
+                  (int(math.ceil(input_num_ch / self.par_ich)) *
+                   filter_num_row * filter_num_col) // 2 * self.par_och)
 
+        out_rams = self.output_rams
+        out_ram_size = out_rams[0].length
+        olimit = (out_ram_size // out_num_col // 2) * self.par_och
+
+        concur_och = min(flimit, olimit)
         min_concur_och = self.get_min_concur_och()
 
         if self.concur_och is not None and concur_och > self.concur_och:
@@ -1375,16 +1491,11 @@ class conv2d(bt._Operator):
         # for __str__
         self.concur_och_value = concur_och
 
+        px_size = input_num_col + pad_col
+        py_size = input_num_row + pad_row
+
         # max counter values
-        max_col_count = act_num_col + pad_col + 1 - filter_num_col - stride_col * self.par_col
-        if max_col_count < 0:
-            max_col_count = 0
-
-        max_row_count = act_num_row + pad_row + 1 - filter_num_row - stride_row * self.par_row
-        if max_row_count < 0:
-            max_row_count = 0
-
-        max_bat_count = act_num_bat - stride_bat
+        max_bat_count = input_num_bat - stride_bat
         if max_bat_count < 0:
             max_bat_count = 0
 
@@ -1395,23 +1506,17 @@ class conv2d(bt._Operator):
 
         och_count_step = concur_och // self.par_och
 
-        dma_flag_conds = []
-        for row_select in range(src_num_row):
-            v = False
-            for i in range(stride_row * self.par_row):
-                v = v or (row_select == (i % src_num_row))
+        aligned_input_num_ch = bt.align_word(input_num_ch,
+                                             arg_input.get_word_alignment())
 
-            dma_flag_conds.append(v)
+        input_step = bt.to_byte(aligned_input_num_ch * arg_input.get_ram_width())
 
-        aligned_act_num_ch = bt.align_word(act_num_ch,
-                                           act.get_word_alignment())
 
-        act_step = bt.to_byte(aligned_act_num_ch * act.get_ram_width())
-
-        act_offset_values = []
+        ### ???
+        input_offset_values = []
         for y in range(src_num_row):
-            v = act_num_col * (y - pad_row_top) * act_step
-            act_offset_values.append(v)
+            v = input_num_col * (y - pad_row_top) * input_step
+            input_offset_values.append(v)
 
         act_row_step = act_step * act_num_col * stride_row * self.par_row
         act_bat_step = act_step * act_num_col * act_num_row
@@ -1423,10 +1528,10 @@ class conv2d(bt._Operator):
                          int(math.ceil(act_num_col / src_num_col)))
 
         aligned_filter_num_ich = bt.align_word(act_num_ch,
-                                               filter.get_word_alignment())
+                                               arg_filter.get_word_alignment())
 
         filter_step = bt.to_byte(
-            aligned_filter_num_ich * filter.get_ram_width())
+            aligned_filter_num_ich * arg_filter.get_ram_width())
 
         filter_base_step = (filter_step * filter_num_col * filter_num_row *
                             min(filter_num_och, concur_och))
@@ -1508,12 +1613,12 @@ class conv2d(bt._Operator):
             math.ceil(aligned_filter_num_ich / self.par_ich))
 
         if act_num_ch % self.par_ich == 0:
-            stream_omit_mask = 0
+            stream_ich_mask = 0
         else:
-            stream_omit_mask = 0
+            stream_ich_mask = 0
             for i in range(self.par_ich):
                 if self.par_ich - (act_num_ch % self.par_ich) >= (self.par_ich - i):
-                    stream_omit_mask |= (0x1 << i)
+                    stream_ich_mask |= (0x1 << i)
 
         if pad_col_left == 0:
             col_select_initval = 0
@@ -1567,22 +1672,27 @@ class conv2d(bt._Operator):
             inc_sync_out = 1
             inc_sync_out_res = (self.par_col - (out_num_col % self.par_col)) % self.par_col
 
-        return OrderedDict([('act_num_col', act_num_col),
-                            ('act_num_row', act_num_row),
+        return OrderedDict([('input_num_col', input_num_col),
+                            ('input_num_row', input_num_row),
+                            ('input_num_bat', input_num_bat),
+                            ('filter_num_ich', filter_num_ich),
+                            ('filter_num_col', filter_num_col),
+                            ('filter_num_row', filter_num_row),
                             ('filter_num_och', filter_num_och),
-                            ('bias_scala', bias_scala),
-                            ('bias_num', bias_num),
-                            ('scale_scala', scale_scala),
-                            ('scale_num', scale_num),
-                            ('vshamt_sum_scala', vshamt_sum_scala),
-                            ('vshamt_sum_num', vshamt_sum_num),
-                            ('vshamt_out_scala', vshamt_out_scala),
-                            ('vshamt_out_num', vshamt_out_num),
+                            ('out_num_col', out_num_col),
+                            ('out_num_row', out_num_row),
+                            ('dup_bias', dup_bias),
+                            ('bias_len', bias_len),
+                            ('dup_scale', dup_scale),
+                            ('scale_len', scale_len),
+                            ('dup_vshamt_sum', dup_vshamt_sum),
+                            ('vshamt_sum_len', vshamt_sum_len),
+                            ('dup_vshamt_out', dup_vshamt_out),
+                            ('vshamt_out_len', vshamt_out_len),
                             ('cshamt_sum_value', cshamt_sum_value),
                             ('cshamt_out_value', cshamt_out_value),
                             ('act_func_index', act_func_index),
-                            ('out_num_col', out_num_col),
-                            ('out_num_row', out_num_row),
+                            
                             ('pad_col_left', pad_col_left),
                             ('pad_row_top', pad_row_top),
                             ('max_col_count', max_col_count),
@@ -1618,7 +1728,7 @@ class conv2d(bt._Operator):
                             ('stream_num_ops_res_par', stream_num_ops_res_par),
                             ('stream_reduce_size', stream_reduce_size),
                             ('stream_aligned_reduce_size', stream_aligned_reduce_size),
-                            ('stream_omit_mask', stream_omit_mask),
+                            ('stream_ich_mask', stream_ich_mask),
                             ('col_select_initval', col_select_initval),
                             ('stride_col_par_col', stride_col_par_col),
                             ('stride_row_par_row', stride_row_par_row),
@@ -1648,105 +1758,103 @@ class conv2d(bt._Operator):
         arg_vshamt_out = (self.args[self.args_dict['vshamt_out']]
                           if 'vshamt_out' in self.args_dict else None)
 
-        filter_num_col = self.filter_shape[-2]
-        filter_num_row = self.filter_shape[-3]
-        stride_col = self.strides[-2]  # width
-        stride_row = self.strides[-3]  # height
+        # RAM
+        input_rams = self.get_input_rams()
+        filter_rams = self.get_filter_rams()
+        bias_ram = self.get_bias_ram()
+        scale_ram = self.get_scale_ram()
+        vshamt_sum_ram = self.get_vshamt_sum_ram()
+        vshamt_out_ram = self.get_vshamt_out_ram()
+        output_rams = self.get_output_rams()
 
-        src_num_col = filter_num_col + stride_col * (self.par_col - 1)
-        src_num_row = filter_num_row + stride_row * (self.par_row - 1)
+        # global address offset (input)
+        input_global_offset = self.m.Wire(self._name('input_global_offset'),
+                                          self.maxi.addrwidth, signed=True)
+        input_global_offset_row = self.m.Reg(self._name('input_global_offset_row'),
+                                             self.maxi.addrwidth, initval=0, signed=True)
+        input_global_offset_bat = self.m.Reg(self._name('input_global_offset_bat'),
+                                             self.maxi.addrwidth, initval=0, signed=True)
+        input_global_offset.assign(input_global_offset_row + input_global_offset_bat)
 
-        num_srcs = src_num_col * src_num_row
-        num_weights = filter_num_col * filter_num_row
+        # global address offset (filter)
+        filter_global_offset = self.m.Reg(self._name('filter_global_offset'),
+                                          self.maxi.addrwidth, initval=0, signed=True)
 
-        self.stride_bat = 1
+        # global address offset (output)
+        out_global_offset = self.m.Wire(self._name('out_global_offset'),
+                                        self.maxi.addrwidth, signed=True)
+        out_global_offset_och = self.m.Reg(self._name('out_global_offset_och'),
+                                           self.maxi.addrwidth, initval=0, signed=True)
+        out_global_offset_col = self.m.Reg(self._name('out_global_offset_col'),
+                                           self.maxi.addrwidth, initval=0, signed=True)
+        out_global_offset_row = self.m.Reg(self._name('out_global_offset_row'),
+                                           self.maxi.addrwidth, initval=0, signed=True)
+        out_global_offset_bat = self.m.Reg(self._name('out_global_offset_bat'),
+                                           self.maxi.addrwidth, initval=0, signed=True)
+        out_global_offset.assign(out_global_offset_och +
+                                 out_global_offset_col + out_global_offset_row +
+                                 out_global_offset_bat)
 
-        act_rams = self.input_rams[:num_srcs]
-        filter_rams = self.input_rams[num_srcs:
-                                      num_srcs + num_weights * self.par_och]
-        out_rams = self.output_rams
+        # local address offset (input)
+        input_local_comp_offsets = [self.m.Reg(self._name('input_local_comp_offset_%d' % i),
+                                               input_rams[0].addrwidth, initval=0)
+                                    for i, input_ram in enumerate(input_rams)]
 
-        num_basic_args = 2
-        bias_ram = (self.input_rams[len(act_rams) + len(filter_rams) +
-                                    self.args_dict['bias'] - num_basic_args]
-                    if 'bias' in self.args_dict else None)
-        scale_ram = (self.input_rams[len(act_rams) + len(filter_rams) +
-                                     self.args_dict['scale'] - num_basic_args]
-                     if 'scale' in self.args_dict else None)
-        vshamt_sum_ram = (self.input_rams[len(act_rams) + len(filter_rams) +
-                                          self.args_dict['vshamt_sum'] - num_basic_args]
-                          if 'vshamt_sum' in self.args_dict else None)
-        vshamt_out_ram = (self.input_rams[len(act_rams) + len(filter_rams) +
-                                          self.args_dict['vshamt_out'] - num_basic_args]
-                          if 'vshamt_out' in self.args_dict else None)
+        input_local_dma_offset = self.m.Reg(self._name('input_local_dma_offset'),
+                                            input_rams[0].addrwidth, initval=0)
 
-        act_base_offset = self.m.Wire(self._name('act_base_offset'),
-                                      self.maxi.addrwidth, signed=True)
-        act_base_offset_row = self.m.Reg(self._name('act_base_offset_row'),
-                                         self.maxi.addrwidth, initval=0, signed=True)
-        act_base_offset_bat = self.m.Reg(self._name('act_base_offset_bat'),
-                                         self.maxi.addrwidth, initval=0, signed=True)
+        # local address offset (filter)
+        filter_local_comp_offset = self.m.Reg(self._name('filter_local_comp_offset'),
+                                              filter_rams[0].addrwidth, initval=0)
+        filter_local_dma_offset = self.m.Reg(self._name('filter_local_dma_offset'),
+                                             filter_rams[0].addrwidth, initval=0)
 
-        act_base_offset.assign(act_base_offset_row + act_base_offset_bat)
+        # local address offset (out)
+        out_local_page = self.m.Reg(self._name('out_local_page'), initval=0)
+        out_local_comp_offset = self.m.Reg(self._name('out_local_comp_offset'),
+                                           self.maxi.addrwidth, initval=0)
+        out_local_dma_offset = self.m.Reg(self._name('out_local_dma_offset'),
+                                          self.maxi.addrwidth, initval=0)
+        out_local_addr = self.m.Reg(self._name('out_local_addr'),
+                                    self.maxi.addrwidth, initval=0)
 
-        filter_base_offset = self.m.Reg(self._name('filter_base_offset'),
-                                        self.maxi.addrwidth, initval=0, signed=True)
+        # input count
+        input_row_count = self.m.Reg(self._name('input_row_count'),
+                                  self.maxi.addrwidth, initval=0)
+        input_bat_count = self.m.Reg(self._name('input_bat_count'),
+                                  self.maxi.addrwidth, initval=0)
+        input_och_count = self.m.Reg(self._name('input_och_count'),
+                                  self.maxi.addrwidth, initval=0)
 
-        next_stream_num_ops = self.m.Reg(self._name('next_stream_num_ops'),
-                                         self.maxi.addrwidth, initval=0)
+        # output count
+        out_row_count = self.m.Reg(self._name('out_row_count'),
+                                   self.maxi.addrwidth, initval=0)
 
-        out_base_offset = self.m.Wire(self._name('out_base_offset'),
-                                      self.maxi.addrwidth, signed=True)
-        out_base_offset_val = self.m.Reg(self._name('out_base_offset_val'),
-                                         self.maxi.addrwidth, initval=0, signed=True)
-        out_base_offset_col = self.m.Reg(self._name('out_base_offset_col'),
-                                         self.maxi.addrwidth, initval=0, signed=True)
-        out_base_offset_row = self.m.Reg(self._name('out_base_offset_row'),
-                                         self.maxi.addrwidth, initval=0, signed=True)
-        out_base_offset_bat = self.m.Reg(self._name('out_base_offset_bat'),
-                                         self.maxi.addrwidth, initval=0, signed=True)
-        out_base_offset_och = self.m.Reg(self._name('out_base_offset_och'),
-                                         self.maxi.addrwidth, initval=0, signed=True)
-
-        out_base_offset.assign(out_base_offset_val + out_base_offset_col +
-                               out_base_offset_row + out_base_offset_bat +
-                               out_base_offset_och)
-
-        dma_flags = [self.m.Reg(self._name('dma_flag_%d' % i), initval=0)
-                     for i in range(src_num_row)]
-
+        # counters for synchronization beween computation and DMA
         sync_comp_count = self.m.Reg(self._name('sync_comp_count'),
                                      self.maxi.addrwidth, initval=0)
         sync_out_count = self.m.Reg(self._name('sync_out_count'),
                                     self.maxi.addrwidth, initval=0)
+
+        ### ???
+        next_out_write_size = self.m.Reg(self._name('next_out_write_size'),
+                                         self.maxi.addrwidth, initval=0)
+
+        # stream source local address
+        stream_input_laddr = self.m.Reg(self._name('stream_input_laddr'),
+                                        self.maxi.addrwidth, initval=0)
+        
 
         write_count = self.m.Reg(self._name('write_count'),
                                  self.maxi.addrwidth, initval=0)
         next_out_write_size = self.m.Reg(self._name('next_out_write_size'),
                                          self.maxi.addrwidth, initval=0)
 
-        col_count = self.m.Reg(self._name('col_count'),
-                               self.maxi.addrwidth, initval=0)
-        row_count = self.m.Reg(self._name('row_count'),
-                               self.maxi.addrwidth, initval=0)
-        bat_count = self.m.Reg(self._name('bat_count'),
-                               self.maxi.addrwidth, initval=0)
-        och_count = self.m.Reg(self._name('och_count'),
-                               self.maxi.addrwidth, initval=0)
-        col_select = self.m.Reg(self._name('col_select'),
-                                bt.log_width(src_num_col),
-                                initval=0)
-        row_select = self.m.Reg(self._name('row_select'),
-                                bt.log_width(src_num_row),
-                                initval=0)
+        next_stream_num_ops = self.m.Reg(self._name('next_stream_num_ops'),
+                                         self.maxi.addrwidth, initval=0)
 
-        out_col_count = self.m.Reg(self._name('out_col_count'),
-                                   self.maxi.addrwidth, initval=0)
-        out_row_count = self.m.Reg(self._name('out_row_count'),
-                                   self.maxi.addrwidth, initval=0)
-
-        out_ram_select = self.m.Reg(self._name('out_ram_select'),
-                                    self.maxi.addrwidth, initval=0)
+        dma_flags = [self.m.Reg(self._name('dma_flag_%d' % i), initval=0)
+                     for i in range(src_num_row)]
 
         prev_col_count = self.m.Reg(self._name('prev_col_count'),
                                     self.maxi.addrwidth, initval=0)
@@ -1791,7 +1899,7 @@ class conv2d(bt._Operator):
                                           self.maxi.addrwidth, initval=0)
         out_page_dma_offset = self.m.Reg(self._name('out_page_dma_offset'),
                                          self.maxi.addrwidth, initval=0)
-        out_laddr_offset = self.m.Reg(self._name('out_laddr_offset'),
+        out_local_addr = self.m.Reg(self._name('out_local_addr'),
                                       self.maxi.addrwidth, initval=0)
 
         act_page_size = act_rams[0].length
@@ -1800,66 +1908,56 @@ class conv2d(bt._Operator):
 
         skip_read_filter = self.m.Reg(
             self._name('skip_read_filter'), initval=0)
-        skip_read_act = self.m.Reg(self._name('skip_read_act'), initval=0)
+        skip_read_input = self.m.Reg(self._name('skip_read_input'), initval=0)
         skip_comp = self.m.Reg(self._name('skip_comp'), initval=0)
         skip_write_out = self.m.Reg(self._name('skip_write_out'), initval=1)
+
+        #### ????
 
         # --------------------
         # initialization phase
         # --------------------
-        # ReadFilter: offset
+        # ReadFilter: global offset
         fsm(
-            filter_base_offset(0)
+            filter_global_offset(0)
         )
 
-        filter_offset = filter_base_offset
-
-        # ReadFilter: double buffer control
+        # ReadFilter: local offset, double buffer
         fsm(
-            filter_page_comp_offset(0),
-            filter_page_dma_offset(0)
+            filter_local_comp_offset(0),
+            filter_local_dma_offset(0),
         )
 
-        # ReadAct: offset
+        # ReadInput: offset
         fsm(
-            act_base_offset_row(0),
-            act_base_offset_bat(0)
+            input_global_offset_row(0),
+            input_global_offset_bat(0),
         )
 
-        # ReadAct: DMA flag
-        for y, dma_flag in enumerate(dma_flags):
-            fsm(
-                dma_flag(1)
-            )
-
-        # ReadAct: double buffer control
+        # ReadInput: double buffer control
         fsm(
-            [act_page_comp_offset(0)
-             for act_page_comp_offset in act_page_comp_offsets],
-            [act_page_dma_offset(0)
-             for act_page_dma_offset in act_page_dma_offsets]
+            input_local_comp_offset(0),
+            input_local_dma_offset(0),
         )
 
         # WriteOutput: offset
         fsm(
-            out_base_offset_val(0),
-            out_base_offset_col(0),
-            out_base_offset_row(0),
-            out_base_offset_bat(0),
-            out_base_offset_och(0)
+            out_global_offset_col(0),
+            out_global_offset_row(0),
+            out_global_offset_bat(0),
+            out_global_offset_och(0)
         )
 
         # WriteOut: double buffer control
         fsm(
-            out_page(0),
-            out_page_comp_offset(0),
-            out_page_dma_offset(0),
-            out_laddr_offset(0)
+            out_local_page(0),
+            out_local_comp_offset(0),
+            out_local_dma_offset(0),
+            out_local_addr(0)
         )
 
         fsm(
             sync_out_count(0),
-            write_count(0)
         )
 
         fsm(
@@ -1868,29 +1966,25 @@ class conv2d(bt._Operator):
                                        self.out_write_size))
         )
 
-        # counter
+        # input counter
         fsm(
-            row_count(0),
-            bat_count(0),
-            och_count(0),
-            row_select(0),
-            prev_row_count(0),
-            prev_bat_count(0),
-            prev_och_count(0),
-            prev_row_select(0)
+            input_row_count(0),
+            input_bat_count(0),
+            input_och_count(0),
+            prev_input_row_count(0),
+            prev_input_bat_count(0),
+            prev_input_och_count(0),
         )
 
-        # out counter
+        # output counter
         fsm(
-            out_col_count(0),
             out_row_count(0),
-            out_ram_select(0)
         )
 
-        # double buffer control
+        # skip
         fsm(
             skip_read_filter(0),
-            skip_read_act(0),
+            skip_read_input(0),
             skip_comp(0),
             skip_write_out(1)
         )
@@ -1899,7 +1993,7 @@ class conv2d(bt._Operator):
         # ReadBias phase
         # --------------------
         if bias_ram is not None:
-            bias_read_size = self.bias_num
+            bias_read_size = self.bias_len
             bias_laddr = 0
             bias_gaddr = self.arg_objaddrs[self.args_dict['bias']]
 
@@ -1912,7 +2006,7 @@ class conv2d(bt._Operator):
         # ReadScale phase
         # --------------------
         if scale_ram is not None:
-            scale_read_size = self.scale_num
+            scale_read_size = self.scale_len
             scale_laddr = 0
             scale_gaddr = self.arg_objaddrs[self.args_dict['scale']]
 
@@ -1925,7 +2019,7 @@ class conv2d(bt._Operator):
         # ReadVshamt phase
         # --------------------
         if vshamt_sum_ram is not None:
-            vshamt_sum_read_size = self.vshamt_sum_num
+            vshamt_sum_read_size = self.vshamt_sum_len
             vshamt_sum_laddr = 0
             vshamt_sum_gaddr = self.arg_objaddrs[self.args_dict['vshamt_sum']]
 
@@ -1935,7 +2029,7 @@ class conv2d(bt._Operator):
             bt.bus_unlock(self.maxi, fsm)
 
         if vshamt_out_ram is not None:
-            vshamt_out_read_size = self.vshamt_out_num
+            vshamt_out_read_size = self.vshamt_out_len
             vshamt_out_laddr = 0
             vshamt_out_gaddr = self.arg_objaddrs[self.args_dict['vshamt_out']]
 
@@ -1954,10 +2048,11 @@ class conv2d(bt._Operator):
         # --------------------
         state_read_filter = fsm.current
 
-        filter_gaddr = self.arg_objaddrs[1] + filter_offset
-        filter_laddr = filter_page_dma_offset
+        filter_gaddr = self.arg_objaddrs[1] + filter_global_offset
+        filter_laddr = filter_local_dma_offset
 
         bt.bus_lock(self.maxi, fsm)
+
         if len(filter_rams) == 1:
             bt.dma_read(self.maxi, fsm, filter_rams[0], filter_laddr,
                         filter_gaddr, self.filter_read_size, port=1)
@@ -1965,95 +2060,45 @@ class conv2d(bt._Operator):
             bt.dma_read_block(self.maxi, fsm, filter_rams, filter_laddr,
                               filter_gaddr, self.filter_read_size,
                               self.filter_read_block, port=1)
+
         bt.bus_unlock(self.maxi, fsm)
 
         fsm.goto_next()
         state_read_filter_end = fsm.current
-        fsm.If(skip_read_filter).goto_from(
-            state_read_filter, state_read_filter_end)
-        # state_read_act
+
+        fsm.If(skip_read_filter).goto_from(state_read_filter, state_read_filter_end)
+
+        # state_read_input
         fsm.If(self.data_stationary == STATIONARY_FILETER).goto_next()
 
         # --------------------
-        # ReadAct phase
+        # ReadInput phase
         # --------------------
-        state_read_act = fsm.current
+        state_read_input = fsm.current
 
-        act_offsets = []
-        for v in self.act_offset_values:
-            act_offset = act_base_offset + v
-            act_offsets.append(act_offset)
-
-        act_gaddrs = []
-        for act_offset in act_offsets:
-            act_gaddr = self.arg_objaddrs[0] + act_offset
-            act_gaddrs.append(act_gaddr)
-
-        act_rams_2d = line_to_2d(act_rams, src_num_col)
-        mux_act_gaddr_values = mux_1d(act_gaddrs, row_select, src_num_row)
-        mux_act_gaddrs = []
-        for i, mux_act_gaddr_value in enumerate(mux_act_gaddr_values):
-            mux_act_gaddr = self.m.Wire(self._name('mux_act_gaddr_%d' % i),
-                                        self.maxi.addrwidth)
-            mux_act_gaddr.assign(mux_act_gaddr_value)
-            mux_act_gaddrs.append(mux_act_gaddr)
-
-        dma_pad_masks = []
-        for y in range(src_num_row):
-            v = vg.Ors((row_count + y < self.pad_row_top),
-                       (row_count + y >= self.act_num_row + self.pad_row_top))
-            dma_pad_mask = self.m.Wire(self._name('dma_pad_mask_%d' % y))
-            dma_pad_mask.assign(v)
-            dma_pad_masks.append(dma_pad_mask)
-
-        mux_dma_pad_mask_values = mux_1d(
-            dma_pad_masks, row_select, src_num_row)
-        mux_dma_pad_masks = []
-        for i, mux_dma_pad_mask_value in enumerate(mux_dma_pad_mask_values):
-            mux_dma_pad_mask = self.m.Wire(
-                self._name('mux_dma_pad_mask_%d' % i))
-            mux_dma_pad_mask.assign(mux_dma_pad_mask_value)
-            mux_dma_pad_masks.append(mux_dma_pad_mask)
-
-        # determined at the previous phase
-        mux_dma_flag_values = mux_1d(
-            dma_flags, prev_row_select, src_num_row)
-        mux_dma_flags = []
-        for i, mux_dma_flag_value in enumerate(mux_dma_flag_values):
-            mux_dma_flag = self.m.Wire(self._name('mux_dma_flag_%d' % i))
-            mux_dma_flag.assign(mux_dma_flag_value)
-            mux_dma_flags.append(mux_dma_flag)
+        input_gaddr = self.arg_objaddrs[0] + input_global_offset
+        input_laddr = input_local_dma_offset
 
         bt.bus_lock(self.maxi, fsm)
 
-        for (act_rams_row, act_gaddr, act_page_dma_offset,
-             dma_pad_mask, dma_flag) in zip(act_rams_2d, mux_act_gaddrs,
-                                            act_page_dma_offsets,
-                                            mux_dma_pad_masks, mux_dma_flags):
-            act_laddr = act_page_dma_offset
-
-            begin_state_read = fsm.current
-            fsm.goto_next()
-
-            if len(act_rams_row) == 1:
-                bt.dma_read(self.maxi, fsm, act_rams_row[0], act_laddr,
-                            act_gaddr, self.act_read_size, port=1)
-            else:
-                bt.dma_read_block(self.maxi, fsm, act_rams_row, act_laddr,
-                                  act_gaddr, self.act_read_size,
-                                  self.act_read_block, port=1)
-
-            end_state_read = fsm.current
-
-            fsm.If(vg.Ors(dma_pad_mask,
-                          vg.Not(dma_flag))).goto_from(begin_state_read, end_state_read)
+        if len(input_rams) == 1:
+            bt.dma_read(self.maxi, fsm, input_rams[0], input_laddr,
+                        input_gaddr, self.input_read_size, port=1)
+        else:
+            bt.dma_read(self.maxi, fsm, input_rams[0], input_laddr,
+                        input_gaddr, self.input_read_size, port=1)
+            for input_ram in input_rams[1:]:
+                bt.dma_read_bcast(self.maxi, fsm, input_ram, input_laddr,
+                            input_gaddr, self.input_read_size, port=1)
 
         bt.bus_unlock(self.maxi, fsm)
 
         fsm.goto_next()
-        state_read_act_end = fsm.current
-        fsm.If(skip_read_act).goto_from(state_read_act, state_read_act_end)
-        # state_read_act
+        state_read_input_end = fsm.current
+
+        fsm.If(skip_read_input).goto_from(state_read_input, state_read_input_end)
+
+        # state_read_input
         fsm.If(self.data_stationary == STATIONARY_FILETER).goto_next()
 
         # --------------------
@@ -2069,281 +2114,84 @@ class conv2d(bt._Operator):
 
         fsm.If(comp_fsm.state == comp_state_init).goto_next()
 
-        # local address
-        stream_act_locals_2d = line_to_2d(stream_act_locals, src_num_col)
-        for y, stream_act_locals_row in enumerate(stream_act_locals_2d):
-            for x, stream_act_local in enumerate(stream_act_locals_row):
-                comp_fsm(
-                    stream_act_local(0)
-                )
-                comp_fsm.If(self.stream_act_local_small_flags[x])(
-                    stream_act_local(self.stream_act_local_small_offset)
-                )
-                comp_fsm.If(self.stream_act_local_large_flags[x])(
-                    stream_act_local(self.stream_act_local_large_offset)
-                )
-
-        comp_fsm(
-            stream_out_local_col(0)
-        )
-        comp_fsm.If(self.data_stationary == STATIONARY_INPUT,
-                    och_count == 0)(
-            stream_out_local_val(0)
-        )
-
-        # count and sel
-        comp_fsm(
-            col_count(0)
-        )
-        comp_fsm(
-            col_select(self.col_select_initval)
-        )
-
-        filter_page_comp_offset_buf = self.m.Reg(self._name('filter_page_comp_offset_buf'),
-                                                 self.maxi.addrwidth, initval=0)
-        act_page_comp_offset_bufs = [self.m.Reg(self._name('act_page_comp_offset_buf_%d' % i),
-                                                self.maxi.addrwidth, initval=0)
-                                     for i in range(src_num_row)]
-        out_page_comp_offset_buf = self.m.Reg(self._name('out_page_comp_offset_buf'),
-                                              self.maxi.addrwidth, initval=0)
-        row_count_buf = self.m.Reg(self._name('row_count_buf'),
-                                   self.maxi.addrwidth, initval=0)
-        row_select_buf = self.m.Reg(self._name('row_select_buf'),
-                                    bt.log_width(src_num_row),
-                                    initval=0)
-        och_count_buf = self.m.Reg(self._name('och_count_buf'),
-                                   self.maxi.addrwidth, initval=0)
-
-        comp_fsm(
-            filter_page_comp_offset_buf(filter_page_comp_offset),
-            [act_page_comp_offset_buf(act_page_comp_offset)
-             for act_page_comp_offset_buf, act_page_comp_offset in zip(
-                act_page_comp_offset_bufs, act_page_comp_offsets)],
-            out_page_comp_offset_buf(out_page_comp_offset),
-            row_count_buf(row_count),
-            row_select_buf(row_select),
-            och_count_buf(och_count)
-        )
-
-        comp_fsm(
-            next_stream_num_ops(vg.Mux(och_count >= self.max_och_count,
-                                       self.stream_num_ops_res, self.stream_num_ops))
-        )
-
-        comp_fsm.goto_next()
-
-        # repeat comp
-        comp_state_rep = comp_fsm.current
-
-        # pad_mask
-        stream_pad_masks = []
-
-        for y in range(src_num_row):
-            for x in range(src_num_col):
-                stream_col_count = col_count + x
-                stream_row_count = row_count_buf + y
-                v = vg.Ors((stream_col_count < self.pad_col_left),
-                           (stream_col_count >= self.act_num_col + self.pad_col_left),
-                           (stream_row_count < self.pad_row_top),
-                           (stream_row_count >= self.act_num_row + self.pad_row_top))
-                stream_pad_mask = self.m.Wire(
-                    self._name('stream_pad_mask_%d_%d' % (y, x)))
-                stream_pad_mask.assign(v)
-                stream_pad_masks.append(stream_pad_mask)
-
-        stream_pad_masks_reg = self.m.Reg(self._name('stream_pad_masks'),
-                                          len(stream_pad_masks), initval=0)
-        comp_fsm(
-            stream_pad_masks_reg(vg.Cat(*reversed(stream_pad_masks)))
-        )
-        comp_fsm.goto_next()
-
-        stream_col_select = col_select
-        stream_row_select = row_select_buf
-        stream_masks = stream_pad_masks_reg
-
-        # set_parameter
-        name = list(self.stream.parameters.keys())[0]
-        self.stream.set_parameter(comp_fsm, name, self.stream_reduce_size)
+        # py_offset
+        py_offset = input_row_count
+        self.stream.set_parameter(comp_fsm, 'py_offset', py_offset)
         comp_fsm.set_index(comp_fsm.current - 1)
 
-        name = list(self.stream.parameters.keys())[1]
-        self.stream.set_parameter(comp_fsm, name, stream_col_select)
-        comp_fsm.set_index(comp_fsm.current - 1)
-
-        name = list(self.stream.parameters.keys())[2]
-        self.stream.set_parameter(comp_fsm, name, stream_row_select)
-        comp_fsm.set_index(comp_fsm.current - 1)
-
-        name = list(self.stream.parameters.keys())[3]
-        self.stream.set_parameter(comp_fsm, name, stream_masks)
-        comp_fsm.set_index(comp_fsm.current - 1)
-
-        # set_parameter (omit_mask)
-        name = list(self.stream.parameters.keys())[4]
-        self.stream.set_parameter(comp_fsm, name, self.stream_omit_mask)
-        comp_fsm.set_index(comp_fsm.current - 1)
-
-        # set_parameter and set_source (bias)
+        # source (bias)
         if bias_ram is not None:
-            name = list(self.stream.parameters.keys())[5]
-            dup_bias = self.bias_scala
-            self.stream.set_parameter(comp_fsm, name, dup_bias)
-            comp_fsm.set_index(comp_fsm.current - 1)
-
-            name = list(self.stream.sources.keys())[0]
-            local = vg.Mux(bias_read_size == 1, 0, och_count_buf)
-            stride = vg.Mux(bias_read_size == 1, 0, 1)
+            local = vg.Mux(self.dup_bias, 0, comp_och_count)
+            stride = vg.Mux(self.dup_bias, 0, 1)
             pat = ((self.stream_reduce_size, 0),
-                   (next_stream_num_ops, stride))
-            self.stream.set_source_pattern(comp_fsm, name, bias_ram,
-                                           local, pat)
+                   (self.stream_num_ops, stride))
+            self.stream.set_source_pattern(comp_fsm, 'vec_bias', bias_ram, local, pat)
             comp_fsm.set_index(comp_fsm.current - 1)
-
         else:
-            name = list(self.stream.parameters.keys())[5]
-            dup_bias = 1
-            self.stream.set_parameter(comp_fsm, name, dup_bias)
+            self.stream.set_source_empty(comp_fsm, 'vec_bias', 0)
             comp_fsm.set_index(comp_fsm.current - 1)
 
-            name = list(self.stream.sources.keys())[0]
-            default_bias = 0
-            self.stream.set_source_empty(comp_fsm, name, default_bias)
-            comp_fsm.set_index(comp_fsm.current - 1)
-
-        # set_parameter and set_source (scale)
+        # source (scale)
         if scale_ram is not None:
-            name = list(self.stream.parameters.keys())[6]
-            dup_scale = self.scale_scala
-            self.stream.set_parameter(comp_fsm, name, dup_scale)
-            comp_fsm.set_index(comp_fsm.current - 1)
-
-            name = list(self.stream.sources.keys())[1]
-            local = vg.Mux(scale_read_size == 1, 0, och_count_buf)
-            stride = vg.Mux(scale_read_size == 1, 0, 1)
+            local = vg.Mux(self.dup_scale, 0, comp_och_count)
+            stride = vg.Mux(self.dup_scale, 0, 1)
             pat = ((self.stream_reduce_size, 0),
-                   (next_stream_num_ops, stride))
-            self.stream.set_source_pattern(comp_fsm, name, scale_ram,
-                                           local, pat)
+                   (self.stream_num_ops, stride))
+            self.stream.set_source_pattern(comp_fsm, 'vec_scale', scale_ram, local, pat)
             comp_fsm.set_index(comp_fsm.current - 1)
-
         else:
-            name = list(self.stream.parameters.keys())[6]
-            dup_scale = 1
-            self.stream.set_parameter(comp_fsm, name, dup_scale)
+            self.stream.set_source_empty(comp_fsm, 'vec_scale', 0)
             comp_fsm.set_index(comp_fsm.current - 1)
 
-            name = list(self.stream.sources.keys())[1]
-            default_scale = 1
-            self.stream.set_source_empty(comp_fsm, name, default_scale)
-            comp_fsm.set_index(comp_fsm.current - 1)
-
-        # set_parameter and set_source (vshamt_sum)
+        # source (vshamt_sum)
         if vshamt_sum_ram is not None:
-            name = list(self.stream.parameters.keys())[7]
-            dup_vshamt_sum = self.vshamt_sum_scala
-            self.stream.set_parameter(comp_fsm, name, dup_vshamt_sum)
-            comp_fsm.set_index(comp_fsm.current - 1)
-
-            name = list(self.stream.sources.keys())[2]
-            local = vg.Mux(vshamt_sum_read_size == 1, 0, och_count_buf)
-            stride = vg.Mux(vshamt_sum_read_size == 1, 0, 1)
+            local = vg.Mux(self.dup_vshamt_sum, 0, comp_och_count)
+            stride = vg.Mux(self.dup_vshamt_sum, 0, 1)
             pat = ((self.stream_reduce_size, 0),
-                   (next_stream_num_ops, stride))
-            self.stream.set_source_pattern(comp_fsm, name, vshamt_sum_ram,
-                                           local, pat)
+                   (self.stream_num_ops, stride))
+            self.stream.set_source_pattern(comp_fsm, 'vec_vshamt_sum', vshamt_sum_ram, local, pat)
             comp_fsm.set_index(comp_fsm.current - 1)
-
         else:
-            name = list(self.stream.parameters.keys())[7]
-            dup_vshamt_sum = 1
-            self.stream.set_parameter(comp_fsm, name, dup_vshamt_sum)
+            self.stream.set_source_empty(comp_fsm, 'vec_vshamt_sum', 0)
             comp_fsm.set_index(comp_fsm.current - 1)
 
-            name = list(self.stream.sources.keys())[2]
-            default_vshamt_sum = 0
-            self.stream.set_source_empty(comp_fsm, name, default_vshamt_sum)
-            comp_fsm.set_index(comp_fsm.current - 1)
-
-        # set_parameter and set_source (vshamt_out)
+        # source (vshamt_out)
         if vshamt_out_ram is not None:
-            name = list(self.stream.parameters.keys())[8]
-            dup_vshamt_out = self.vshamt_out_scala
-            self.stream.set_parameter(comp_fsm, name, dup_vshamt_out)
-            comp_fsm.set_index(comp_fsm.current - 1)
-
-            name = list(self.stream.sources.keys())[3]
-            local = vg.Mux(vshamt_out_read_size == 1, 0, och_count_buf)
-            stride = vg.Mux(vshamt_out_read_size == 1, 0, 1)
+            local = vg.Mux(self.dup_vshamt_out, 0, comp_och_count)
+            stride = vg.Mux(self.dup_vshamt_out, 0, 1)
             pat = ((self.stream_reduce_size, 0),
-                   (next_stream_num_ops, stride))
-            self.stream.set_source_pattern(comp_fsm, name, vshamt_out_ram,
-                                           local, pat)
+                   (self.stream_num_ops, stride))
+            self.stream.set_source_pattern(comp_fsm, 'vec_vshamt_out', vshamt_out_ram, local, pat)
             comp_fsm.set_index(comp_fsm.current - 1)
-
         else:
-            name = list(self.stream.parameters.keys())[8]
-            dup_vshamt_out = 1
-            self.stream.set_parameter(comp_fsm, name, dup_vshamt_out)
+            self.stream.set_source_empty(comp_fsm, 'vec_vshamt_out', 0)
             comp_fsm.set_index(comp_fsm.current - 1)
 
-            name = list(self.stream.sources.keys())[3]
-            default_vshamt_out = 0
-            self.stream.set_source_empty(comp_fsm, name, default_vshamt_out)
-            comp_fsm.set_index(comp_fsm.current - 1)
-
-        # set_parameter (cshamt_sum)
-        name = list(self.stream.parameters.keys())[9]
-        self.stream.set_parameter(comp_fsm, name, self.cshamt_sum_value)
-        comp_fsm.set_index(comp_fsm.current - 1)
-
-        # set_parameter (cshamt_out)
-        name = list(self.stream.parameters.keys())[10]
-        self.stream.set_parameter(comp_fsm, name, self.cshamt_out_value)
-        comp_fsm.set_index(comp_fsm.current - 1)
-
-        # set_parameter (act_func_index)
-        name = list(self.stream.parameters.keys())[11]
-        self.stream.set_parameter(comp_fsm, name, self.act_func_index)
-        comp_fsm.set_index(comp_fsm.current - 1)
-
-        # set_source (act)
-        act_page_comp_offset_bufs_dup = []
-        for act_page_comp_offset_buf in act_page_comp_offset_bufs:
-            act_page_comp_offset_bufs_dup.extend(
-                [act_page_comp_offset_buf] * src_num_col)
-
-        stream_act_names = list(self.stream.sources.keys())[4:4 + num_srcs]
-        for name, ram, stream_act_local, act_page_comp_offset_buf in zip(
-                stream_act_names, act_rams,
-                stream_act_locals, act_page_comp_offset_bufs_dup):
-            local = stream_act_local + act_page_comp_offset_buf
+        # source (input)
+        for i, (input_ram, input_local_comp_offset) in enumerate(zip(input_rams, input_local_comp_offsets)):
+            local = input_local_comp_offset
             pat = ((self.stream_reduce_size, 1),
-                   (next_stream_num_ops, 0))
-            self.stream.set_source_pattern(comp_fsm, name, ram,
-                                           local, pat)
+                   (self.filter_num_col, self.input_local_col_step),
+                   (self.filter_num_row - row_count , self.input_local_row_step),
+                   (self.stream_out_size, self.input_local_stride_col))
+            self.stream.set_source_pattern(comp_fsm, 'vec_input_%d' % i, input_ram, local, pat)
             comp_fsm.set_index(comp_fsm.current - 1)
 
-        # set_source (filter)
-        stream_filter_names = list(self.stream.sources.keys())[4 + num_srcs:]
-
-        for name, ram in zip(stream_filter_names, filter_rams):
-            local = filter_page_comp_offset_buf
+        # source (filter)
+        for i, filter_ram in enumerate(filter_rams):
+            local = filter_local_comp_offset
             pat = ((self.stream_reduce_size, 1),
-                   (next_stream_num_ops, self.stream_aligned_reduce_size))
-            self.stream.set_source_pattern(comp_fsm, name, ram,
-                                           local, pat)
+                   (self.filter_num_col, self.filter_local_col_step),
+                   (self.filter_num_row, self.filter_local_row_step),
+                   (self.stream_out_size, 0))
+            self.stream.set_source_pattern(comp_fsm, 'vec_filter_%d' % i, filter_ram, local, pat)
             comp_fsm.set_index(comp_fsm.current - 1)
 
-        # set_sink (out)
-        stream_out_names = list(self.stream.sinks.keys())
-        # remove valid outputs
-        stream_out_var_names = stream_out_names[::2]
-
-        for name, ram in zip(stream_out_var_names, out_rams):
-            local = stream_out_local + out_page_comp_offset_buf
-            self.stream.set_sink(comp_fsm, name, ram, local,
-                                 next_stream_num_ops)
+        # sink (out)
+        for i, output_ram in enumerate(output_rams):
+            local = out_local_comp_offset
+            size = self.stream_out_size
+            self.stream.set_sink(comp_fsm, 'vec_out_%d' % i, output_ram, local, size)
             comp_fsm.set_index(comp_fsm.current - 1)
 
         comp_fsm.goto_next()
@@ -2351,22 +2199,9 @@ class conv2d(bt._Operator):
         # stream barrier of previous run
         self.stream.source_join_and_run(comp_fsm)
 
-        # stream_act_local
-        stream_act_locals_2d = line_to_2d(stream_act_locals, src_num_col)
-
-        i = 0
-        for y, stream_act_locals_row in enumerate(stream_act_locals_2d):
-            for x, stream_act_local in enumerate(stream_act_locals_row):
-                patterns = []
-                for col in range(src_num_col):
-                    val = self.inc_act_laddr_conds[i]
-                    i += 1
-                    pat = (col_select == col, val)
-                    patterns.append(pat)
-
-                patterns.append((None, 0))
-                v = vg.PatternMux(*patterns)
-
+        comp_fsm(
+            input_local_comp_offset.add()
+        )
                 comp_fsm.If(vg.Not(v))(
                     stream_act_local.add(self.inc_act_laddr_small)
                 )
@@ -2444,7 +2279,7 @@ class conv2d(bt._Operator):
 
         out_offsets = []
         for v in self.out_offset_values:
-            out_offset = out_base_offset + v
+            out_offset = out_global_offset + v
             out_offsets.append(out_offset)
 
         out_gaddrs = []
@@ -2459,7 +2294,7 @@ class conv2d(bt._Operator):
             w.assign(v)
             dma_out_masks.append(w)
 
-        out_laddr = out_laddr_offset + out_page_dma_offset
+        out_laddr = out_local_addr + out_local_dma_offset
 
         out_rams_2d = line_to_2d(out_rams, self.par_col)
 
@@ -2545,12 +2380,12 @@ class conv2d(bt._Operator):
         )
 
         fsm.If(out_ram_select == self.par_col - 1)(
-            out_laddr_offset.add(next_out_write_size)
+            out_local_addr.add(next_out_write_size)
         )
 
         fsm.If(self.data_stationary == STATIONARY_FILETER,
                vg.Not(self.keep_filter))(
-            out_base_offset_col.add(self.out_col_step),
+            out_global_offset_col.add(self.out_col_step),
             out_col_count.inc()
         )
 
@@ -2604,12 +2439,12 @@ class conv2d(bt._Operator):
                     vg.Not(self.keep_filter))))
 
         fsm.If(update_filter)(
-            filter_base_offset.add(self.filter_base_step),
+            filter_global_offset.add(self.filter_global_step),
         )
 
         fsm.If(self.data_stationary == STATIONARY_INPUT,
                och_count >= self.max_och_count)(
-            filter_base_offset(0)
+            filter_global_offset(0)
         )
 
         # ReadFilter: counter
@@ -2624,17 +2459,17 @@ class conv2d(bt._Operator):
 
         # ReadFilter: double buffer
         fsm.If(update_filter)(
-            filter_page_comp_offset.add(self.filter_read_step),
-            filter_page_dma_offset.add(self.filter_read_step)
+            filter_local_comp_offset.add(self.filter_read_step),
+            filter_local_dma_offset.add(self.filter_read_step)
         )
         fsm.If(update_filter,
-               filter_page_comp_offset + self.filter_read_step +
-               self.filter_read_step > filter_page_size)(
-            filter_page_comp_offset(0),
-            filter_page_dma_offset(0)
+               filter_local_comp_offset + self.filter_read_step +
+               self.filter_read_step > filter_local_size)(
+            filter_local_comp_offset(0),
+            filter_local_dma_offset(0)
         )
 
-        # ReadAct: offset
+        # ReadInput: offset
         update_act = self.m.Wire(self._name('update_act'))
         update_act.assign(vg.Ors(
             vg.Ands(self.data_stationary == STATIONARY_INPUT,
@@ -2642,20 +2477,20 @@ class conv2d(bt._Operator):
             self.data_stationary == STATIONARY_FILETER))
 
         fsm.If(update_act)(
-            act_base_offset_row.add(self.act_row_step)
+            input_global_offset_row.add(self.act_row_step)
         )
         fsm.If(update_act,
                row_count >= self.max_row_count)(
-            act_base_offset_row(0),
-            act_base_offset_bat.add(self.act_bat_step)
+            input_global_offset_row(0),
+            input_global_offset_bat.add(self.act_bat_step)
         )
         fsm.If(update_act,
                row_count >= self.max_row_count,
                bat_count >= self.max_bat_count)(
-            act_base_offset_bat(0)
+            input_global_offset_bat(0)
         )
 
-        # ReadAct: DMA flag
+        # ReadInput: DMA flag
         next_dma_flags = []
         for dma_flag, dma_flag_cond in zip(dma_flags, self.dma_flag_conds):
             fsm.If(vg.Not(update_act))(
@@ -2672,7 +2507,7 @@ class conv2d(bt._Operator):
             next_dma_flags.append(
                 vg.Mux(row_count >= self.max_row_count, 1, dma_flag_cond))
 
-        # ReadAct: counter
+        # ReadInput: counter
         fsm.If(update_act)(
             row_count.add(self.stride_row_par_row)
         )
@@ -2710,7 +2545,7 @@ class conv2d(bt._Operator):
             prev_row_select(0)
         )
 
-        # ReadAct and Comp: double buffer
+        # ReadInput and Comp: double buffer
         mux_next_dma_flag_values = mux_1d(
             next_dma_flags, row_select, src_num_row)
         mux_next_dma_flags = []
@@ -2751,75 +2586,75 @@ class conv2d(bt._Operator):
         # WriteOut: counter
         fsm.If(vg.Not(skip_write_out))(
             write_count(0),
-            out_laddr_offset(0),
+            out_local_addr(0),
             out_ram_select(0)
         )
 
         fsm.If(self.data_stationary == STATIONARY_FILETER,
                vg.Not(skip_write_out))(
-            out_base_offset_col(0),
-            out_base_offset_row.add(self.out_row_step),
+            out_global_offset_col(0),
+            out_global_offset_row.add(self.out_row_step),
             out_col_count(0),
             out_row_count.add(self.par_row)
         )
         fsm.If(self.data_stationary == STATIONARY_FILETER,
                vg.Not(skip_write_out),
                prev_row_count >= self.max_row_count)(
-            out_base_offset_row(0),
-            out_base_offset_bat.add(self.out_bat_step),
+            out_global_offset_row(0),
+            out_global_offset_bat.add(self.out_bat_step),
             out_row_count(0)
         )
         fsm.If(self.data_stationary == STATIONARY_FILETER,
                vg.Not(skip_write_out),
                prev_row_count >= self.max_row_count,
                prev_bat_count >= self.max_bat_count)(
-            out_base_offset_bat(0),
-            out_base_offset_och.add(self.out_och_step)
+            out_global_offset_bat(0),
+            out_global_offset_och.add(self.out_och_step)
         )
 
         fsm.If(self.data_stationary == STATIONARY_INPUT,
                prev_och_count >= self.max_och_count,
                vg.Not(skip_write_out))(
-            out_base_offset_row.add(self.out_row_step)
+            out_global_offset_row.add(self.out_row_step)
         )
 
         # WriteOut and Comp: double buffer
         fsm.If(self.data_stationary == STATIONARY_FILETER,
-               vg.Not(out_page))(
-            out_page_comp_offset(out_page_size),
-            out_page_dma_offset(0),
-            out_page(1)
+               vg.Not(out_local_page))(
+            out_local_comp_offset(out_local_size),
+            out_local_dma_offset(0),
+            out_local_page(1)
         )
         fsm.If(self.data_stationary == STATIONARY_FILETER,
-               out_page)(
-            out_page_comp_offset(0),
-            out_page_dma_offset(out_page_size),
-            out_page(0)
+               out_local_page)(
+            out_local_comp_offset(0),
+            out_local_dma_offset(out_local_size),
+            out_local_page(0)
         )
 
         fsm.If(self.data_stationary == STATIONARY_INPUT,
                och_count >= self.max_och_count,
-               vg.Not(out_page))(
-            out_page_comp_offset(out_page_size),
-            out_page_dma_offset(0),
-            out_page(1)
+               vg.Not(out_local_page))(
+            out_local_comp_offset(out_local_size),
+            out_local_dma_offset(0),
+            out_local_page(1)
         )
         fsm.If(self.data_stationary == STATIONARY_INPUT,
                och_count >= self.max_och_count,
-               out_page)(
-            out_page_comp_offset(0),
-            out_page_dma_offset(out_page_size),
-            out_page(0)
+               out_local_page)(
+            out_local_comp_offset(0),
+            out_local_dma_offset(out_local_size),
+            out_local_page(0)
         )
 
-        # ReadAct and WriteOut: prev
+        # ReadInput and WriteOut: prev
         fsm(
             prev_row_count(row_count),
             prev_bat_count(bat_count),
             prev_och_count(och_count)
         )
 
-        # ReadFilter, ReadAct, Comp, WriteOut: skip
+        # ReadFilter, ReadInput, Comp, WriteOut: skip
         fsm.If(row_count >= self.max_row_count,
                bat_count >= self.max_bat_count,
                och_count >= self.max_och_count)(
@@ -2834,14 +2669,14 @@ class conv2d(bt._Operator):
         fsm.If(row_count >= self.max_row_count,
                bat_count >= self.max_bat_count,
                och_count >= self.max_och_count)(
-            skip_read_act(1)
+            skip_read_input(1)
         )
 
         fsm.If(self.data_stationary == STATIONARY_FILETER,
                row_count >= self.max_row_count,
                bat_count >= self.max_bat_count,
                self.keep_input)(
-            skip_read_act(1)
+            skip_read_input(1)
         )
 
         fsm.If(row_count >= self.max_row_count,
@@ -2857,14 +2692,14 @@ class conv2d(bt._Operator):
             skip_write_out(0)
         )
 
-        fsm.If(self.data_stationary == STATIONARY_FILETER).goto(state_read_act)
+        fsm.If(self.data_stationary == STATIONARY_FILETER).goto(state_read_input)
         fsm.If(self.data_stationary == STATIONARY_FILETER,
                row_count >= self.max_row_count,
                bat_count >= self.max_bat_count).goto(state_read_filter)
 
         fsm.If(self.data_stationary == STATIONARY_INPUT).goto(state_read_filter)
         fsm.If(self.data_stationary == STATIONARY_INPUT,
-               och_count >= self.max_och_count).goto(state_read_act)
+               och_count >= self.max_och_count).goto(state_read_input)
 
         fsm.If(vg.Ands(vg.Not(skip_write_out),
                        prev_och_count >= self.max_och_count,
@@ -2878,9 +2713,9 @@ class conv2d(bt._Operator):
         # FSM controls for STATIONARY_INPUT (insert FSM transitions)
         # --------------------
         fsm.If(self.data_stationary == STATIONARY_INPUT).goto_from(
-            state_init, state_read_act)
+            state_init, state_read_input)
         fsm.If(self.data_stationary == STATIONARY_INPUT).goto_from(
-            state_read_act_end, state_read_filter)
+            state_read_input_end, state_read_filter)
         fsm.If(self.data_stationary == STATIONARY_INPUT).goto_from(
             state_read_filter_end, state_comp)
 
