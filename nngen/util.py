@@ -223,3 +223,8 @@ def clip_threshold(width, signed, asymmetric_clip=False):
         n_th = 0
 
     return p_th, n_th
+
+
+def set_latency(values, latency):
+    for value in values:
+        value.latency = latency
