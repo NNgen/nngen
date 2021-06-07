@@ -2209,6 +2209,9 @@ class conv2d(bt._Operator):
 
         fsm.If(comp_fsm.state == comp_state_init).goto_next()
 
+        # waiting for previous DMA write completion
+        bt.dma_wait_write_idle(self.maxi, comp_fsm)
+
         # local address
         stream_act_locals_2d = line_to_2d(stream_act_locals, src_num_col)
         for y, stream_act_locals_row in enumerate(stream_act_locals_2d):

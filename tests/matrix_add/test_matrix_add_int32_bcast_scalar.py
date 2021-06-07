@@ -14,7 +14,7 @@ import veriloggen
 import matrix_add
 
 
-a_shape = (15, 15)
+a_shape = (4, 4096)
 b_shape = (1,)
 a_dtype = ng.int32
 b_dtype = ng.int32
