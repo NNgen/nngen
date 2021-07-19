@@ -108,41 +108,6 @@ class conv2d(bt._Operator):
         In 'filter' mode, the weight data supplied to the MAC is fixed, \
         while in 'input' mode, the input data is fixed.
 
-    input_ram_size : optional
-        Specify the word length of the input data RAM. \
-        If set to less than the minimum required word length \
-        (depends on the input data size), the set value is ignored.
-
-    filter_ram_size : optional
-        Specifies the word length of the kernel parameter RAM. \
-        If set to less than the minimum required word length \
-        (depends on the kernel parameter size), the set value is ignored.
-
-    bias_ram_size : optional
-        Specify the word length of the bias parameter RAM. \
-        If set to less than the minimum required word length \
-        (depends on bias parameter size), the set value is ignored.
-
-    scale_ram_size : optional
-        Specify the word length of scaling parameter RAM. \
-        If set to less than the minimum required word length \
-        (depends on the scaling parameter size), the set value is ignored.
-
-    vshamt_sum_ram_size : optional
-        Specifies the word length of the RAM that stores the arithmetic right shift value \
-        for the accumulation result. \
-        The setting value is ignored if it is set to the minimum required word length or less.
-
-    vshamt_out_ram_size : optional
-        Specifies the word length of the RAM that stores the arithmetic right shift value \
-        for the output result. \
-        The setting value is ignored if it is set to the minimum required word length or less.
-
-    out_ram_size : optional
-        Specifies the word length of the output data RAM. \
-        If set to less than the minimum required word length \
-        (depends on the output data size), the set value is ignored.
-
     disable_keep_input : optional
         If this parameter is set to True, data will be reread from the main memory \
         even if the required amount of input data is full on the on-chip RAM.
@@ -205,21 +170,6 @@ class conv2d(bt._Operator):
             concur_och = ' concur_och:%s' % str(self.concur_och)
         stationary = ' stationary:%s' % self.stationary
 
-        input_ram_size = (' input_ram_size:%d' % self.input_ram_size
-                          if self.input_ram_size is not None else '')
-        filter_ram_size = (' filter_ram_size:%d' % self.filter_ram_size
-                           if self.filter_ram_size is not None else '')
-        bias_ram_size = (' bias_ram_size:%d' % self.bias_ram_size
-                         if self.bias_ram_size is not None else '')
-        scale_ram_size = (' scale_ram_size:%d' % self.scale_ram_size
-                          if self.scale_ram_size is not None else '')
-        vshamt_sum_ram_size = (' vshamt_sum_ram_size:%d' % self.vshamt_sum_ram_size
-                               if self.vshamt_sum_ram_size is not None else '')
-        vshamt_out_ram_size = (' vshamt_out_ram_size:%d' % self.vshamt_out_ram_size
-                               if self.vshamt_out_ram_size is not None else '')
-        out_ram_size = (' out_ram_size:%d' % self.out_ram_size
-                        if self.out_ram_size is not None else '')
-
         if hasattr(self, 'keep_input_value'):
             keep_input = ' keep_input' if self.keep_input_value else ''
         else:
@@ -237,10 +187,6 @@ class conv2d(bt._Operator):
                               act_func, mul_dtype, sum_dtype,
                               par_ich, par_och, par_col, par_row,
                               concur_och, stationary,
-                              input_ram_size, filter_ram_size,
-                              bias_ram_size, scale_ram_size,
-                              vshamt_sum_ram_size, vshamt_out_ram_size,
-                              out_ram_size,
                               keep_input, keep_filter)])
         return ''.join(ret)
 
@@ -254,10 +200,6 @@ class conv2d(bt._Operator):
                  # attribute
                  par_ich=1, par_och=1, par_col=1, par_row=1,
                  concur_och=None, stationary='filter',
-                 input_ram_size=None, filter_ram_size=None,
-                 bias_ram_size=None, scale_ram_size=None,
-                 vshamt_sum_ram_size=None, vshamt_out_ram_size=None,
-                 out_ram_size=None,
                  disable_keep_input=False,
 
                  # for matmul
@@ -471,32 +413,17 @@ class conv2d(bt._Operator):
         self.par_row = par_row
         self.concur_och = concur_och
         self.stationary = stationary
-        self.input_ram_size = input_ram_size
-        self.filter_ram_size = filter_ram_size
-        self.bias_ram_size = bias_ram_size
-        self.scale_ram_size = scale_ram_size
-        self.vshamt_sum_ram_size = vshamt_sum_ram_size
-        self.vshamt_out_ram_size = vshamt_out_ram_size
-        self.out_ram_size = out_ram_size
         self.disable_keep_input = disable_keep_input
         conv2d.attribute(self, None, None,
                          par_ich, par_och, par_col, par_row,
                          concur_och,
                          stationary,
-                         input_ram_size, filter_ram_size,
-                         bias_ram_size, scale_ram_size,
-                         vshamt_sum_ram_size, vshamt_out_ram_size,
-                         out_ram_size,
                          disable_keep_input)
 
     def attribute(self, cshamt_sum=None, cshamt_out=None,
                   par_ich=None, par_och=None, par_col=None, par_row=None,
                   concur_och=None,
                   stationary=None,
-                  input_ram_size=None, filter_ram_size=None,
-                  bias_ram_size=None, scale_ram_size=None,
-                  vshamt_sum_ram_size=None, vshamt_out_ram_size=None,
-                  out_ram_size=None,
                   disable_keep_input=None):
 
         if cshamt_sum is not None:
@@ -563,48 +490,6 @@ class conv2d(bt._Operator):
                 raise ValueError("stationary must be 'filter' or 'input'.")
 
             self.stationary = stationary
-
-        if input_ram_size is not None:
-            if input_ram_size is not None and input_ram_size < 1:
-                raise ValueError('input_ram_size must be greater than 0')
-
-            self.input_ram_size = input_ram_size
-
-        if filter_ram_size is not None:
-            if filter_ram_size is not None and filter_ram_size < 1:
-                raise ValueError('filter_ram_size must be greater than 0')
-
-            self.filter_ram_size = filter_ram_size
-
-        if bias_ram_size is not None:
-            if bias_ram_size is not None and bias_ram_size < 1:
-                raise ValueError('bias_ram_size must be greater than 0')
-
-            self.bias_ram_size = bias_ram_size
-
-        if scale_ram_size is not None:
-            if scale_ram_size is not None and scale_ram_size < 1:
-                raise ValueError('scale_ram_size must be greater than 0')
-
-            self.scale_ram_size = scale_ram_size
-
-        if vshamt_sum_ram_size is not None:
-            if vshamt_sum_ram_size is not None and vshamt_sum_ram_size < 1:
-                raise ValueError('vshamt_sum_ram_size must be greater than 0')
-
-            self.vshamt_sum_ram_size = vshamt_sum_ram_size
-
-        if vshamt_out_ram_size is not None:
-            if vshamt_out_ram_size is not None and vshamt_out_ram_size < 1:
-                raise ValueError('vshamt_out_ram_size must be greater than 0')
-
-            self.vshamt_out_ram_size = vshamt_out_ram_size
-
-        if out_ram_size is not None:
-            if out_ram_size is not None and out_ram_size < 1:
-                raise ValueError('out_ram_size must be greater than 0')
-
-            self.out_ram_size = out_ram_size
 
         if disable_keep_input is not None:
             self.disable_keep_input = disable_keep_input
@@ -694,12 +579,6 @@ class conv2d(bt._Operator):
         else:
             input_min_size = num_input_ch_word * input_num_col * (filter_num_row + stride_row)
 
-        if self.input_ram_size is not None:
-            if self.input_ram_size < input_min_size:
-                raise ValueError('Too small input_ram_size: %d < %d' %
-                                 (self.input_ram_size, input_min_size))
-            input_min_size = self.input_ram_size
-
         input_width = arg_input.get_ram_width() * self.par_ich
 
         # filter
@@ -720,23 +599,11 @@ class conv2d(bt._Operator):
             filter_min_size = (num_filter_ch_word * filter_num_col * filter_num_row *
                                num_filter_block * 2)
 
-        if self.filter_ram_size is not None:
-            if self.filter_ram_size < filter_min_size:
-                raise ValueError('Too small filter_ram_size: %d < %d' %
-                                 (self.filter_ram_size, filter_min_size))
-            filter_min_size = self.filter_ram_size
-
         filter_width = arg_filter.get_ram_width() * self.par_ich
 
         # bias
         if arg_bias is not None:
             bias_min_size = arg_bias.get_aligned_shape()[-1]
-            if self.bias_ram_size is not None:
-                if self.bias_ram_size < bias_min_size:
-                    raise ValueError('Too small bias_ram_size: %d < %d' %
-                                     (self.bias_ram_size, bias_min_size))
-                bias_min_size = self.bias_ram_size
-
             bias_width = arg_bias.get_ram_width() * self.par_och
         else:
             bias_min_size = None
@@ -745,12 +612,6 @@ class conv2d(bt._Operator):
         # scale
         if arg_scale is not None:
             scale_min_size = arg_scale.get_aligned_shape()[-1]
-            if self.scale_ram_size is not None:
-                if self.scale_ram_size < scale_min_size:
-                    raise ValueError('Too small scale_ram_size: %d < %d' %
-                                     (self.scale_ram_size, scale_min_size))
-                scale_min_size = self.scale_ram_size
-
             scale_width = arg_scale.get_ram_width() * self.par_och
         else:
             scale_min_size = None
@@ -759,12 +620,6 @@ class conv2d(bt._Operator):
         # vshamt_sum
         if arg_vshamt_sum is not None:
             vshamt_sum_min_size = arg_vshamt_sum.get_aligned_shape()[-1]
-            if self.vshamt_sum_ram_size is not None:
-                if self.vshamt_sum_ram_size < vshamt_sum_min_size:
-                    raise ValueError('Too small vshamt_sum_ram_size: %d < %d' %
-                                     (self.vshamt_sum_ram_size, vshamt_sum_min_size))
-                vshamt_sum_min_size = self.vshamt_sum_ram_size
-
             vshamt_sum_width = arg_vshamt_sum.get_ram_width() * self.par_och
         else:
             vshamt_sum_min_size = None
@@ -773,12 +628,6 @@ class conv2d(bt._Operator):
         # vshamt_out
         if arg_vshamt_out is not None:
             vshamt_out_min_size = arg_vshamt_out.get_aligned_shape()[-1]
-            if self.vshamt_out_ram_size is not None:
-                if self.vshamt_out_ram_size < vshamt_out_min_size:
-                    raise ValueError('Too small vshamt_out_ram_size: %d < %d' %
-                                     (self.vshamt_out_ram_size, vshamt_out_min_size))
-                vshamt_out_min_size = self.vshamt_out_ram_size
-
             vshamt_out_width = arg_vshamt_out.get_ram_width() * self.par_och
         else:
             vshamt_out_min_size = None
@@ -791,12 +640,6 @@ class conv2d(bt._Operator):
             och_max = max(out_num_ch, req_concur_och)
             output_min_size = (int(math.ceil(och_max / self.par_och)) *
                                out_num_col * 2)
-
-        if self.out_ram_size is not None:
-            if self.out_ram_size < output_min_size:
-                raise ValueError('Too small out_ram_size: %d < %d' %
-                                     (self.out_ram_size, out_min_size))
-            output_min_size = self.out_ram_size
 
         output_width = self.get_ram_width() * self.par_och
 
@@ -2205,24 +2048,26 @@ class conv2d(bt._Operator):
         comp_fsm(
             input_local_comp_offset.add()
         )
-                comp_fsm.If(vg.Not(v))(
-                    stream_act_local.add(self.inc_act_laddr_small)
-                )
-                comp_fsm.If(v)(
-                    stream_act_local.add(self.inc_act_laddr_large)
-                )
-
-                comp_fsm.If(col_count >= self.max_col_count)(
-                    stream_act_local(0)
-                )
-                comp_fsm.If(col_count >= self.max_col_count,
-                            self.stream_act_local_small_flags[x])(
-                    stream_act_local(self.stream_act_local_small_offset)
-                )
-                comp_fsm.If(col_count >= self.max_col_count,
-                            self.stream_act_local_large_flags[x])(
-                    stream_act_local(self.stream_act_local_large_offset)
-                )
+        ### ???
+        ### originally indented begin
+        comp_fsm.If(vg.Not(v))(
+            stream_act_local.add(self.inc_act_laddr_small)
+        )
+        comp_fsm.If(v)(
+            stream_act_local.add(self.inc_act_laddr_large)
+        )
+        comp_fsm.If(col_count >= self.max_col_count)(
+            stream_act_local(0)
+        )
+        comp_fsm.If(col_count >= self.max_col_count,
+                    self.stream_act_local_small_flags[x])(
+            stream_act_local(self.stream_act_local_small_offset)
+        )
+        comp_fsm.If(col_count >= self.max_col_count,
+                    self.stream_act_local_large_flags[x])(
+            stream_act_local(self.stream_act_local_large_offset)
+        )
+        ### originally indented end
 
         # stream_out_local
         # STATIONARY_FILETER
