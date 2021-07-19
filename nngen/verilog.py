@@ -189,8 +189,8 @@ def _to_veriloggen_module(objs, name, config=None,
 
     header_info = make_header_addr_map(config, saxi)
 
-    (ram_dict, substrm_dict, ram_set_cache,
-     stream_cache, control_cache, main_fsm,
+    (ram_dict, substrm_dict,
+     ram_set_cache, stream_cache, control_cache, main_fsm,
      global_map_info, global_mem_map) = allocate(config, m, clk, rst,
                                                  maxi, saxi, objs, schedule_table)
 
@@ -506,41 +506,38 @@ def calc_max_stream_rams(config, schedule_table):
                     not obj.chain_head):
                 continue
 
-            input_rams, output_rams, temp_rams = obj.get_required_rams()
+            rams = obj.get_required_rams()
             stream_hash = obj.get_stream_hash()
 
             if stream_hash not in max_stream_rams:
-                max_stream_rams[stream_hash] = (input_rams, output_rams, temp_rams)
+                max_stream_rams[stream_hash] = rams
             else:
-                prev_input_rams, prev_output_rams, prev_temp_rams = max_stream_rams[stream_hash]
-                new_input_rams = tuple([max_tuple(prev, cur)
-                                        for prev, cur in zip(prev_input_rams, input_rams)])
-                new_output_rams = tuple([max_tuple(prev, cur)
-                                         for prev, cur in zip(prev_output_rams, output_rams)])
-                new_temp_rams = tuple([max_tuple(prev, cur)
-                                       for prev, cur in zip(prev_temp_rams, temp_rams)])
-                max_stream_rams[stream_hash] = (new_input_rams, new_output_rams, new_temp_rams)
+                prev_rams = max_stream_rams[stream_hash]
+
+                new_rams = collections.OrderedDict()
+                for name, (width, length) in rams.items():
+                    cur_width, cur_length = prev_rams[name]
+                    max_width = max(width, cur_width)
+                    max_length = max(length, cur_length)
+                    new_rams[name] = (max_width, max_length)
+
+                max_stream_rams[stream_hash] = new_rams
 
     return max_stream_rams
 
 
 def make_rams(config, m, clk, rst, maxi, schedule_table, max_stream_rams):
     max_rams = calc_max_rams(config, schedule_table, max_stream_rams)
-
     ram_dict = collections.defaultdict(list)
-    ram_index = collections.defaultdict(int)
 
     for (width, length), num in reversed(sorted(max_rams.items(),
                                                 key=lambda x: x[0][0] * x[0][1])):
-        for _ in range(num):
+        for i in range(num):
             datawidth = width
             numports = 2
             numbanks = maxi.datawidth // width
 
-            key = (width, length)
-            i = ram_index[key]
-            ram_index[key] += 1
-
+            key = (width, length, i)
             name = 'ram_w%d_l%d_id%d' % (width, length, i)
 
             if numbanks <= 1:
@@ -555,7 +552,7 @@ def make_rams(config, m, clk, rst, maxi, schedule_table, max_stream_rams):
                                            numbanks=numbanks,
                                            ram_style=config['onchip_ram_style'])
 
-            ram_dict[key].append(ram)
+            ram_dict[key] = ram
 
     return ram_dict
 
@@ -625,17 +622,9 @@ def calc_max_stage_rams(config, schedule_table, max_stream_rams):
                 continue
 
             stream_hash = obj.get_stream_hash()
-            input_rams, output_rams, temp_rams = max_stream_rams[stream_hash]
+            rams = max_stream_rams[stream_hash]
 
-            for width, length in sorted(input_rams, reverse=True):
-                key = to_actual_ram_spec(config, width, length)
-                cnt[key] += 1
-
-            for width, length in sorted(output_rams, reverse=True):
-                key = to_actual_ram_spec(config, width, length)
-                cnt[key] += 1
-
-            for width, length in sorted(temp_rams, reverse=True):
+            for name, (width, length) in rams.items():
                 key = to_actual_ram_spec(config, width, length)
                 cnt[key] += 1
 
@@ -661,7 +650,8 @@ def make_ram_sets(config, schedule_table, ram_dict, max_stream_rams):
 def make_stage_ram_sets(config, schedule_table, ram_dict, max_stream_rams,
                         stage, objs, ram_set_cache):
 
-    ram_index_set = collections.defaultdict(set)
+    # ram_index_set = collections.defaultdict(set)
+    stage_ram_set = set()
 
     # cache check
     for obj in objs:
@@ -673,25 +663,18 @@ def make_stage_ram_sets(config, schedule_table, ram_dict, max_stream_rams,
 
         stream_hash = obj.get_stream_hash()
 
-        for (input_rams, output_rams,
-             temp_rams, used_ram_index_dict) in ram_set_cache[stream_hash]:
+        for (rams, ram_set) in ram_set_cache[stream_hash]:
+            if not obj.check_ram_requirements(rams):
+                continue
 
-            satisfied = obj.check_ram_requirements(input_rams,
-                                                   output_rams, temp_rams)
-
-            for key, ram_indexes in used_ram_index_dict.items():
-                for ram_index in ram_indexes:
-                    if ram_index in ram_index_set[key]:
-                        satisfied = False
+            if len(ram_set & stage_ram_set) > 0:
+                continue
 
             # Hit: reuse the existing RAM set
-            if satisfied:
-                obj.set_rams(input_rams, output_rams, temp_rams)
-                obj.cached_ram_set = True
-
-                for key, ram_indexes in used_ram_index_dict.items():
-                    for ram_index in ram_indexes:
-                        ram_index_set[key].add(ram_index)
+            obj.set_rams(rams)
+            obj.are_rams_cached = True
+            stage_ram_set.update(ram_set)
+            break
 
     # Miss or Unsatisfied: create a new RAM set
     for obj in objs:
@@ -701,62 +684,43 @@ def make_stage_ram_sets(config, schedule_table, ram_dict, max_stream_rams,
         if bt.is_output_chainable_operator(obj) and not obj.chain_head:
             continue
 
-        if obj.cached_ram_set:
+        if obj.are_rams_cached:
             continue
 
         stream_hash = obj.get_stream_hash()
-        req_inputs, req_outputs, req_temps = max_stream_rams[stream_hash]
-        used_ram_index_dict = collections.defaultdict(list)
+        req_rams = max_stream_rams[stream_hash]
 
-        req_rams = []
-        req_rams.extend([(width, length, 'input', i)
-                         for i, (width, length) in enumerate(req_inputs)])
-        req_rams.extend([(width, length, 'output', i)
-                         for i, (width, length) in enumerate(req_outputs)])
-        req_rams.extend([(width, length, 'temp', i)
-                         for i, (width, length) in enumerate(req_temps)])
-
-        input_rams = [None for _ in req_inputs]
-        output_rams = [None for _ in req_outputs]
-        temp_rams = [None for _ in req_temps]
+        used_rams = collections.OrderedDict()
+        used_ram_set = set()
 
         # smallest request first
-        for width, length, ram_type, pos in sorted(req_rams,
-                                                   key=lambda x: (x[0], x[1])):
-            width, length = to_actual_ram_spec(config, width, length)
-            key = (width, length)
+        for name, (req_width, req_length) in req_rams.items():
+            req_width, req_length = to_actual_ram_spec(config, req_width, req_length)
 
-            found = False
             # smallest RAM first
-            for ram_key, rams in sorted(ram_dict.items(), key=lambda x: x[0]):
-                if found:
-                    break
+            for (ram_width, ram_length, ram_i), ram in sorted(ram_dict.items(),
+                                                              key=lambda x: x[0]):
+                ram_key = (ram_width, ram_length, ram_i)
 
-                for i, ram in enumerate(rams):
-                    if i in ram_index_set[ram_key]:
-                        continue
+                if ram_key in stage_ram_set:
+                    continue
 
-                    ram_width, ram_length = ram_key
+                # if ram_width != width:
+                if ram_width < req_width:
+                    continue
 
-                    if ram_width != width:
-                        continue
+                if ram_length < req_length:
+                    continue
 
-                    if ram_length >= length:
-                        if ram_type == 'input':
-                            input_rams[pos] = ram
-                        elif ram_type == 'output':
-                            output_rams[pos] = ram
-                        elif ram_type == 'temp':
-                            temp_rams[pos] = ram
+                stage_ram_set.add(ram_key)
+                used_ram_set.add(ram_key)
+                used_rams[name] = ram
+                break
 
-                        ram_index_set[ram_key].add(i)
-                        used_ram_index_dict[key].append(i)
-                        found = True
-                        break
+        obj.set_rams(used_rams)
+        obj.are_rams_cached = True
 
-        obj.set_rams(input_rams, output_rams, temp_rams)
-        ram_set_cache[stream_hash].append((input_rams, output_rams,
-                                           temp_rams, used_ram_index_dict))
+        ram_set_cache[stream_hash].append((used_rams, used_ram_set))
 
 
 def to_actual_ram_spec(config, width, length):
@@ -1019,7 +983,7 @@ def make_stage_streams(config, schedule_table, ram_dict, substrm_dict,
             # Hit: reuse the existing substream set and main stream
             if satisfied:
                 obj.set_stream(strm)
-                obj.cached_stream = True
+                obj.is_stream_cached = True
 
                 for key, substrm_indexes in used_substrm_index_dict.items():
                     for substrm_index in substrm_indexes:
@@ -1033,7 +997,7 @@ def make_stage_streams(config, schedule_table, ram_dict, substrm_dict,
         if bt.is_output_chainable_operator(obj) and not obj.chain_head:
             continue
 
-        if obj.cached_stream:
+        if obj.is_stream_cached:
             continue
 
         req_substrms = obj.get_required_substreams()
@@ -1624,17 +1588,17 @@ def make_controls(config, m, clk, rst, maxi, saxi,
 
 def disable_unused_ram_ports(ram_dict):
 
-    for key, rams in ram_dict.items():
-        for ram in rams:
-            if isinstance(ram, vthread.MultibankRAM):
-                for bank in ram.rams:
-                    for i, interface in enumerate(bank.interfaces):
-                        if len(interface.wenable.subst) == 0:
-                            bank.disable_write(i)
-            else:
-                for i, interface in enumerate(ram.interfaces):
+    for key, ram in ram_dict.items():
+        if isinstance(ram, vthread.MultibankRAM):
+            for bank in ram.rams:
+                for i, interface in enumerate(bank.interfaces):
                     if len(interface.wenable.subst) == 0:
-                        ram.disable_write(i)
+                        bank.disable_write(i)
+
+        else:
+            for i, interface in enumerate(ram.interfaces):
+                if len(interface.wenable.subst) == 0:
+                    ram.disable_write(i)
 
 
 def make_reg_map(config, global_map_info, header_info):
@@ -1805,17 +1769,24 @@ def dump_rams(ram_dict):
     s = []
     s.append('[RAM (spec: num)]')
 
-    for (width, length), rams in sorted(ram_dict.items(), key=lambda x: x[0], reverse=True):
-        num_rams = len(rams)
-        if isinstance(rams[0], vthread.MultibankRAM):
-            bank = rams[0].numbanks
-            ports = rams[0].numports
-        else:
-            bank = 1
-            ports = rams[0].numports
+    ram_specs = collections.defaultdict(int)
 
+    for (width, length, i), ram in sorted(ram_dict.items(),
+                                          key=lambda x: x[0], reverse=True):
+
+        if isinstance(ram, vthread.MultibankRAM):
+            banks = ram.numbanks
+            ports = ram.numports
+        else:
+            banks = 1
+            ports = ram.numports
+
+        key = (width, length, banks, ports)
+        ram_specs[key] += 1
+
+    for (width, length, banks, ports), num_rams in ram_specs.items():
         s.append('  %d-bit %d-entry %d-port %d-bank RAM: %d' %
-                 (width, length, ports, bank, num_rams))
+                 (width, length, ports, banks, num_rams))
 
     print('\n'.join(s))
 

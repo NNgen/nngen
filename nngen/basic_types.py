@@ -32,10 +32,6 @@ class _Numeric(_Node):
 
     parallel_scheduling_allowed = True
 
-    # for ONNX
-    layout = None
-    onnx_layout = None
-
     def __init__(self, dtype=None, shape=None, name=None):
         _Node.__init__(self)
 
@@ -56,42 +52,45 @@ class _Numeric(_Node):
                 if s == 0:
                     raise ValueError("shape contains '0': %s" % str(shape))
 
+        self.dtype = dtype
+        self.shape = shape
         self.name = name
 
-        self.shape = shape
-        self.dtype = dtype
-
+        # dataflow graph
         self.consumers = []
         self.is_output = False
         self.stage = None
 
-        # data alignment
+        # quantization
+        self.quantized = False
+        self.scale_factor = 1.0
+
+        # for ONNX
+        self.layout = None
+        self.onnx_layout = None
+
+        # keep the applied permutation pattern
+        self.perm = None
+
+        # numpy value for variable/constant
+        self.value = None
+
+        # memory address and index
+        self.default_global_addr = None
+        self.default_local_addr = None
+        self.global_index = None
+        self.local_index = None
+
+        # alignment
         self.word_alignment = 0
 
-        # hardware signals
+        # veriloggen variables
         self.m = None
         self.clk = None
         self.rst = None
         self.maxi = None
         self.saxi = None
-
-        # memory access information
-        self.global_index = None
-        self.local_index = None
-        self.default_global_addr = None
-        self.default_local_addr = None
-
-        self.objaddr = None  # Reg
-
-        # numpy value for variable/constant
-        self.value = None
-
-        # for quantization
-        self.quantized = False
-        # scale factor for quantization
-        self.scale_factor = 1.0
-        # remember applied permutation pattern for ONNX
-        self.perm = None
+        self.objaddr = None
 
     def __str__(self):
         clsname = self.__class__.__name__
@@ -99,32 +98,41 @@ class _Numeric(_Node):
         dtype = self.dtype.to_str() if self.dtype is not None else 'None'
         shape = (str(self.shape)
                  if isinstance(self.shape, (tuple, list)) else '()')
+
+        scale_factor = ' scale_factor:%f' % self.scale_factor
+
+        alignment = (' word_alignment:%d' % self.get_word_alignment()
+                     if self.maxi is not None else '')
+        aligned_shape = (' aligned_shape:%s' % str(tuple(self.get_aligned_shape()))
+                         if isinstance(self.shape, (tuple, list)) and
+                         self.maxi is not None else '()')
+
+        layout = (" layout:%s" % str(self.get_layout())
+                  if self.get_layout() is not None else '')
+        onnx_layout = (" onnx_layout:%s" % str(self.get_onnx_layout())
+                       if self.get_onnx_layout() is not None else '')
+
         sub_str = self.__sub_str__()
+
         default_addr = (self.default_global_addr
                         if self.default_global_addr is not None else 0)
         default_addr += (self.default_local_addr
                          if self.default_local_addr is not None and
                          self.local_index != 0 else 0)
         default_addr = (' default_addr:%d' % default_addr)
+
         global_index = (' g_index:%d' % self.global_index
                         if self.global_index is not None else '')
         local_index = (' l_index:%d' % self.local_index
                        if self.local_index is not None and
                        self.local_index != 0 else '')
-        alignment = (' word_alignment:%d' % self.get_word_alignment()
-                     if self.maxi is not None else '')
-        aligned_shape = (' aligned_shape:%s' % str(tuple(self.get_aligned_shape()))
-                         if isinstance(self.shape, (tuple, list)) and
-                         self.maxi is not None else '()')
-        layout = (" layout:%s" % str(self.get_layout())
-                  if self.get_layout() is not None else '')
-        onnx_layout = (" onnx_layout:%s" % str(self.get_onnx_layout())
-                       if self.get_onnx_layout() is not None else '')
-        scale_factor = ' scale_factor:%f' % self.scale_factor
+
         return '<%s %s dtype:%s shape:%s%s%s%s%s%s%s%s%s%s>' % (
-            clsname, name, dtype, shape, sub_str,
-            default_addr, global_index, local_index, alignment, aligned_shape,
-            layout, onnx_layout, scale_factor)
+            clsname, name, dtype, shape,
+            scale_factor, alignment, aligned_shape,
+            layout, onnx_layout,
+            sub_str,
+            default_addr, global_index, local_index)
 
     def __sub_str__(self):
         return ''
@@ -133,6 +141,20 @@ class _Numeric(_Node):
         name = '_'.join(
             [self.__class__.__name__, str(self.object_id), postfix])
         return name
+
+    def set_value(self, value):
+        if isinstance(value, (list, tuple)):
+            value = np.array(value)
+
+        if not isinstance(value, np.ndarray):
+            raise TypeError('value must be np.ndarray, list, or tuple.')
+
+        value = value.reshape(self.shape)
+
+        self.value = value
+
+    def attribute(self):
+        raise NotImplementedError()
 
     @property
     def aligned_shape(self):
@@ -143,12 +165,12 @@ class _Numeric(_Node):
         return self.get_length()
 
     @property
-    def size(self):
-        return self.get_length()
-
-    @property
     def aligned_length(self):
         return self.get_aligned_length()
+
+    @property
+    def size(self):
+        return self.get_length()
 
     @property
     def aligned_size(self):
@@ -157,6 +179,17 @@ class _Numeric(_Node):
     @property
     def memory_size(self):
         return int(math.ceil(self.aligned_length * self.dtype.width / 8))
+
+    @property
+    def reversed_perm(self):
+        if self.perm is None:
+            return None
+
+        rev = []
+        for i, _ in enumerate(self.perm):
+            rev.append(self.perm.index(i))
+
+        return rev
 
     @property
     def addr(self):
@@ -168,9 +201,6 @@ class _Numeric(_Node):
 
         return self.default_global_addr + self.default_local_addr
 
-    def attribute(self):
-        raise NotImplementedError()
-
     def add_consumer(self, obj):
         self.consumers.append(obj)
 
@@ -180,6 +210,13 @@ class _Numeric(_Node):
     def set_stage(self, stage):
         self.stage = stage
 
+    def set_module_info(self, m, clk, rst, maxi, saxi):
+        self.m = m
+        self.clk = clk
+        self.rst = rst
+        self.maxi = maxi
+        self.saxi = saxi
+
     def add_alignment_request(self, num_words):
         if num_words is None:
             return
@@ -188,13 +225,6 @@ class _Numeric(_Node):
             raise ValueError('alignment must be power of 2.')
 
         self.word_alignment = max(self.word_alignment, num_words)
-
-    def set_module_info(self, m, clk, rst, maxi, saxi):
-        self.m = m
-        self.clk = clk
-        self.rst = rst
-        self.maxi = maxi
-        self.saxi = saxi
 
     def collect_numerics(self):
         return [self]
@@ -208,14 +238,6 @@ class _Numeric(_Node):
     def is_schedulable(self, stage):
         return True
 
-    def get_signed(self, default_signed=True):
-        if self.dtype is not None:
-            return self.dtype.signed
-        return default_signed
-
-    def get_length(self):
-        return shape_to_length(self.shape)
-
     def get_default_alignment(self):
         if self.maxi is None:
             raise ValueError("maxi is required to determine alignment.")
@@ -226,9 +248,20 @@ class _Numeric(_Node):
         return max(self.get_default_alignment(),
                    self.word_alignment)
 
+    def get_signed(self, default_signed=True):
+        if self.dtype is not None:
+            return self.dtype.signed
+        return default_signed
+
+    def get_length(self):
+        return shape_to_length(self.shape)
+
     def get_aligned_length(self):
         shape = self.get_aligned_shape()
         return shape_to_length(shape)
+
+    def get_original_shape(self):
+        return self.shape
 
     def get_aligned_shape(self):
         if self.maxi is None:
@@ -248,6 +281,18 @@ class _Numeric(_Node):
         aligned_shape.append(self.shape[-1] + res)
 
         return aligned_shape
+
+    def get_layout(self):
+        return self.layout
+
+    def get_original_layout(self):
+        return self.get_layout()
+
+    def get_onnx_layout(self):
+        return self.onnx_layout
+
+    def get_original_onnx_layout(self):
+        return self.get_onnx_layout()
 
     def get_op_width(self, default_width=32):
         if self.dtype is None:
@@ -269,58 +314,21 @@ class _Numeric(_Node):
 
         return 2 ** int(math.ceil(math.log(width, 2)))
 
-    def set_global_index(self, global_index):
-        self.global_index = global_index
-
-    def set_local_index(self, local_index):
-        self.local_index = local_index
-
     def set_default_global_addr(self, default_global_addr):
         self.default_global_addr = default_global_addr
 
     def set_default_local_addr(self, default_local_addr):
         self.default_local_addr = default_local_addr
 
+    def set_global_index(self, global_index):
+        self.global_index = global_index
+
+    def set_local_index(self, local_index):
+        self.local_index = local_index
+
     def make_objaddr(self):
         self.objaddr = self.m.Reg(self._name('objaddr'),
                                   self.maxi.addrwidth, initval=0)
-
-    def set_value(self, value):
-        if isinstance(value, (list, tuple)):
-            value = np.array(value)
-
-        if not isinstance(value, np.ndarray):
-            raise TypeError('value must be np.ndarray, list, or tuple.')
-
-        value = value.reshape(self.shape)
-
-        self.value = value
-
-    def get_original_shape(self):
-        return self.shape
-
-    def get_layout(self):
-        return self.layout
-
-    def get_original_layout(self):
-        return self.get_layout()
-
-    def get_onnx_layout(self):
-        return self.onnx_layout
-
-    def get_original_onnx_layout(self):
-        return self.get_onnx_layout()
-
-    @property
-    def reversed_perm(self):
-        if self.perm is None:
-            return None
-
-        rev = []
-        for i, _ in enumerate(self.perm):
-            rev.append(self.perm.index(i))
-
-        return rev
 
     def eval(self, memo, input_dict, **kwargs):
         if self.value is None:
@@ -363,18 +371,20 @@ class _Constant(_Storage):
 class _Operator(_Numeric):
     input_chainable = False
     output_chainable = False
-    chain_head = False
     stream_cachable = True
     control_cachable = True
-
     control_param_custom_width = {}
     control_param_custom_signed = {}
-
     shared_attr_names = ()
 
     def __sub_str__(self):
+        ret = []
         par = ' par:%d' % self.par if self.par > 1 else ''
-        return par
+        ret.append(par)
+        chained = (' chained' if is_output_chainable_operator(self) and
+                   not self.chain_head else '')
+        ret.append(chained)
+        return ''.join(ret)
 
     def __init__(self, *args, **opts):
         dtype = opts['dtype'] if 'dtype' in opts else None
@@ -401,8 +411,7 @@ class _Operator(_Numeric):
         for arg in self.args:
             arg.add_consumer(self)
 
-        if is_input_chainable_operator(self):
-            self.chain_head = True
+        self.chain_head = is_input_chainable_operator(self)
 
         for arg in self.args:
             if are_chainable_operators(self, arg):
@@ -413,24 +422,23 @@ class _Operator(_Numeric):
 
         self.shared_attrs = defaultdict(OrderedDict)
 
-        self.input_rams = None
-        self.output_rams = None
-        self.temp_rams = None
+        # veriloggen variables
+        self.arg_objaddrs = []
+        self.rams = OrderedDict()
 
-        self.substreams = ()
+        self.substreams = OrderedDict()
         self.stream = None
-        self.control = None
 
-        self.arg_objaddrs = None  # list of Reg
+        self.control_params = OrderedDict()
 
-        self.control_param_names = ()  # list of str
         self.control_param_index = None  # int
         self.control_param_index_reg = None  # Reg
         self.control_param_ram = None
+        self.control = None
 
-        self.cached_ram_set = False
-        self.cached_stream = False
-        self.cached_control = False
+        self.are_rams_cached = False
+        self.is_stream_cached = False
+        self.is_control_cached = False
 
     def attribute(self, par=None):
         if par is not None:
@@ -443,6 +451,32 @@ class _Operator(_Numeric):
                 arg.add_alignment_request(self.par)
 
             self.add_alignment_request(self.par)
+
+    def get_layout(self):
+        if self.layout is not None:
+            return self.layout
+
+        for arg in self.args:
+            layout = arg.get_layout()
+            if layout is not None:
+                return layout
+
+        return None
+
+    def get_onnx_layout(self):
+        if self.onnx_layout is not None:
+            return self.onnx_layout
+
+        for arg in self.args:
+            onnx_layout = arg.get_onnx_layout()
+            if onnx_layout is not None:
+                return onnx_layout
+
+        return None
+
+    def get_max_arg_rank(self):
+        max_rank = max(list(self.shared_attrs['_rank'].values()))
+        return max_rank
 
     def merge_shared_attrs(self, obj):
         """ merge obj's and self's shared_attrs. """
@@ -520,98 +554,81 @@ class _Operator(_Numeric):
 
     def get_required_rams(self):
         """
-        @return 3 tuples of (width, length)
+        @return dict of name and (width, length)
         """
-        inputs = []
-        temps = []
+        rams = OrderedDict()
+        in_offset = 0
 
-        for arg in self.args:
+        for i, arg in enumerate(self.args):
             if are_chainable_operators(self, arg):
-                arg_input_rams, arg_output_rams, arg_temp_rams = arg.get_required_rams()
-                inputs.extend(arg_input_rams)
-                temps.extend(arg_temp_rams)
+                arg_rams = arg.get_required_rams()
+                for arg_ram_name, arg_ram in arg_rams.items():
+                    ram_name = 'in_%d' % (i + in_offset)
+                    rams[ram_name] = arg_ram
+                    in_offset += 1
+
             else:
                 input_width = arg.get_ram_width() * self.par
                 input_shape = arg.get_aligned_shape()
                 min_size = int(math.ceil(input_shape[-1] / self.par)) * 2
-                arg_ram = [(input_width, min_size)]
-                inputs.extend(arg_ram)
+                arg_ram = (input_width, min_size)
+                ram_name = 'in_%d' % (i + in_offset)
+                rams[ram_name] = arg_ram
 
         output_width = self.get_ram_width() * self.par
         shape = self.get_aligned_shape()
         min_size = int(math.ceil(shape[-1] / self.par)) * 2
-        outputs = [(output_width, min_size)]
+        out_ram = (output_width, min_size)
+        ram_name = 'out'
 
-        return inputs, outputs, temps
+        rams[ram_name] = out_ram
 
-    def set_rams(self, input_rams, output_rams, temp_rams):
-        input_index = 0
-        temp_index = 0
+        return rams
+
+    def set_rams(self, ram_insts):
+        in_offset = 0
 
         for arg in self.args:
             if are_chainable_operators(self, arg):
-                arg_input_rams, arg_output_rams, arg_temp_rams = arg.get_required_rams()
-                si = input_index
-                ei = input_index + len(arg_input_rams)
-                st = temp_index
-                et = temp_index + len(arg_temp_rams)
-                input_set = input_rams[si:ei] if len(input_rams) > 0 else ()
-                temp_set = temp_rams[st:et] if len(temp_rams) > 0 else ()
-                arg.set_rams(input_set, (), temp_set)
-                input_index += len(arg_input_rams)
-                temp_index += len(arg_temp_rams)
+                arg_rams = arg.get_required_rams()
+                arg_ram_insts = OrderedDict()
+                for arg_ram_name, arg_ram in arg_rams.items():
+                    arg_ram_insts[arg_ram_name] = ram_insts['in_%d' % in_offset]
+                    in_offset += 1
 
-        self.input_rams = input_rams
-        self.output_rams = output_rams
-        self.temp_rams = temp_rams
+                arg.set_rams(arg_ram_insts)
 
-    def check_ram_requirements(self, input_rams, output_rams, temp_rams):
-        my_inputs, my_outputs, my_temps = self.get_required_rams()
+        self.rams = ram_insts
 
-        if len(my_inputs) > len(input_rams):
+    def check_ram_requirements(self, rams):
+        my_rams = self.get_required_rams()
+
+        if len(my_rams) > len(rams):
             return False
 
-        for (my_input_width, my_input_size), input_ram in zip(my_inputs, input_rams):
-            if input_ram.length < my_input_size:
+        for my_ram_name, (my_width, my_size) in my_rams.items():
+            if my_ram_name not in rams:
                 return False
-            if input_ram.datawidth < my_input_width:
+            if rams[my_ram_name].width < my_width:
                 return False
-
-        if len(my_outputs) > len(output_rams):
-            return False
-
-        for (my_output_width, my_output_size), output_ram in zip(my_outputs, output_rams):
-            if output_ram.length < my_output_size:
-                return False
-            if output_ram.datawidth < my_output_width:
-                return False
-
-        if len(my_temps) > len(temp_rams):
-            return False
-
-        for (my_temp_width, my_temp_size), temp_ram in zip(my_temps, temp_rams):
-            if temp_ram.length < my_temp_size:
-                return False
-            if temp_ram.datawidth < my_temp_width:
+            if rams[my_ram_name].length < my_size:
                 return False
 
         return True
 
     def get_ram_set_obj_hash(self):
-        input_ids = tuple([id(input_ram) for input_ram in self.input_rams])
-        output_ids = tuple([id(output_ram) for output_ram in self.output_rams])
-        temp_ids = tuple([id(temp_ram) for temp_ram in self.temp_rams])
-        return (input_ids, output_ids, temp_ids)
+        ram_ids = tuple([id(ram) for ram in self.rams.values()])
+        return ram_ids
 
     def get_required_substreams(self):
         """
-        @return a tuple of (method_name, args)
+        @return a dict of method_name and args
         """
-        substreams = ()
+        substreams = OrderedDict()
         return substreams
 
-    def set_substreams(self, substreams):
-        self.substreams = substreams
+    def set_substreams(self, substream_insts):
+        self.substreams = substream_insts
 
     def make_stream(self, datawidth=32, fsm_as_module=False,
                     dump=False, dump_base=10):
@@ -727,7 +744,7 @@ class _Operator(_Numeric):
 
     def collect_all_control_param_names(self):
         ret = []
-        ret.extend(self.control_param_names)
+        ret.extend(self.control_params.keys())
         ret.extend(self.collect_local_control_param_names())
         ret = sorted(set(ret), key=ret.index)
         return ret
@@ -741,114 +758,84 @@ class _Operator(_Numeric):
     def make_control_params(self, control_param_len, width_dict, signed_dict,
                             use_param_ram=False, min_param_ram_len=0):
 
-        if control_param_len <= 1:
-            self.make_control_params_wire(width_dict, signed_dict)
-
-        elif not use_param_ram or control_param_len < min_param_ram_len:
-            self.make_control_params_wire(width_dict, signed_dict)
-
+        if (not use_param_ram or control_param_len < min_param_ram_len):
+            func = self._make_control_param_wire
         else:
-            self.make_control_params_reg(width_dict, signed_dict)
+            func = self._make_control_param_reg
+
+        for name, width in width_dict.items():
+            signed = signed_dict[name]
+
+            if isinstance(width, (tuple, list)):
+                vars = []
+                for i, (w, s) in enumerate(zip(width, signed)):
+                    if name in self.control_param_custom_width:
+                        if callable(self.control_param_custom_width[name]):
+                            w = self.control_param_custom_width[name](self)
+                        else:
+                            w = self.control_param_custom_width[name]
+
+                    if name in self.control_param_custom_signed:
+                        if callable(self.control_param_custom_signed[name]):
+                            s = self.control_param_custom_signed[name](self)
+                        else:
+                            s = self.control_param_custom_signed[name]
+
+                    var = func(name + ('_%d' % i), w, signed=s)
+                    vars.append(var)
+
+                self.set_control_param(name, vars)
+
+            else:
+                if name in self.control_param_custom_width:
+                    if callable(self.control_param_custom_width[name]):
+                        width = self.control_param_custom_width[name](self)
+                    else:
+                        width = self.control_param_custom_width[name]
+
+                if name in self.control_param_custom_signed:
+                    if callable(self.control_param_custom_signed[name]):
+                        signed = self.control_param_custom_signed[name](self)
+                    else:
+                        signed = self.control_param_custom_signed[name]
+
+                var = func(name, width, signed=signed)
+                self.set_control_param(name, var)
 
         self.copy_local_control_params(self)
 
-    def make_control_params_wire(self, width_dict, signed_dict):
-        for name, width in width_dict.items():
-            signed = signed_dict[name]
+    def _make_control_param_reg(self, name, *args, **kwargs):
+        kwargs['initval'] = 0
+        return self.m.Reg('control_param_%s' % self._name(name), *args, **kwargs)
 
-            if isinstance(width, (tuple, list)):
-                wires = []
-                for i, (w, s) in enumerate(zip(width, signed)):
-                    if name in self.control_param_custom_width:
-                        if callable(self.control_param_custom_width[name]):
-                            w = self.control_param_custom_width[name](self)
-                        else:
-                            w = self.control_param_custom_width[name]
+    def _make_control_param_wire(self, name, *args, **kwargs):
+        return self.m.Wire('control_param_%s' % self._name(name), *args, **kwargs)
 
-                    if name in self.control_param_custom_signed:
-                        if callable(self.control_param_custom_signed[name]):
-                            s = self.control_param_custom_signed[name](self)
-                        else:
-                            s = self.control_param_custom_signed[name]
+    def set_control_param(self, name, var):
+        if name in self.control_params:
+            raise ValueError("control_param '%s' already exists." % name)
+        self.control_params[name] = var
 
-                    wire = self.CparamWire(name + ('_%d' % i), w, signed=s)
-                    wires.append(wire)
+    def get_control_param(self, name):
+        return self.control_params[name]
 
-                setattr(self, name, wires)
-
-            else:
-                if name in self.control_param_custom_width:
-                    if callable(self.control_param_custom_width[name]):
-                        width = self.control_param_custom_width[name](self)
-                    else:
-                        width = self.control_param_custom_width[name]
-
-                if name in self.control_param_custom_signed:
-                    if callable(self.control_param_custom_signed[name]):
-                        signed = self.control_param_custom_signed[name](self)
-                    else:
-                        signed = self.control_param_custom_signed[name]
-
-                wire = self.CparamWire(name, width, signed=signed)
-                setattr(self, name, wire)
-
-        self.control_param_names = tuple(width_dict.keys())
-
-    def make_control_params_reg(self, width_dict, signed_dict):
-        for name, width in width_dict.items():
-            signed = signed_dict[name]
-
-            if isinstance(width, (tuple, list)):
-                regs = []
-                for i, (w, s) in enumerate(zip(width, signed)):
-                    if name in self.control_param_custom_width:
-                        if callable(self.control_param_custom_width[name]):
-                            w = self.control_param_custom_width[name](self)
-                        else:
-                            w = self.control_param_custom_width[name]
-
-                    if name in self.control_param_custom_signed:
-                        if callable(self.control_param_custom_signed[name]):
-                            s = self.control_param_custom_signed[name](self)
-                        else:
-                            s = self.control_param_custom_signed[name]
-
-                    reg = self.Cparam(name + ('_%d' % i), w, initval=0, signed=s)
-                    regs.append(reg)
-
-                setattr(self, name, regs)
-
-            else:
-                if name in self.control_param_custom_width:
-                    if callable(self.control_param_custom_width[name]):
-                        width = self.control_param_custom_width[name](self)
-                    else:
-                        width = self.control_param_custom_width[name]
-
-                if name in self.control_param_custom_signed:
-                    if callable(self.control_param_custom_signed[name]):
-                        signed = self.control_param_custom_signed[name](self)
-                    else:
-                        signed = self.control_param_custom_signed[name]
-
-                reg = self.Cparam(name, width, initval=0, signed=signed)
-                setattr(self, name, reg)
-
-        self.control_param_names = tuple(width_dict.keys())
+    def cparam(self, name):
+        return self.get_control_param(name)
 
     def make_control_param_buf(self, control_param_list,
                                use_param_ram=False, min_param_ram_len=0, ram_style=None):
+
         if len(control_param_list) <= 1:
-            return self.make_control_param_single(control_param_list)
+            return self._make_control_param_buf_single(control_param_list)
 
         if not use_param_ram or len(control_param_list) < min_param_ram_len:
-            return self.make_control_param_mux(control_param_list)
+            return self._make_control_param_buf_mux(control_param_list)
 
-        return self.make_control_param_ram(control_param_list, ram_style)
+        return self._make_control_param_buf_ram(control_param_list, ram_style)
 
-    def make_control_param_single(self, control_param_list):
+    def _make_control_param_buf_single(self, control_param_list):
         for name in self.collect_all_control_param_names():
-            dst = getattr(self, name)
+            dst = self.get_control_param(name)
             value = control_param_list[0][name]
             if isinstance(value, (tuple, list)):
                 for d, v in zip(dst, value):
@@ -857,7 +844,7 @@ class _Operator(_Numeric):
             else:
                 dst.assign(value)
 
-    def make_control_param_mux(self, control_param_list):
+    def _make_control_param_buf_mux(self, control_param_list):
         length = len(control_param_list)
         addrwidth = int(math.ceil(math.log(length, 2)))
         self.control_param_index_reg = self.m.Reg(self._name('control_param_index'),
@@ -873,7 +860,7 @@ class _Operator(_Numeric):
                     pattern_dict[name].append((self.control_param_index_reg == i, value))
 
         for name in self.collect_all_control_param_names():
-            dst = getattr(self, name)
+            dst = self.get_control_param(name)
             if isinstance(dst, (tuple, list)):
                 for i, d in enumerate(dst):
                     vlist = [lst[i] for lst in pattern_dict[name]]
@@ -888,7 +875,7 @@ class _Operator(_Numeric):
                 value = vg.PatternMux(*pattern_dict[name])
                 dst.assign(value)
 
-    def make_control_param_ram(self, control_param_list, ram_style=None):
+    def _make_control_param_buf_ram(self, control_param_list, ram_style=None):
 
         datawidth = self.get_total_control_param_width()
 
@@ -903,7 +890,7 @@ class _Operator(_Numeric):
             cat_params = []
             for name in self.collect_all_control_param_names():
                 value = values[name]
-                reg = getattr(self, name)
+                reg = self.get_control_param(name)
 
                 if isinstance(reg, (tuple, list)):
                     group_params = []
@@ -958,7 +945,7 @@ class _Operator(_Numeric):
     def get_total_control_param_width(self):
         width = 0
         for name in self.collect_all_control_param_names():
-            reg = getattr(self, name)
+            reg = self.get_control_param(name)
             if isinstance(reg, (tuple, list)):
                 for r in reg:
                     width += (r.width if r.width is not None else 1)
@@ -999,11 +986,188 @@ class _Operator(_Numeric):
         """ must be implemented in each _Operator class """
         raise NotImplementedError()
 
-    def Cparam(self, name, *args, **kwargs):
-        return self.m.Reg('cparam_%s' % self._name(name), *args, **kwargs)
+    # methods for control_sequence
+    def make_wire(self, name, width, dims=None, signed=False, value=None):
+        return self.m.Wire(name=self._name(name),
+                           width=width,
+                           dims=dims,
+                           signed=signed,
+                           value=value)
 
-    def CparamWire(self, name, *args, **kwargs):
-        return self.m.Wire('cparam_%s' % self._name(name), *args, **kwargs)
+    def make_reg(self, name, width, dims=None, signed=False, value=None, initval=0):
+        return self.m.Reg(name=self._name(name),
+                          width=width,
+                          dims=dims,
+                          signed=signed,
+                          value=value,
+                          initval=initval)
+
+    def make_wires(self, size, name, width, dims=None, signed=False, value=None):
+        if isinstance(size, (tuple, list)) and not size:
+            raise ValueError('illegal size.')
+
+        if isinstance(size, (tuple, list)):
+            ret = []
+            for i in range(size[0]):
+                _name = '%s_%d' % (name, i)
+                ret.append(self.make_wires(size[1:], _name, width, dims, signed, value))
+            return tuple(ret)
+
+        for i in range(size):
+            _name = '%s_%d' % (name, i)
+            ret.append(self.make_wire(_name, width, dims, signed, value))
+        return tuple(ret)
+
+    def make_regs(self, size, name, width, dims=None, signed=False, value=None, initval=0):
+        if isinstance(size, (tuple, list)) and not size:
+            raise ValueError('illegal size.')
+
+        if isinstance(size, (tuple, list)):
+            ret = []
+            for i in range(size[0]):
+                _name = '%s_%d' % (name, i)
+                ret.append(self.make_regs(size[1:], _name, width, dims, signed, value, initval))
+            return tuple(ret)
+
+        ret = []
+        for i in range(size):
+            _name = '%s_%d' % (name, i)
+            ret.append(self.make_reg(_name, width, dims, signed, value, initval))
+        return tuple(ret)
+
+    def make_addr_wire(self, name):
+        return self.make_wire(name, width=self.maxi.addrwidth)
+
+    def make_addr_reg(self, name):
+        return self.make_reg(name, width=self.maxi.addrwidth, initval=0)
+
+    def make_addr_wires(self, size, name):
+        if isinstance(size, (tuple, list)) and not size:
+            raise ValueError('illegal size.')
+
+        if isinstance(size, (tuple, list)) and len(size) > 1:
+            ret = []
+            for i in range(size[0]):
+                _name = '%s_%d' % (name, i)
+                ret.append(self.make_addr_wires(size[1:], _name))
+            return tuple(ret)
+
+        if isinstance(size, (tuple, list)):
+            size = size[0]
+
+        ret = []
+        for i in range(size):
+            _name = '%s_%d' % (name, i)
+            ret.append(self.make_addr_wire(_name))
+        return tuple(ret)
+
+    def make_addr_regs(self, size, name):
+        if isinstance(size, (tuple, list)) and not size:
+            raise ValueError('illegal size.')
+
+        if isinstance(size, (tuple, list)) and len(size) > 1:
+            ret = []
+            for i in range(size[0]):
+                _name = '%s_%d' % (name, i)
+                ret.append(self.make_addr_regs(size[1:], _name))
+            return tuple(ret)
+
+        if isinstance(size, (tuple, list)):
+            size = size[0]
+
+        ret = []
+        for i in range(size):
+            _name = '%s_%d' % (name, i)
+            ret.append(self.make_addr_reg(_name))
+        return tuple(ret)
+
+    def make_counter(self, name, width=None):
+        if width is None:
+            width = self.maxi.addrwidth + 1
+        return self.make_reg(name, width=width, initval=0)
+
+    def make_counters(self, size, name, width=None):
+        if isinstance(size, (tuple, list)) and not size:
+            raise ValueError('illegal size.')
+
+        if isinstance(size, (tuple, list)) and len(size) > 1:
+            ret = []
+            for i in range(size[0]):
+                _name = '%s_%d' % (name, i)
+                ret.append(self.make_counters(size[1:], _name, width))
+            return tuple(ret)
+
+        if isinstance(size, (tuple, list)):
+            size = size[0]
+
+        ret = []
+        for i in range(size):
+            _name = '%s_%d' % (name, i)
+            ret.append(self.make_counter(_name, width))
+        return tuple(ret)
+
+    def dma_read(self, fsm, ram, laddr, gaddr, size, port=1, use_async=False):
+        bus_lock(fsm, self.maxi)
+        dma_read(fsm, self.maxi, ram, laddr, gaddr, size, port, use_async)
+        bus_unlock(fsm, self.maxi)
+
+    def dma_write(self, fsm, ram, laddr, gaddr, size, port=1, use_async=False):
+        bus_lock(fsm, self.maxi)
+        dma_write(fsm, self.maxi, ram, laddr, gaddr, size, port, use_async)
+        bus_unlock(fsm, self.maxi)
+
+    def dma_read_block(self, fsm, rams, laddr, gaddr, size, block_size,
+                       port=1, use_async=False):
+        return dma_read_block(fsm, self.maxi, rams, laddr, gaddr, size, block_size,
+                              port, use_async)
+
+    def dma_write_block(self, fsm, rams, laddr, gaddr, size, block_size,
+                        port=1, use_async=False):
+        return dma_write_block(fsm, self.maxi, rams, laddr, gaddr, size, block_size,
+                               port, use_async)
+
+    def dma_wait_read(self, fsm):
+        return dma_wait_read(fsm, self.maxi)
+
+    def dma_wait_write(self, fsm):
+        return dma_wait_write(fsm, self.maxi)
+
+    def dma_wait_write_idle(self, fsm):
+        return dma_wait_write_idle(fsm, self.maxi)
+
+    def dma_wait(self, fsm):
+        return dma_wait(fsm, self.maxi)
+
+    def read_modify_write(self, fsm, src_ram, dst_ram, laddr, gaddr):
+        return read_modify_write(fsm, self.m, self.maxi,
+                                 src_ram, dst_ram, laddr, gaddr)
+
+    def read_modify_write_single_bank(self, fsm, src_ram, dst_ram, laddr, gaddr):
+        return read_modify_write_single_bank(fsm, self.m, self.maxi,
+                                             src_ram, dst_ram, laddr, gaddr)
+
+    def set_stream_parameter(self, fsm, name, value):
+        self.stream.set_parameter(fsm, name, value)
+        fsm.set_index(fsm.current - 1)
+        return fsm.current
+
+    def set_stream_source(self, fsm, name, ram, addr, size, stride=1, port=0):
+        self.stream.set_source(fsm, name, ram, addr, size, stride, port)
+        fsm.set_index(fsm.current - 1)
+        return fsm.current
+
+    def set_stream_sink(self, fsm, name, ram, addr, size, stride=1, port=0):
+        self.stream.set_sink(fsm, name, ram, addr, size, stride, port)
+        fsm.set_index(fsm.current - 1)
+        return fsm.current
+
+    def stream_run(self, fsm):
+        self.stream.run(fsm)
+        return fsm.current
+
+    def stream_join(self, fsm):
+        self.stream.join(fsm)
+        return fsm.current
 
     def set_control_params(self, fsm, control_param_len,
                            use_param_ram=False, min_param_ram_len=0):
@@ -1011,14 +1175,21 @@ class _Operator(_Numeric):
             return
 
         if not use_param_ram or control_param_len < min_param_ram_len:
-            return self.set_control_params_mux(fsm)
+            return self._set_control_params_mux(fsm)
 
-        return self.set_control_params_ram(fsm)
+        return self._set_control_params_ram(fsm)
 
-    def set_control_params_ram(self, fsm):
+    def _set_control_params_mux(self, fsm):
+        fsm(
+            self.control_param_index_reg(self.control_param_index)
+        )
+
+        fsm.goto_next()
+
+    def _set_control_params_ram(self, fsm):
         dst_regs = []
         for name in self.collect_all_control_param_names():
-            v = getattr(self, name)
+            v = self.get_control_param(name)
             if isinstance(v, (tuple, list)):
                 dst_regs.extend(v)
             else:
@@ -1037,13 +1208,6 @@ class _Operator(_Numeric):
                 dst_reg(value)
             )
             lsb += width
-
-        fsm.goto_next()
-
-    def set_control_params_mux(self, fsm):
-        fsm(
-            self.control_param_index_reg(self.control_param_index)
-        )
 
         fsm.goto_next()
 
@@ -1069,21 +1233,15 @@ class _Operator(_Numeric):
         return (self.get_stream_obj_hash(), self.get_ram_set_obj_hash())
 
     def copy_control_params(self, obj):
-        for name in obj.collect_all_control_param_names():
-            setattr(self, name, getattr(obj, name))
-
+        self.control_params = objcontrol_params
         self.copy_local_control_params(obj)
-
-        self.control_param_names = obj.control_param_names
-
         self.control_param_index_reg = obj.control_param_index_reg
         self.control_param_ram = obj.control_param_ram
 
     def copy_local_control_params(self, obj, index_offset=0):
         for name, lparam in self.get_local_control_param_values().items():
             signame = self.to_local_control_param_name(index_offset, name)
-            if hasattr(obj, signame):
-                setattr(self, name, getattr(obj, signame))
+            self.set_control_param(name, obj.get_control_param(signame))
 
         numerics = self.collect_arg_numerics()
 
@@ -1092,35 +1250,12 @@ class _Operator(_Numeric):
                 continue
             for name, lparam in arg.get_local_control_param_values().items():
                 signame = self.to_local_control_param_name(index_offset + i + 1, name)
-                if hasattr(obj, signame):
-                    setattr(arg, name, getattr(obj, signame))
+                arg.set_control_param(name, obj.get_control_param(signame))
 
     def copy_control(self, obj):
         self.objaddr = obj.objaddr
         self.arg_objaddrs = obj.arg_objaddrs
         self.control = obj.control
-
-    def get_layout(self):
-        if self.layout is not None:
-            return self.layout
-
-        for arg in self.args:
-            layout = arg.get_layout()
-            if layout is not None:
-                return layout
-
-        return None
-
-    def get_onnx_layout(self):
-        if self.onnx_layout is not None:
-            return self.onnx_layout
-
-        for arg in self.args:
-            onnx_layout = arg.get_onnx_layout()
-            if onnx_layout is not None:
-                return onnx_layout
-
-        return None
 
     def get_eval_method(self):
         import nngen.verify as verify
@@ -1128,10 +1263,6 @@ class _Operator(_Numeric):
         name = self.__class__.__name__
         method = getattr(verify, name, None)
         return method
-
-    def get_max_arg_rank(self):
-        max_rank = max(list(self.shared_attrs['_rank'].values()))
-        return max_rank
 
     def eval(self, memo, input_dict, **kwargs):
         if id(self) in memo:
@@ -1158,22 +1289,12 @@ class _Operator(_Numeric):
 class _StreamingOperator(_Operator):
     input_chainable = True
     output_chainable = True
-    chain_head = True
-
     shared_attr_names = ('_rank',)
 
     @staticmethod
     def op(strm, *args, **kwargs):
         # return strm.Plus(*args)
         raise NotImplementedError()
-
-    def __sub_str__(self):
-        ret = []
-        ret.append(_Operator.__sub_str__(self))
-        chained = (' chained' if is_output_chainable_operator(self) and
-                   not self.chain_head else '')
-        ret.append(chained)
-        return ''.join(ret)
 
     def __init__(self, *args, **opts):
         dtype = opts['dtype'] if 'dtype' in opts else None
@@ -1191,21 +1312,31 @@ class _StreamingOperator(_Operator):
                            shape=shape, name=name, par=par)
 
     def get_required_substreams(self):
-        substreams = []
+        substreams = OrderedDict()
+        offset = 0
         for arg in self.args:
             if are_chainable_operators(self, arg):
-                substreams.extend(arg.get_required_substreams())
+                arg_substreams = arg.get_required_substreams()
+                for arg_name, arg_args in arg_substreams.items():
+                    sub_name = 'sub_%d' % offset
+                    offset += 1
+                    substreams[sub_name] = arg_args
         return substreams
 
-    def set_substreams(self, substreams):
-        index = 0
+    def set_substreams(self, substream_insts):
+        offset = 0
         for arg in self.args:
             if are_chainable_operators(self, arg):
-                num = len(arg.get_required_substreams())
-                if num > 0:
-                    arg.set_substreams(substreams[index: index + num])
-                    index += num
-        self.substreams = substreams[index:]
+                arg_substreams = arg.get_required_substreams()
+                sub_substream_insts = OrderedDict()
+
+                for arg_name, arg_args in arg_substreams.items():
+                    sub_substream_insts[arg_name] = substream_insts['sub_%d' % offset]
+                    offset += 1
+
+                arg.set_substreams(sub_substream_insts)
+
+        self.substreams = substream_insts
 
     def get_stream_func(self):
         def func(strm):
@@ -1331,20 +1462,13 @@ class _StreamingOperator(_Operator):
         sources = self.collect_sources()
         max_rank = self.get_max_arg_rank()
 
-        out_gaddr = self.m.Reg(self._name('out_gaddr'),
-                               self.maxi.addrwidth, initval=0)
-        comp_count = self.m.Reg(self._name('comp_count'),
-                                self.maxi.addrwidth + 1, initval=0)
+        comp_count = self.make_counter('comp_count')
+        out_gaddr = self.make_addr_reg('out_gaddr')
 
-        arg_gaddr_offsets = []
-        for i, _ in enumerate(self.arg_objaddrs):
-            arg_gaddr_offsets.append([self.m.Reg(self._name('arg_gaddr_offset_%d_%d' % (i, j)),
-                                                 self.maxi.addrwidth, initval=0)
-                                      for j in range(max_rank)])
-
-        arg_gaddrs = [self.m.Wire(self._name('arg_gaddr_%d' % i),
-                                  self.maxi.addrwidth)
-                      for i, _ in enumerate(self.arg_objaddrs)]
+        arg_gaddr_offsets = self.make_addr_regs((len(self.arg_objaddrs), max_rank),
+                                                'arg_gaddr_offset')
+        arg_gaddrs = self.make_addr_wires(len(self.arg_objaddrs),
+                                          'arg_gaddr')
 
         for arg_gaddr, offsets in zip(arg_gaddrs, arg_gaddr_offsets):
             v = offsets[0]
@@ -1352,60 +1476,58 @@ class _StreamingOperator(_Operator):
                 v += offset
             arg_gaddr.assign(v)
 
-        arg_trip_counts = [[self.m.Reg(self._name('arg_trip_count_%d_%d' % (i, j)),
-                                       self.maxi.addrwidth + 1, initval=0)
-                            for j in range(max_rank)]
-                           for i, arg in enumerate(sources)]
+        arg_trip_counts = self.make_counters((len(sources), max_rank),
+                                             'arg_trip_count')
+        arg_repeat_counts = self.make_counters((len(sources), max_rank),
+                                               'arg_repeat_count')
 
-        arg_repeat_counts = [[self.m.Reg(self._name('arg_repeat_count_%d_%d' % (i, j)),
-                                         self.maxi.addrwidth + 1, initval=0)
-                              for j in range(max_rank)]
-                             for i, arg in enumerate(sources)]
+        out_page = self.make_reg('out_page', width=1)
+        out_page_comp_offset = self.make_addr_reg('out_page_comp_offset')
+        out_page_dma_offset = self.make_addr_reg('out_page_dma_offset')
 
-        out_page = self.m.Reg(self._name('out_page'), initval=0)
-        out_page_comp_offset = self.m.Reg(self._name('out_page_comp_offset'),
-                                          self.maxi.addrwidth, initval=0)
-        out_page_dma_offset = self.m.Reg(self._name('out_page_dma_offset'),
-                                         self.maxi.addrwidth, initval=0)
+        arg_pages = self.make_regs(len(self.arg_objaddrs), 'arg_page', width=1)
+        arg_page_comp_offsets = self.make_addr_regs(len(self.arg_objaddrs),
+                                                    'arg_page_comp_offset')
+        arg_page_dma_offsets = self.make_addr_regs(len(self.arg_objaddrs),
+                                                   'arg_page_dma_offset')
 
-        arg_pages = [self.m.Reg(self._name('arg_page_%d' % i), initval=0)
-                     for i, _ in enumerate(self.arg_objaddrs)]
-        arg_page_comp_offsets = [self.m.Reg(self._name('arg_page_comp_offset_%d' % i),
-                                            self.maxi.addrwidth, initval=0)
-                                 for i, _ in enumerate(self.arg_objaddrs)]
-        arg_page_dma_offsets = [self.m.Reg(self._name('arg_page_dma_offset_%d' % i),
-                                           self.maxi.addrwidth, initval=0)
-                                for i, _ in enumerate(self.arg_objaddrs)]
+        input_rams = [v for k, v in self.rams.items() if k.startswith('in_')]
+        output_rams = [v for k, v in self.rams.items() if k.startswith('out')]
 
-        arg_page_sizes = [ram.length // 2 for ram in self.input_rams]
-        out_page_size = self.output_rams[0].length // 2
+        arg_page_sizes = [ram.length // 2 for ram in input_rams]
+        out_page_size = output_rams[0].length // 2
 
-        skip_read = self.m.Reg(self._name('skip_read'), initval=0)
-        skip_comp = self.m.Reg(self._name('skip_comp'), initval=0)
-        skip_write = self.m.Reg(self._name('skip_write'), initval=0)
+        skip_read = self.make_reg('skip_read', width=1)
+        skip_comp = self.make_reg('skip_comp', width=1)
+        skip_write = self.make_reg('skip_write', width=1)
 
         # --------------------
         # initialization phase
         # --------------------
+        state_init = fsm.init
+
         fsm(
-            out_gaddr(0),
             comp_count(0),
+            out_gaddr(0)
         )
 
         for offsets in arg_gaddr_offsets:
-            fsm(
-                [offset(0) for offset in offsets]
-            )
+            for offset in offsets:
+                fsm(
+                    offset(0)
+                )
 
         for trip_counts in arg_trip_counts:
-            fsm(
-                [trip_count(0) for trip_count in trip_counts]
-            )
+            for trip_count in trip_counts:
+                fsm(
+                    trip_count(0)
+                )
 
         for repeat_counts in arg_repeat_counts:
-            fsm(
-                [repeat_count(0) for repeat_count in repeat_counts]
-            )
+            for repeat_count in repeat_counts:
+                fsm(
+                    repeat_count(0)
+                )
 
         fsm(
             out_page(0),
@@ -1413,13 +1535,20 @@ class _StreamingOperator(_Operator):
             out_page_dma_offset(out_page_size)
         )
 
-        fsm(
-            [arg_page(0) for arg_page in arg_pages],
-            [arg_page_comp_offset(0)
-             for arg_page_comp_offset in arg_page_comp_offsets],
-            [arg_page_dma_offset(0)
-             for arg_page_dma_offset in arg_page_dma_offsets]
-        )
+        for arg_page in arg_pages:
+            fsm(
+                arg_page(0)
+            )
+
+        for arg_page_comp_offset in arg_page_comp_offsets:
+            fsm(
+                arg_page_comp_offset(0)
+            )
+
+        for arg_page_dma_offset in arg_page_dma_offsets:
+            fsm(
+                arg_page_dma_offset(0)
+            )
 
         fsm(
             skip_read(0),
@@ -1437,37 +1566,38 @@ class _StreamingOperator(_Operator):
         # DMA read -> Stream run -> Stream wait -> DMA write
         for (ram, arg_objaddr,
              arg_gaddr, arg_page_dma_offset,
-             arg_stride_zero, arg_omit_dma, arg) in zip(self.input_rams, self.arg_objaddrs,
-                                                        arg_gaddrs, arg_page_dma_offsets,
-                                                        self.arg_stride_zeros, self.arg_omit_dmas,
-                                                        sources):
+             arg_stride_zero,
+             arg_omit_dma,
+             arg) in zip(input_rams, self.arg_objaddrs,
+                         arg_gaddrs, arg_page_dma_offsets,
+                         self.cparam('arg_stride_zeros'),
+                         self.cparam('arg_omit_dmas'),
+                         sources):
 
             b = fsm.current
-            fsm.goto_next()
 
             # normal
             laddr = arg_page_dma_offset
             gaddr = arg_objaddr + arg_gaddr
-            bus_lock(self.maxi, fsm)
-            dma_read(self.maxi, fsm, ram, laddr, gaddr, self.dma_size)
-            bus_unlock(self.maxi, fsm)
-            fsm.goto_next()
+            self.dma_read(fsm, ram, laddr, gaddr, self.cparam('dma_size'))
 
-            b_stride0 = fsm.current
-            fsm.goto_next()
+            e_normal = fsm.current
+            fsm.inc()
 
             # stride-0
-            bus_lock(self.maxi, fsm)
-            dma_read(self.maxi, fsm, ram, laddr, gaddr, 1)
-            bus_unlock(self.maxi, fsm)
-            fsm.goto_next()
+            b_stride0 = fsm.current
+            self.dma_read(fsm, ram, laddr, gaddr, 1)
 
             # FSM jumps for reuse
             e = fsm.current
+            # omit DMA
             fsm.If(arg_omit_dma, vg.Not(skip_write)).goto_from(b, e)
-            fsm.If(arg_omit_dma, arg_stride_zero,
-                   skip_write).goto_from(b, b_stride0)
-            fsm.If(vg.Not(arg_stride_zero)).goto_from(b_stride0, e)
+            # DMA for stride-0
+            fsm.If(arg_omit_dma, arg_stride_zero, skip_write).goto_from(b, b_stride0)
+            # after DMA for normal
+            fsm.If(vg.Not(arg_stride_zero)).goto_from(e_normal, e)
+
+            fsm.goto_next()
 
         state_read_end = fsm.current
         fsm.If(skip_read).goto_from(state_read, state_read_end)
@@ -1482,36 +1612,35 @@ class _StreamingOperator(_Operator):
         # set_source, set_parameter (dup)
         for (ram, source_name, dup_name,
              arg_page_comp_offset,
-             arg_stride_zero, arg_omit_dma) in zip(self.input_rams,
-                                                   self.stream.sources.keys(),
-                                                   self.stream.parameters.keys(),
-                                                   arg_page_comp_offsets,
-                                                   self.arg_stride_zeros, self.arg_omit_dmas):
+             arg_stride_zero,
+             arg_omit_dma) in zip(input_rams,
+                                  self.stream.sources.keys(),
+                                  self.stream.parameters.keys(),
+                                  arg_page_comp_offsets,
+                                  self.cparam('arg_stride_zeros'),
+                                  self.cparam('arg_omit_dmas')):
 
             read_laddr = arg_page_comp_offset
-            read_size = self.dma_size
+            read_size = self.cparam('dma_size')
             stride = vg.Mux(arg_stride_zero, 0, 1)
             dup = vg.Mux(arg_stride_zero, 1, 0)
-            self.stream.set_parameter(fsm, dup_name, dup)
-            fsm.set_index(fsm.current - 1)
-            self.stream.set_source(fsm, source_name, ram,
+            self.set_stream_parameter(fsm, dup_name, dup)
+            self.set_stream_source(fsm, source_name, ram,
                                    read_laddr, read_size, stride)
-            fsm.set_index(fsm.current - 1)
 
         # set_sink
         write_laddr = out_page_comp_offset
-        write_size = self.dma_size
+        write_size = self.cparam('dma_size')
 
-        for name, ram in zip(self.stream.sinks.keys(), self.output_rams):
-            self.stream.set_sink(fsm, name, ram, write_laddr, write_size)
-            fsm.set_index(fsm.current - 1)
+        for name, ram in zip(self.stream.sinks.keys(), output_rams):
+            self.set_stream_sink(fsm, name, ram, write_laddr, write_size)
 
         fsm.goto_next()
 
         # waiting for previous DMA write completion
-        dma_wait_write_idle(self.maxi, fsm)
+        self.dma_wait_write_idle(fsm)
 
-        self.stream.run(fsm)
+        self.stream_run(fsm)
 
         state_comp_end = fsm.current
 
@@ -1530,11 +1659,9 @@ class _StreamingOperator(_Operator):
 
         laddr = out_page_dma_offset
         gaddr = self.objaddr + out_gaddr
-        bus_lock(self.maxi, fsm)
-        dma_write(self.maxi, fsm,
-                  self.output_rams[0], laddr, gaddr, self.dma_size, use_async=True)
-        bus_unlock(self.maxi, fsm)
-
+        self.dma_write(fsm,
+                       output_rams[0], laddr, gaddr, self.cparam('dma_size'),
+                       use_async=True)
         fsm.goto_next()
 
         state_write_end = fsm.current
@@ -1548,20 +1675,20 @@ class _StreamingOperator(_Operator):
         )
 
         fsm.If(vg.Not(skip_write))(
-            out_gaddr.add(self.addr_inc)
+            out_gaddr.add(self.cparam('addr_inc'))
         )
 
         arg_addr_incs = []
-        for i in range(0, len(self.arg_addr_incs), max_rank):
-            arg_addr_incs.append(self.arg_addr_incs[i: i + max_rank])
+        for i in range(0, len(self.cparam('arg_addr_incs')), max_rank):
+            arg_addr_incs.append(self.cparam('arg_addr_incs')[i: i + max_rank])
 
         arg_trip_sizes = []
-        for i in range(0, len(self.arg_trip_sizes), max_rank):
-            arg_trip_sizes.append(self.arg_trip_sizes[i: i + max_rank])
+        for i in range(0, len(self.cparam('arg_trip_sizes')), max_rank):
+            arg_trip_sizes.append(self.cparam('arg_trip_sizes')[i: i + max_rank])
 
         arg_repeat_sizes = []
-        for i in range(0, len(self.arg_repeat_sizes), max_rank):
-            arg_repeat_sizes.append(self.arg_repeat_sizes[i: i + max_rank])
+        for i in range(0, len(self.cparam('arg_repeat_sizes')), max_rank):
+            arg_repeat_sizes.append(self.cparam('arg_repeat_sizes')[i: i + max_rank])
 
         for (arg_offsets, arg_incs,
              arg_page, arg_page_comp_offset,
@@ -1573,7 +1700,8 @@ class _StreamingOperator(_Operator):
                                                       arg_pages, arg_page_comp_offsets,
                                                       arg_page_dma_offsets,
                                                       arg_page_sizes,
-                                                      self.arg_stride_zeros, self.arg_omit_dmas,
+                                                      self.cparam('arg_stride_zeros'),
+                                                      self.cparam('arg_omit_dmas'),
                                                       arg_trip_counts, arg_trip_sizes,
                                                       arg_repeat_counts, arg_repeat_sizes,
                                                       sources):
@@ -1633,16 +1761,16 @@ class _StreamingOperator(_Operator):
         fsm(
             skip_write(0)
         )
-        fsm.If(comp_count == self.num_comp - 1)(
+        fsm.If(comp_count == self.cparam('num_comp') - 1)(
             skip_read(1),
             skip_comp(1)
         )
 
-        fsm.If(comp_count < self.num_comp).goto(state_read)
-        fsm.If(comp_count == self.num_comp).goto_next()
+        fsm.If(comp_count < self.cparam('num_comp')).goto(state_read)
+        fsm.If(comp_count == self.cparam('num_comp')).goto_next()
 
         # wait for last DMA write
-        dma_wait_write(self.maxi, fsm)
+        self.dma_wait_write(fsm)
 
     def eval(self, memo, input_dict, **kwargs):
         kwargs['par'] = self.par
@@ -1658,6 +1786,8 @@ class _ReductionOperator(_StreamingOperator):
     output_chainable = False
 
     carry_default_values = (0,)
+
+    ### ???
 
     @staticmethod
     def reduce_op(strm, value, size, par_offset, **kwargs):
@@ -2017,18 +2147,18 @@ class _ReductionOperator(_StreamingOperator):
             # normal
             laddr = arg_page_dma_offset
             gaddr = arg_objaddr + arg_gaddr
-            bus_lock(self.maxi, fsm)
-            dma_read(self.maxi, fsm, ram, laddr, gaddr, self.read_dma_size)
-            bus_unlock(self.maxi, fsm)
+            bus_lock(fsm, self.maxi)
+            dma_read(fsm, self.maxi, ram, laddr, gaddr, self.read_dma_size)
+            bus_unlock(fsm, self.maxi)
             fsm.goto_next()
 
             b_stride0 = fsm.current
             fsm.goto_next()
 
             # stride-0
-            bus_lock(self.maxi, fsm)
-            dma_read(self.maxi, fsm, ram, laddr, gaddr, 1)
-            bus_unlock(self.maxi, fsm)
+            bus_lock(fsm, self.maxi)
+            dma_read(fsm, self.maxi, ram, laddr, gaddr, 1)
+            bus_unlock(fsm, self.maxi)
             fsm.goto_next()
 
             # FSM jumps for reuse
@@ -2105,7 +2235,7 @@ class _ReductionOperator(_StreamingOperator):
 
         fsm.goto_next()
 
-        dma_wait_write_idle(self.maxi, fsm)
+        dma_wait_write_idle(fsm, self.maxi)
 
         self.stream.run(fsm)
 
@@ -2128,10 +2258,10 @@ class _ReductionOperator(_StreamingOperator):
         gaddr = self.objaddr + out_gaddr
         out_size = self.write_dma_size
 
-        bus_lock(self.maxi, fsm)
-        dma_write(self.maxi, fsm,
+        bus_lock(fsm, self.maxi)
+        dma_write(fsm, self.maxi,
                   self.output_rams[0], laddr, gaddr, out_size, use_async=True)
-        bus_unlock(self.maxi, fsm)
+        bus_unlock(fsm, self.maxi)
 
         state_write_end = fsm.current
         fsm.If(skip_write).goto_from(state_write, state_write_end)
@@ -2144,12 +2274,12 @@ class _ReductionOperator(_StreamingOperator):
         )
 
         fsm.If(vg.Not(skip_write))(
-            out_gaddr.add(self.addr_inc)
+            out_gaddr.add(self.cparam('addr_inc'))
         )
 
         arg_addr_incs = []
-        for i in range(0, len(self.arg_addr_incs), max_rank):
-            arg_addr_incs.append(self.arg_addr_incs[i: i + max_rank])
+        for i in range(0, len(self.cparam('arg_addr_incs')), max_rank):
+            arg_addr_incs.append(self.cparam('arg_addr_incs')[i: i + max_rank])
 
         arg_trip_sizes = []
         for i in range(0, len(self.arg_trip_sizes), max_rank):
@@ -2230,7 +2360,7 @@ class _ReductionOperator(_StreamingOperator):
             out_page(0)
         )
 
-        fsm.If(comp_count == self.num_comp - 1)(
+        fsm.If(comp_count == self.cparam('num_comp') - 1)(
             skip_read(1),
             skip_comp(1)
         )
@@ -2260,11 +2390,11 @@ class _ReductionOperator(_StreamingOperator):
             skip_write(0)
         )
 
-        fsm.If(comp_count < self.num_comp).goto(state_read)
-        fsm.If(comp_count == self.num_comp).goto_next()
+        fsm.If(comp_count < self.cparam('num_comp')).goto(state_read)
+        fsm.If(comp_count == self.cparam('num_comp')).goto_next()
 
         # wait for last DMA write
-        dma_wait_write(self.maxi, fsm)
+        dma_wait_write(fsm, self.maxi)
 
     def eval(self, memo, input_dict, **kwargs):
         kwargs['axis'] = self.axis
@@ -2452,9 +2582,9 @@ class _Reshape(_Operator):
 
         gaddr = self.arg_objaddrs[0] + in_offset
 
-        bus_lock(self.maxi, fsm)
-        dma_read(self.maxi, fsm, in_ram, 0, gaddr, self.read_size)
-        bus_unlock(self.maxi, fsm)
+        bus_lock(fsm, self.maxi)
+        dma_read(fsm, self.maxi, in_ram, 0, gaddr, self.read_size)
+        bus_unlock(fsm, self.maxi)
 
         fsm(
             in_offset.add(self.in_offset_inc),
@@ -2519,9 +2649,9 @@ class _Reshape(_Operator):
 
         gaddr = self.objaddr + out_offset
 
-        bus_lock(self.maxi, fsm)
-        dma_write(self.maxi, fsm, out_ram, 0, gaddr, self.write_size)
-        bus_unlock(self.maxi, fsm)
+        bus_lock(fsm, self.maxi)
+        dma_write(fsm, self.maxi, out_ram, 0, gaddr, self.write_size)
+        bus_unlock(fsm, self.maxi)
 
         fsm(
             total_count.add(self.write_size),
@@ -2624,7 +2754,6 @@ class _LazyReshape(_Reshape):
     def make_control_params(self, control_param_len, width_dict, signed_dict,
                             use_param_ram=False, min_param_ram_len=0):
         if self._condition():
-            self.control_param_names = ()
             return
 
         return _Reshape.make_control_params(self, control_param_len, width_dict, signed_dict,
@@ -2934,12 +3063,12 @@ def flatten_list(*values):
     return tuple(ret)
 
 
-def bus_lock(maxi, fsm):
+def bus_lock(fsm, maxi):
     """ do nothing """
     pass
 
 
-def bus_unlock(maxi, fsm):
+def bus_unlock(fsm, maxi):
     """ do nothing """
     pass
 
@@ -2962,7 +3091,7 @@ def dma_laddr(ram, laddr):
     return laddr >> shift
 
 
-def dma_read(maxi, fsm, ram, laddr, gaddr, size, port=1, use_async=False):
+def dma_read(fsm, maxi, ram, laddr, gaddr, size, port=1, use_async=False):
     size = dma_len(ram, size)
     laddr = dma_laddr(ram, laddr)
     if use_async:
@@ -2970,7 +3099,7 @@ def dma_read(maxi, fsm, ram, laddr, gaddr, size, port=1, use_async=False):
     return maxi.dma_read(fsm, ram, laddr, gaddr, size, port=1)
 
 
-def dma_write(maxi, fsm, ram, laddr, gaddr, size, port=1, use_async=False):
+def dma_write(fsm, maxi, ram, laddr, gaddr, size, port=1, use_async=False):
     size = dma_len(ram, size)
     laddr = dma_laddr(ram, laddr)
     if use_async:
@@ -2978,7 +3107,7 @@ def dma_write(maxi, fsm, ram, laddr, gaddr, size, port=1, use_async=False):
     return maxi.dma_write(fsm, ram, laddr, gaddr, size, port=1)
 
 
-def dma_read_block(maxi, fsm, rams, laddr, gaddr, size, block_size, port=1, use_async=False):
+def dma_read_block(fsm, maxi, rams, laddr, gaddr, size, block_size, port=1, use_async=False):
     if not isinstance(rams, (tuple, list)):
         raise TypeError('rams must be tuple or list.')
 
@@ -2988,7 +3117,7 @@ def dma_read_block(maxi, fsm, rams, laddr, gaddr, size, block_size, port=1, use_
         ram = rams[0]
 
     if len(rams) == 1 and not isinstance(ram, vthread.MultibankRAM):
-        return dma_read(maxi, fsm, ram, laddr, gaddr, size, port=port, use_async=use_async)
+        return dma_read(fsm, maxi, ram, laddr, gaddr, size, port=port, use_async=use_async)
 
     size = dma_len(rams[0], size)
     laddr = dma_laddr(rams[0], laddr)
@@ -3002,7 +3131,7 @@ def dma_read_block(maxi, fsm, rams, laddr, gaddr, size, block_size, port=1, use_
     return ram.dma_read_block(fsm, maxi, laddr, gaddr, size, block_size, port=1)
 
 
-def dma_write_block(maxi, fsm, rams, laddr, gaddr, size, block_size, port=1, use_async=False):
+def dma_write_block(fsm, maxi, rams, laddr, gaddr, size, block_size, port=1, use_async=False):
     if not isinstance(rams, (tuple, list)):
         raise TypeError('rams must be tuple or list.')
 
@@ -3012,7 +3141,7 @@ def dma_write_block(maxi, fsm, rams, laddr, gaddr, size, block_size, port=1, use
         ram = rams[0]
 
     if len(rams) == 1 and not isinstance(ram, vthwrite.MultibankRAM):
-        return dma_write(maxi, fsm, ram, laddr, gaddr, size, port=port, use_async=use_async)
+        return dma_write(fsm, maxi, ram, laddr, gaddr, size, port=port, use_async=use_async)
 
     size = dma_len(rams[0], size)
     laddr = dma_laddr(rams[0], laddr)
@@ -3026,23 +3155,23 @@ def dma_write_block(maxi, fsm, rams, laddr, gaddr, size, block_size, port=1, use
     return ram.dma_write_block(fsm, maxi, laddr, gaddr, size, block_size, port=1)
 
 
-def dma_wait_read(maxi, fsm):
+def dma_wait_read(fsm, maxi):
     return maxi.dma_wait_read(fsm)
 
 
-def dma_wait_write(maxi, fsm):
+def dma_wait_write(fsm, maxi):
     return maxi.dma_wait_write(fsm)
 
 
-def dma_wait_write_idle(maxi, fsm):
+def dma_wait_write_idle(fsm, maxi):
     return maxi.dma_wait_write_idle(fsm)
 
 
-def dma_wait(maxi, fsm):
+def dma_wait(fsm, maxi):
     return maxi.dma_wait(fsm)
 
 
-def read_modify_write(m, fsm, maxi,
+def read_modify_write(fsm, m, maxi,
                       src_ram, dst_ram, laddr, gaddr):
 
     if (isinstance(src_ram, vthread.MultibankRAM) and
@@ -3068,14 +3197,14 @@ def read_modify_write(m, fsm, maxi,
          src_ram.orig_datawidth == maxi.datawidth) or
         (not isinstance(src_ram, vthread.MultibankRAM) and
             src_ram.datawidth == maxi.datawidth)):
-        bus_lock(maxi, fsm)
+        bus_lock(fsm, maxi)
         maxi.dma_write(fsm, src_ram, laddr, gaddr, 1, port=1)
-        bus_unlock(maxi, fsm)
+        bus_unlock(fsm, maxi)
         return
 
-    bus_lock(maxi, fsm)
+    bus_lock(fsm, maxi)
     maxi.dma_read(fsm, dst_ram, 0, gaddr, 1, port=1)
-    bus_unlock(maxi, fsm)
+    bus_unlock(fsm, maxi)
 
     # (modify)
     write_value = src_ram.read(fsm, laddr)
@@ -3095,18 +3224,18 @@ def read_modify_write(m, fsm, maxi,
 
     dst_ram.write(fsm, pos, write_value)
 
-    bus_lock(maxi, fsm)
+    bus_lock(fsm, maxi)
     maxi.dma_write(fsm, dst_ram, 0, gaddr, 1, port=1)
-    bus_unlock(maxi, fsm)
+    bus_unlock(fsm, maxi)
 
 
-def read_modify_write_single_bank(m, fsm, maxi, src_ram, dst_ram, laddr, gaddr):
+def read_modify_write_single_bank(fsm, m, maxi, src_ram, dst_ram, laddr, gaddr):
 
     # (read)
     if maxi.datawidth != src_ram.datawidth:
-        bus_lock(maxi, fsm)
-        dma_read(maxi, fsm, dst_ram, 0, gaddr, 1, port=1)
-        bus_unlock(maxi, fsm)
+        bus_lock(fsm, maxi)
+        dma_read(fsm, maxi, dst_ram, 0, gaddr, 1, port=1)
+        bus_unlock(fsm, maxi)
 
     # (modify)
     if maxi.datawidth != src_ram.datawidth:
@@ -3131,9 +3260,9 @@ def read_modify_write_single_bank(m, fsm, maxi, src_ram, dst_ram, laddr, gaddr):
     # (write)
     dst_ram.write(fsm, 0, write_value)
 
-    bus_lock(maxi, fsm)
-    dma_write(maxi, fsm, dst_ram, 0, gaddr, 1, port=1)
-    bus_unlock(maxi, fsm)
+    bus_lock(fsm, maxi)
+    dma_write(fsm, maxi, dst_ram, 0, gaddr, 1, port=1)
+    bus_unlock(fsm, maxi)
 
 
 def get_maxi_datawidth(obj):
