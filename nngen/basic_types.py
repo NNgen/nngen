@@ -1433,6 +1433,7 @@ class _StreamingOperator(_Operator):
         # Read phase
         # --------------------
         state_read = fsm.current
+        fsm.goto_next()
 
         # DMA read -> Stream run -> Stream wait -> DMA write
         for (ram, arg_objaddr,
@@ -1527,6 +1528,7 @@ class _StreamingOperator(_Operator):
         # Write phase
         # --------------------
         state_write = fsm.current
+        fsm.goto_next()
 
         laddr = out_page_dma_offset
         gaddr = self.objaddr + out_gaddr
@@ -2944,38 +2946,16 @@ def bus_unlock(maxi, fsm):
     pass
 
 
-def dma_len(ram, words):
-    if not isinstance(ram, vthread.MultibankRAM):
-        return words
-    shift = int(math.ceil(math.log(ram.numbanks, 2)))
-    if shift == 0:
-        return words
-    mask = vg.Repeat(vg.Int(1, 1), shift)
-    rest = vg.Mux(vg.And(words, mask) > 0, 1, 0)
-    return vg.Srl(words, shift) + rest
-
-
-def dma_laddr(ram, laddr):
-    if not isinstance(ram, vthread.MultibankRAM):
-        return laddr
-    shift = int(math.ceil(math.log(ram.numbanks, 2)))
-    return laddr >> shift
-
-
 def dma_read(maxi, fsm, ram, laddr, gaddr, size, port=1, use_async=False):
-    size = dma_len(ram, size)
-    laddr = dma_laddr(ram, laddr)
     if use_async:
-        return maxi.dma_read_async(fsm, ram, laddr, gaddr, size, port=1)
-    return maxi.dma_read(fsm, ram, laddr, gaddr, size, port=1)
+        return maxi.dma_read_packed_async(fsm, ram, laddr, gaddr, size, port=1)
+    return maxi.dma_read_packed(fsm, ram, laddr, gaddr, size, port=1)
 
 
 def dma_write(maxi, fsm, ram, laddr, gaddr, size, port=1, use_async=False):
-    size = dma_len(ram, size)
-    laddr = dma_laddr(ram, laddr)
     if use_async:
-        return maxi.dma_write_async(fsm, ram, laddr, gaddr, size, port=1)
-    return maxi.dma_write(fsm, ram, laddr, gaddr, size, port=1)
+        return maxi.dma_write_packed_async(fsm, ram, laddr, gaddr, size, port=1)
+    return maxi.dma_write_packed(fsm, ram, laddr, gaddr, size, port=1)
 
 
 def dma_read_block(maxi, fsm, rams, laddr, gaddr, size, block_size, port=1, use_async=False):
@@ -2990,16 +2970,9 @@ def dma_read_block(maxi, fsm, rams, laddr, gaddr, size, block_size, port=1, use_
     if len(rams) == 1 and not isinstance(ram, vthread.MultibankRAM):
         return dma_read(maxi, fsm, ram, laddr, gaddr, size, port=port, use_async=use_async)
 
-    size = dma_len(rams[0], size)
-    laddr = dma_laddr(rams[0], laddr)
-
-    if isinstance(rams[0], vthread.MultibankRAM):
-        pack_size = rams[0].numbanks
-        block_size = block_size >> int(math.ceil(math.log(pack_size, 2)))
-
     if use_async:
-        return ram.dma_read_block_async(fsm, maxi, laddr, gaddr, size, block_size, port=1)
-    return ram.dma_read_block(fsm, maxi, laddr, gaddr, size, block_size, port=1)
+        return maxi.dma_read_block_async(fsm, ram, laddr, gaddr, size, block_size, port=1)
+    return maxi.dma_read_block(fsm, ram, laddr, gaddr, size, block_size, port=1)
 
 
 def dma_write_block(maxi, fsm, rams, laddr, gaddr, size, block_size, port=1, use_async=False):
@@ -3014,16 +2987,9 @@ def dma_write_block(maxi, fsm, rams, laddr, gaddr, size, block_size, port=1, use
     if len(rams) == 1 and not isinstance(ram, vthwrite.MultibankRAM):
         return dma_write(maxi, fsm, ram, laddr, gaddr, size, port=port, use_async=use_async)
 
-    size = dma_len(rams[0], size)
-    laddr = dma_laddr(rams[0], laddr)
-
-    if isinstance(rams[0], vthread.MultibankRAM):
-        pack_size = rams[0].numbanks
-        block_size = block_size >> int(math.ceil(math.log(pack_size, 2)))
-
     if use_async:
-        return ram.dma_write_block_async(fsm, maxi, laddr, gaddr, size, block_size, port=1)
-    return ram.dma_write_block(fsm, maxi, laddr, gaddr, size, block_size, port=1)
+        return maxi.dma_write_block_async(fsm, ram, laddr, gaddr, size, block_size, port=1)
+    return maxi.dma_write_block(fsm, ram, laddr, gaddr, size, block_size, port=1)
 
 
 def dma_wait_read(maxi, fsm):

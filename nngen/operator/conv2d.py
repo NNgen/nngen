@@ -2093,6 +2093,7 @@ class conv2d(bt._Operator):
         # ReadFilter phase
         # --------------------
         state_read_filter = fsm.current
+        fsm.goto_next()
 
         filter_gaddr = self.arg_objaddrs[1] + filter_offset
         filter_laddr = filter_page_dma_offset
@@ -2118,6 +2119,7 @@ class conv2d(bt._Operator):
         # ReadAct phase
         # --------------------
         state_read_act = fsm.current
+        fsm.goto_next()
 
         act_offsets = []
         for v in self.act_offset_values:
@@ -2201,16 +2203,18 @@ class conv2d(bt._Operator):
         # --------------------
         state_comp = fsm.current
 
+        # waiting for previous DMA write transactions
+        bt.dma_wait_write_idle(self.maxi, fsm)
+
+        state_comp_after_sync = fsm.current
+
         # Stream Control FSM
         comp_fsm = vg.FSM(self.m, self._name('comp_fsm'), self.clk, self.rst)
-
         comp_state_init = comp_fsm.current
-        comp_fsm.If(fsm.state == state_comp, vg.Not(skip_comp)).goto_next()
+        comp_fsm.If(fsm.state == state_comp_after_sync, vg.Not(skip_comp)).goto_next()
 
+        # when comp_fsm is available, go to the next phase
         fsm.If(comp_fsm.state == comp_state_init).goto_next()
-
-        # waiting for previous DMA write completion
-        bt.dma_wait_write_idle(self.maxi, comp_fsm)
 
         # local address
         stream_act_locals_2d = line_to_2d(stream_act_locals, src_num_col)
@@ -2616,6 +2620,7 @@ class conv2d(bt._Operator):
         # WriteOut phase
         # --------------------
         state_write_out = fsm.current
+        fsm.goto_next()
 
         out_offsets = []
         for v in self.out_offset_values:
@@ -2671,7 +2676,6 @@ class conv2d(bt._Operator):
                     self.data_stationary == STATIONARY_INPUT)).goto_from(state_mode_select, b)
 
                 fsm.If(vg.Not(dma_out_mask)).goto_next()
-
                 bt.dma_write_block(self.maxi, fsm, out_rams_row, out_laddr,
                                    out_gaddr, next_out_write_size,
                                    self.out_write_block, port=1, use_async=True)

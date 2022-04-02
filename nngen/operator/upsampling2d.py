@@ -196,6 +196,7 @@ class upsampling2d(bt._ElementwiseOperator):
         # Read phase
         # --------------------
         state_read = fsm.current
+        fsm.goto_next()
 
         # DMA read -> Stream run -> Stream wait -> DMA write
         for (ram, arg_objaddr,
@@ -286,6 +287,7 @@ class upsampling2d(bt._ElementwiseOperator):
         # Write phase
         # --------------------
         state_write = fsm.current
+        fsm.goto_next()
 
         laddr = out_page_dma_offset
         gaddr_base = self.objaddr + out_gaddr
