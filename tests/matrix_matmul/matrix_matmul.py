@@ -31,7 +31,9 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
         bias_ram_size=None, scale_ram_size=None,
         out_ram_size=None,
         axi_datawidth=32, silent=False,
-        filename=None, simtype='iverilog', outputfile=None):
+        filename=None, simtype='iverilog', outputfile=None,
+        transposed_a = False, transposed_b = True
+        ):
 
     # create target hardware
     a = ng.placeholder(a_dtype, shape=a_shape, name='a')
@@ -47,8 +49,6 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
     else:
         scale = None
 
-    transposed_a = False
-    transposed_b = True
 
     c = ng.matmul(a, b,
                   bias, scale,
