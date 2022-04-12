@@ -145,7 +145,10 @@ class concat(bt._Operator):
         sum_read_sizes = self.m.Wire(self._name('sum_read_sizes'),
                                      max([i.width for i in self.arg_read_sizes]) +
                                      int(math.ceil(math.log2(len(self.arg_read_sizes)))))
-        sum_read_sizes.assign(vg.Add(*self.arg_read_sizes))
+        sum_sizes = self.arg_read_sizes[0]
+        for size in self.arg_read_sizes[1:]:
+            sum_sizes = vg.Add(sum_sizes, size)
+        sum_read_sizes.assign(sum_sizes)
 
         out_addr_inc_unbuffered = self.m.Reg(self._name('out_addr_inc_unbuffered'),
                                              self.maxi.addrwidth, initval=0)
