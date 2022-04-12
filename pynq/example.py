@@ -120,3 +120,4 @@ top10_index = np.argsort(output)[::-1][:10]
 
 for index in top10_index:
     print(index, labels[index], 'score:', output[index])
+
