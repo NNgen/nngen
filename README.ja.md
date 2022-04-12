@@ -63,21 +63,20 @@ NNgenは統合テストにpytestフレームワークを使います。 プル�
 要求ソフトウェア
 --------------------
 
-- Python3: 3.6 or later
+- Python3: 3.7.7 or later
+    - Apple Silicon上でのmacOS環境では、Python 3.9.5 (pyenvでインストール) を推奨します。
 - Icarus Verilog: 10.1 or later
 
 ```
 sudo apt install iverilog
 ```
 
-- Jinja2: 2.10 or later
-- Pyverilog: 1.2.1 or later
-- Veriloggen: 1.8.2 or later
-- NumPy: 1.17 or later
-- ONNX: 1.6.0 or later
+- veriloggen: 2.1.0 or later
+- numpy: 1.17 or later
+- onnx: 1.9.0 or later
 
 ```
-pip3 install jinja2 pyverilog veriloggen numpy onnx
+pip3 install veriloggen numpy onnx
 ```
 
 インストール
@@ -92,8 +91,8 @@ python3 setup.py install
 
 **tests** にいくつかのテストコードがあり、これらを実行するためには以下のソフトウェアが必要になります。
 
-- pytest: 3.2 or later
-- pytest-pythonpath: 0.7 or later
+- pytest: 3.8.1 or later
+- pytest-pythonpath: 0.7.3 or later
 - PyTorch: 1.3.1 or later
 - torchvision: 0.4.2 or later
 
@@ -124,29 +123,6 @@ sudo apt install texlive-science texlive-fonts-recommended texlive-fonts-extra d
 
 ```
 pip3 install sphinx sphinx_rtd_theme
-```
-
-別のインストール方法
---------------------
-
-現在のNNgenとVeriloggenは活発に開発が進んでいるので、最新の機能を利用する場合には、GitHubから最新バージョンのNNgen、Veriloggen、その他のライブラリをダウンロード（またはgit clone）し、適宜パスを通して利用することもできます。
-
-### GitHubから最新のNNgen、Veriloggen、その他のライブラリをダウンロード
-
-```
-git clone https://github.com/NNgen/nngen.git
-git clone https://github.com/PyHDI/veriloggen.git
-git clone https://github.com/PyHDI/Pyverilog.git
-```
-
-### VeriloggenとNNgenから他のライブラリへのシンボリックリンクを作成
-
-システムにインストールする代わりに、依存ライブラリへのシンボリックリンクを作成してください。
-
-```
-cd nngen
-ln -s ../veriloggen/veriloggen
-ln -s ../Pyverilog/pyverilog
 ```
 
 Docker
