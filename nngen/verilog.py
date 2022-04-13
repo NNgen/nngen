@@ -338,7 +338,7 @@ def make_module(config, name, objs, num_storages, num_input_storages, num_output
                         waddr_cache_mode=cache_mode, raddr_cache_mode=cache_mode,
                         waddr_prot_mode=prot_mode, raddr_prot_mode=prot_mode,
                         waddr_user_mode=user_mode, raddr_user_mode=user_mode,
-                        enable_async=True, use_global_base_addr=True,
+                        use_global_base_addr=True,
                         fsm_as_module=config['fsm_as_module'])
 
     datawidth = config['saxi_datawidth']

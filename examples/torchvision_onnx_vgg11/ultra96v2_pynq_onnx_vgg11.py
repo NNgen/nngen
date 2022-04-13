@@ -40,7 +40,7 @@ img = np.broadcast_to(img, act_shape)
 input = np.append(img, np.zeros([img.shape[0], img.shape[1], img.shape[2], 1]), axis=3)
 input = np.reshape(input, [-1]).astype(np.int8)
 
-param = np.load('vgg11_imagenet.npy')
+param = np.load('vgg11_imagenet.npz')
 
 
 # In[4]:
@@ -56,7 +56,7 @@ overlay.ip_dict
 # In[5]:
 
 
-ip = ng.nngen_ip(overlay, ipname)
+ip = ng.nngen_core(overlay, ipname)
 
 
 # In[6]:
@@ -89,7 +89,7 @@ buf[param_offset:param_offset + param_size] = param.view(np.uint8)
 # In[8]:
 
 
-ip.set_global_offset(buf)
+ip.set_global_buffer(buf)
 
 
 # In[9]:

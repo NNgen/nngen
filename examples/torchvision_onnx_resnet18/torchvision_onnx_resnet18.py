@@ -34,7 +34,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int8,
         pool_par=1, elem_par=1,
         chunk_size=64, axi_datawidth=32, silent=False,
         onnx_filename='resnet18_imagenet.onnx',
-        weight_filename='resnet18_imagenet.npy',
+        weight_filename='resnet18_imagenet.npz',
         verilog_filename=None,
         sim_filename=None,
         simtype=None,  # no RTL simulation
@@ -354,7 +354,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int8,
     # --------------------
     param_data = ng.export_ndarray([out], chunk_size)
     param_bytes = len(param_data)
-    np.save(weight_filename, param_data)
+    np.savez_compressed(weight_filename, param_data)
 
     # --------------------
     # (7) Simulate the generated hardware by Veriloggen and Verilog simulator
