@@ -16,7 +16,7 @@ clean:
 	rm -rf *.egg-info build dist *.pyc __pycache__ parsetab.py .cache *.out *.png *.dot tmp.v uut.vcd
 	rm -rf *_v1_0
 	rm -rf *.onnx
-	rm -rf hello_nngen.v hello_nngen.out hello_nngen_v1_0 hello_nngen.npy
+	rm -rf hello_nngen.v hello_nngen.out hello_nngen_v1_0 hello_nngen.npz
 
 #.PHONY: release
 #release:
