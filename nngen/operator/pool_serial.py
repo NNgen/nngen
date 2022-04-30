@@ -98,8 +98,8 @@ class _pool_serial(_pool):
             ksize_row = self.ksize[-3]
 
             # iteration size
-            size = strm.constant(datawidth=(ksize_col * ksize_row).bit_length(),
-                                 signed=False)
+            size = strm.parameter(datawidth=(ksize_col * ksize_row).bit_length(),
+                                  signed=False)
 
             # vec_act
             arg = self.args[0]
@@ -111,7 +111,7 @@ class _pool_serial(_pool):
             vec_act_var = strm.source(datawidth=vec_datawidth, signed=False)
 
             # mask
-            mask_vector = strm.constant(datawidth=ksize_col * ksize_row, signed=False)
+            mask_vector = strm.parameter(datawidth=ksize_col * ksize_row, signed=False)
             mask_counter = strm.Counter(size=size)
             mask = strm.Pointer(mask_vector, mask_counter)
 
@@ -465,6 +465,7 @@ class _pool_serial(_pool):
         # ReadAct phase
         # --------------------
         state_read_act = fsm.current
+        fsm.goto_next()
 
         act_gaddrs = []
         for act_offset in act_offsets:
@@ -523,16 +524,18 @@ class _pool_serial(_pool):
         # --------------------
         state_comp = fsm.current
 
+        # waiting for previous DMA write completion
+        bt.dma_wait_write_idle(self.maxi, fsm)
+
+        state_comp_after_sync = fsm.current
+
         # Stream Control FSM
         comp_fsm = vg.FSM(self.m, self._name('comp_fsm'), self.clk, self.rst)
-
         comp_state_init = comp_fsm.current
-        comp_fsm.If(fsm.state == state_comp, vg.Not(skip_comp)).goto_next()
+        comp_fsm.If(fsm.state == state_comp_after_sync, vg.Not(skip_comp)).goto_next()
 
+        # when comp_fsm is available, go to the next phase
         fsm.If(comp_fsm.state == comp_state_init).goto_next()
-
-        # waiting for previous DMA write completion
-        bt.dma_wait_write_idle(self.maxi, comp_fsm)
 
         # local address
         comp_fsm(
@@ -616,13 +619,13 @@ class _pool_serial(_pool):
 
         stream_masks = stream_pad_masks_reg
 
-        # set_constant
-        name = list(self.stream.constants.keys())[0]
-        self.stream.set_constant(comp_fsm, name, ksize_col * ksize_row)
+        # set_parameter
+        name = list(self.stream.parameters.keys())[0]
+        self.stream.set_parameter(comp_fsm, name, ksize_col * ksize_row)
         comp_fsm.set_index(comp_fsm.current - 1)
 
-        name = list(self.stream.constants.keys())[1]
-        self.stream.set_constant(comp_fsm, name, stream_masks)
+        name = list(self.stream.parameters.keys())[1]
+        self.stream.set_parameter(comp_fsm, name, stream_masks)
         comp_fsm.set_index(comp_fsm.current - 1)
 
         # set_source
@@ -687,7 +690,7 @@ class _pool_serial(_pool):
         comp_fsm.seq.If(fsm.state == state_init)(
             comp_count(0)
         )
-        comp_fsm.seq.If(self.stream.end_flag)(
+        comp_fsm.seq.If(self.stream.source_stop)(
             comp_count.add(self.inc_out_laddr)
         )
 
@@ -695,6 +698,7 @@ class _pool_serial(_pool):
         # WriteOut phase
         # --------------------
         state_write_out = fsm.current
+        fsm.goto_next()
 
         # sync with Comp control
         fsm.If(comp_count >= out_count + self.out_write_size).goto_next()
@@ -899,25 +903,25 @@ class avg_pool_serial(_pool_serial):
 
         acc = strm.substream(self.substreams[index])
         acc.to_source('x', var)
-        acc.to_constant('size', size)
+        acc.to_parameter('size', size)
 
         sum = acc.from_sink('sum')
         valid = acc.from_sink('valid')
 
         if self.force_div or num_vars & (num_vars - 1) != 0:
             rshift = 0
-            acc.to_constant('rshift', rshift)
+            acc.to_parameter('rshift', rshift)
 
             div = strm.substream(self.substreams[self.par + index])
             div.to_source('x', sum)
-            div.to_constant('y', num_vars)
-            frac = num_vars//2
-            div.to_constant('frac', frac)
+            div.to_parameter('y', num_vars)
+            frac = num_vars // 2
+            div.to_parameter('frac', frac)
 
             return div.from_sink('z'), valid
 
         rshift = int(math.log(num_vars, 2))
-        acc.to_constant('rshift', rshift)
+        acc.to_parameter('rshift', rshift)
 
         return sum, valid
 
@@ -952,7 +956,7 @@ class max_pool_serial(_pool_serial):
 
         max = strm.substream(self.substreams[index])
         max.to_source('x', var)
-        max.to_constant('size', size)
+        max.to_parameter('size', size)
 
         data = max.from_sink('data')
         valid = max.from_sink('valid')

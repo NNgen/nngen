@@ -1002,11 +1002,9 @@ class conv2d(bt._Operator):
                 self.par_ich, self.par_och, self.par_col, self.par_row,
                 num_srcs, num_weights)
 
-
     def __set_latency(self, strm_list, latency):
         for x in strm_list:
             x.latency = latency
-
 
     def get_stream_func(self):
 
@@ -1034,15 +1032,15 @@ class conv2d(bt._Operator):
             num_weights = filter_num_col * filter_num_row
 
             # constant
-            size = strm.constant(datawidth=self.stream_reduce_size.bit_length(),
-                                 signed=False)
-            col_select = strm.constant(datawidth=bt.log_width(src_num_col),
+            size = strm.parameter(datawidth=vg.get_width(self.stream_reduce_size),
+                                  signed=False)
+            col_select = strm.parameter(datawidth=bt.log_width(src_num_col),
                                        signed=False)
-            row_select = strm.constant(datawidth=bt.log_width(src_num_row),
+            row_select = strm.parameter(datawidth=bt.log_width(src_num_row),
                                        signed=False)
-            mask = strm.constant(datawidth=num_srcs, signed=False)
+            mask = strm.parameter(datawidth=num_srcs, signed=False)
 
-            omit_mask = strm.constant(datawidth=self.par_ich, signed=False)
+            omit_mask = strm.parameter(datawidth=self.par_ich, signed=False)
             omit_counter = strm.Counter(size=size)
             omits = [strm.Ands(b, omit_counter == size - 1)
                      for b in omit_mask]
@@ -1055,7 +1053,7 @@ class conv2d(bt._Operator):
                      if arg_bias is not None else self.get_op_point())
             signed = (arg_bias.get_signed()
                       if arg_bias is not None else self.get_signed())
-            dup_bias = strm.constant(datawidth=1, signed=False)
+            dup_bias = strm.parameter(datawidth=1, signed=False)
             vec_bias = strm.source(datawidth=vec_datawidth, signed=False)
 
             split_bias = strm.Split(vec_bias, datawidth, point, signed, reverse=True)
@@ -1071,7 +1069,7 @@ class conv2d(bt._Operator):
                      if arg_scale is not None else self.get_op_point())
             signed = (arg_scale.get_signed()
                       if arg_scale is not None else self.get_signed())
-            dup_scale = strm.constant(datawidth=1, signed=False)
+            dup_scale = strm.parameter(datawidth=1, signed=False)
             vec_scale = strm.source(datawidth=vec_datawidth, signed=False)
 
             split_scale = strm.Split(vec_scale, datawidth, point, signed, reverse=True)
@@ -1084,7 +1082,7 @@ class conv2d(bt._Operator):
             vec_datawidth = datawidth * self.par_och
             point = 0
             signed = False
-            dup_vshamt_mul = strm.constant(datawidth=1, signed=False)
+            dup_vshamt_mul = strm.parameter(datawidth=1, signed=False)
             vec_vshamt_mul = strm.source(datawidth=vec_datawidth, signed=False)
 
             split_vshamt_mul = strm.Split(vec_vshamt_mul, datawidth, point, signed, reverse=True)
@@ -1098,7 +1096,7 @@ class conv2d(bt._Operator):
             vec_datawidth = datawidth * self.par_och
             point = 0
             signed = False
-            dup_vshamt_sum = strm.constant(datawidth=1, signed=False)
+            dup_vshamt_sum = strm.parameter(datawidth=1, signed=False)
             vec_vshamt_sum = strm.source(datawidth=vec_datawidth, signed=False)
 
             split_vshamt_sum = strm.Split(vec_vshamt_sum, datawidth, point, signed, reverse=True)
@@ -1112,7 +1110,7 @@ class conv2d(bt._Operator):
             vec_datawidth = datawidth * self.par_och
             point = 0
             signed = False
-            dup_vshamt_out = strm.constant(datawidth=1, signed=False)
+            dup_vshamt_out = strm.parameter(datawidth=1, signed=False)
             vec_vshamt_out = strm.source(datawidth=vec_datawidth, signed=False)
 
             split_vshamt_out = strm.Split(vec_vshamt_out, datawidth, point, signed, reverse=True)
@@ -1121,15 +1119,15 @@ class conv2d(bt._Operator):
             self.__set_latency(vshamt_out_list, 0)
 
             # cshamt
-            cshamt_mul = strm.constant(datawidth=self.cshamt_mul_value.bit_length(),
+            cshamt_mul = strm.parameter(datawidth=vg.get_width(self.cshamt_mul_value),
                                        signed=False)
-            cshamt_sum = strm.constant(datawidth=self.cshamt_sum_value.bit_length(),
+            cshamt_sum = strm.parameter(datawidth=vg.get_width(self.cshamt_sum_value),
                                        signed=False)
-            cshamt_out = strm.constant(datawidth=self.cshamt_out_value.bit_length(),
+            cshamt_out = strm.parameter(datawidth=vg.get_width(self.cshamt_out_value),
                                        signed=False)
 
             act_func_index_width = max(len(self.shared_attrs['act_func']).bit_length(), 1)
-            act_func_index = strm.constant(datawidth=act_func_index_width, signed=False)
+            act_func_index = strm.parameter(datawidth=act_func_index_width, signed=False)
 
             # act
             act_rams = self.input_rams[:num_srcs]
@@ -1324,7 +1322,7 @@ class conv2d(bt._Operator):
                             pos_col * self.par_och + oc])
                         acc.to_source('x', sum_var)
                         acc.to_source('rshift', vshamt_sum + cshamt_sum)
-                        acc.to_constant('size', size)
+                        acc.to_parameter('size', size)
                         out_var = acc.from_sink('sum')
                         out_valid = acc.from_sink('valid')
                         out_valids.append(out_valid)
@@ -2095,6 +2093,7 @@ class conv2d(bt._Operator):
         # ReadFilter phase
         # --------------------
         state_read_filter = fsm.current
+        fsm.goto_next()
 
         filter_gaddr = self.arg_objaddrs[1] + filter_offset
         filter_laddr = filter_page_dma_offset
@@ -2120,6 +2119,7 @@ class conv2d(bt._Operator):
         # ReadAct phase
         # --------------------
         state_read_act = fsm.current
+        fsm.goto_next()
 
         act_offsets = []
         for v in self.act_offset_values:
@@ -2203,16 +2203,18 @@ class conv2d(bt._Operator):
         # --------------------
         state_comp = fsm.current
 
+        # waiting for previous DMA write transactions
+        bt.dma_wait_write_idle(self.maxi, fsm)
+
+        state_comp_after_sync = fsm.current
+
         # Stream Control FSM
         comp_fsm = vg.FSM(self.m, self._name('comp_fsm'), self.clk, self.rst)
-
         comp_state_init = comp_fsm.current
-        comp_fsm.If(fsm.state == state_comp, vg.Not(skip_comp)).goto_next()
+        comp_fsm.If(fsm.state == state_comp_after_sync, vg.Not(skip_comp)).goto_next()
 
+        # when comp_fsm is available, go to the next phase
         fsm.If(comp_fsm.state == comp_state_init).goto_next()
-
-        # waiting for previous DMA write completion
-        bt.dma_wait_write_idle(self.maxi, comp_fsm)
 
         # local address
         stream_act_locals_2d = line_to_2d(stream_act_locals, src_num_col)
@@ -2307,33 +2309,33 @@ class conv2d(bt._Operator):
         stream_row_select = row_select_buf
         stream_masks = stream_pad_masks_reg
 
-        # set_constant
-        name = list(self.stream.constants.keys())[0]
-        self.stream.set_constant(comp_fsm, name, self.stream_reduce_size)
+        # set_parameter
+        name = list(self.stream.parameters.keys())[0]
+        self.stream.set_parameter(comp_fsm, name, self.stream_reduce_size)
         comp_fsm.set_index(comp_fsm.current - 1)
 
-        name = list(self.stream.constants.keys())[1]
-        self.stream.set_constant(comp_fsm, name, stream_col_select)
+        name = list(self.stream.parameters.keys())[1]
+        self.stream.set_parameter(comp_fsm, name, stream_col_select)
         comp_fsm.set_index(comp_fsm.current - 1)
 
-        name = list(self.stream.constants.keys())[2]
-        self.stream.set_constant(comp_fsm, name, stream_row_select)
+        name = list(self.stream.parameters.keys())[2]
+        self.stream.set_parameter(comp_fsm, name, stream_row_select)
         comp_fsm.set_index(comp_fsm.current - 1)
 
-        name = list(self.stream.constants.keys())[3]
-        self.stream.set_constant(comp_fsm, name, stream_masks)
+        name = list(self.stream.parameters.keys())[3]
+        self.stream.set_parameter(comp_fsm, name, stream_masks)
         comp_fsm.set_index(comp_fsm.current - 1)
 
-        # set_constant (omit_mask)
-        name = list(self.stream.constants.keys())[4]
-        self.stream.set_constant(comp_fsm, name, self.stream_omit_mask)
+        # set_parameter (omit_mask)
+        name = list(self.stream.parameters.keys())[4]
+        self.stream.set_parameter(comp_fsm, name, self.stream_omit_mask)
         comp_fsm.set_index(comp_fsm.current - 1)
 
-        # set_constant and set_source (bias)
+        # set_parameter and set_source (bias)
         if bias_ram is not None:
-            name = list(self.stream.constants.keys())[5]
+            name = list(self.stream.parameters.keys())[5]
             dup_bias = self.bias_scala
-            self.stream.set_constant(comp_fsm, name, dup_bias)
+            self.stream.set_parameter(comp_fsm, name, dup_bias)
             comp_fsm.set_index(comp_fsm.current - 1)
 
             name = list(self.stream.sources.keys())[0]
@@ -2346,9 +2348,9 @@ class conv2d(bt._Operator):
             comp_fsm.set_index(comp_fsm.current - 1)
 
         else:
-            name = list(self.stream.constants.keys())[5]
+            name = list(self.stream.parameters.keys())[5]
             dup_bias = 1
-            self.stream.set_constant(comp_fsm, name, dup_bias)
+            self.stream.set_parameter(comp_fsm, name, dup_bias)
             comp_fsm.set_index(comp_fsm.current - 1)
 
             name = list(self.stream.sources.keys())[0]
@@ -2356,11 +2358,11 @@ class conv2d(bt._Operator):
             self.stream.set_source_empty(comp_fsm, name, default_bias)
             comp_fsm.set_index(comp_fsm.current - 1)
 
-        # set_constant and set_source (scale)
+        # set_parameter and set_source (scale)
         if scale_ram is not None:
-            name = list(self.stream.constants.keys())[6]
+            name = list(self.stream.parameters.keys())[6]
             dup_scale = self.scale_scala
-            self.stream.set_constant(comp_fsm, name, dup_scale)
+            self.stream.set_parameter(comp_fsm, name, dup_scale)
             comp_fsm.set_index(comp_fsm.current - 1)
 
             name = list(self.stream.sources.keys())[1]
@@ -2373,9 +2375,9 @@ class conv2d(bt._Operator):
             comp_fsm.set_index(comp_fsm.current - 1)
 
         else:
-            name = list(self.stream.constants.keys())[6]
+            name = list(self.stream.parameters.keys())[6]
             dup_scale = 1
-            self.stream.set_constant(comp_fsm, name, dup_scale)
+            self.stream.set_parameter(comp_fsm, name, dup_scale)
             comp_fsm.set_index(comp_fsm.current - 1)
 
             name = list(self.stream.sources.keys())[1]
@@ -2383,11 +2385,11 @@ class conv2d(bt._Operator):
             self.stream.set_source_empty(comp_fsm, name, default_scale)
             comp_fsm.set_index(comp_fsm.current - 1)
 
-        # set_constant and set_source (vshamt_mul)
+        # set_parameter and set_source (vshamt_mul)
         if vshamt_mul_ram is not None:
-            name = list(self.stream.constants.keys())[7]
+            name = list(self.stream.parameters.keys())[7]
             dup_vshamt_mul = self.vshamt_mul_scala
-            self.stream.set_constant(comp_fsm, name, dup_vshamt_mul)
+            self.stream.set_parameter(comp_fsm, name, dup_vshamt_mul)
             comp_fsm.set_index(comp_fsm.current - 1)
 
             name = list(self.stream.sources.keys())[2]
@@ -2400,9 +2402,9 @@ class conv2d(bt._Operator):
             comp_fsm.set_index(comp_fsm.current - 1)
 
         else:
-            name = list(self.stream.constants.keys())[7]
+            name = list(self.stream.parameters.keys())[7]
             dup_vshamt_mul = 1
-            self.stream.set_constant(comp_fsm, name, dup_vshamt_mul)
+            self.stream.set_parameter(comp_fsm, name, dup_vshamt_mul)
             comp_fsm.set_index(comp_fsm.current - 1)
 
             name = list(self.stream.sources.keys())[2]
@@ -2410,11 +2412,11 @@ class conv2d(bt._Operator):
             self.stream.set_source_empty(comp_fsm, name, default_vshamt_mul)
             comp_fsm.set_index(comp_fsm.current - 1)
 
-        # set_constant and set_source (vshamt_sum)
+        # set_parameter and set_source (vshamt_sum)
         if vshamt_sum_ram is not None:
-            name = list(self.stream.constants.keys())[8]
+            name = list(self.stream.parameters.keys())[8]
             dup_vshamt_sum = self.vshamt_sum_scala
-            self.stream.set_constant(comp_fsm, name, dup_vshamt_sum)
+            self.stream.set_parameter(comp_fsm, name, dup_vshamt_sum)
             comp_fsm.set_index(comp_fsm.current - 1)
 
             name = list(self.stream.sources.keys())[3]
@@ -2427,9 +2429,9 @@ class conv2d(bt._Operator):
             comp_fsm.set_index(comp_fsm.current - 1)
 
         else:
-            name = list(self.stream.constants.keys())[8]
+            name = list(self.stream.parameters.keys())[8]
             dup_vshamt_sum = 1
-            self.stream.set_constant(comp_fsm, name, dup_vshamt_sum)
+            self.stream.set_parameter(comp_fsm, name, dup_vshamt_sum)
             comp_fsm.set_index(comp_fsm.current - 1)
 
             name = list(self.stream.sources.keys())[3]
@@ -2437,11 +2439,11 @@ class conv2d(bt._Operator):
             self.stream.set_source_empty(comp_fsm, name, default_vshamt_sum)
             comp_fsm.set_index(comp_fsm.current - 1)
 
-        # set_constant and set_source (vshamt_out)
+        # set_parameter and set_source (vshamt_out)
         if vshamt_out_ram is not None:
-            name = list(self.stream.constants.keys())[9]
+            name = list(self.stream.parameters.keys())[9]
             dup_vshamt_out = self.vshamt_out_scala
-            self.stream.set_constant(comp_fsm, name, dup_vshamt_out)
+            self.stream.set_parameter(comp_fsm, name, dup_vshamt_out)
             comp_fsm.set_index(comp_fsm.current - 1)
 
             name = list(self.stream.sources.keys())[4]
@@ -2454,9 +2456,9 @@ class conv2d(bt._Operator):
             comp_fsm.set_index(comp_fsm.current - 1)
 
         else:
-            name = list(self.stream.constants.keys())[9]
+            name = list(self.stream.parameters.keys())[9]
             dup_vshamt_out = 1
-            self.stream.set_constant(comp_fsm, name, dup_vshamt_out)
+            self.stream.set_parameter(comp_fsm, name, dup_vshamt_out)
             comp_fsm.set_index(comp_fsm.current - 1)
 
             name = list(self.stream.sources.keys())[4]
@@ -2464,24 +2466,24 @@ class conv2d(bt._Operator):
             self.stream.set_source_empty(comp_fsm, name, default_vshamt_out)
             comp_fsm.set_index(comp_fsm.current - 1)
 
-        # set_constant (cshamt_mul)
-        name = list(self.stream.constants.keys())[10]
-        self.stream.set_constant(comp_fsm, name, self.cshamt_mul_value)
+        # set_parameter (cshamt_mul)
+        name = list(self.stream.parameters.keys())[10]
+        self.stream.set_parameter(comp_fsm, name, self.cshamt_mul_value)
         comp_fsm.set_index(comp_fsm.current - 1)
 
-        # set_constant (cshamt_sum)
-        name = list(self.stream.constants.keys())[11]
-        self.stream.set_constant(comp_fsm, name, self.cshamt_sum_value)
+        # set_parameter (cshamt_sum)
+        name = list(self.stream.parameters.keys())[11]
+        self.stream.set_parameter(comp_fsm, name, self.cshamt_sum_value)
         comp_fsm.set_index(comp_fsm.current - 1)
 
-        # set_constant (cshamt_out)
-        name = list(self.stream.constants.keys())[12]
-        self.stream.set_constant(comp_fsm, name, self.cshamt_out_value)
+        # set_parameter (cshamt_out)
+        name = list(self.stream.parameters.keys())[12]
+        self.stream.set_parameter(comp_fsm, name, self.cshamt_out_value)
         comp_fsm.set_index(comp_fsm.current - 1)
 
-        # set_constant (act_func_index)
-        name = list(self.stream.constants.keys())[13]
-        self.stream.set_constant(comp_fsm, name, self.act_func_index)
+        # set_parameter (act_func_index)
+        name = list(self.stream.parameters.keys())[13]
+        self.stream.set_parameter(comp_fsm, name, self.act_func_index)
         comp_fsm.set_index(comp_fsm.current - 1)
 
         # set_source (act)
@@ -2607,7 +2609,7 @@ class conv2d(bt._Operator):
         comp_fsm.If(col_count >= self.max_col_count).goto_init()
 
         # sync with WriteOut control
-        comp_fsm.seq.If(self.stream.end_flag)(
+        comp_fsm.seq.If(self.stream.sink_stop)(
             sync_comp_count.add(self.par_col)
         )
         comp_fsm.seq.If(fsm.state == state_init)(
@@ -2618,6 +2620,7 @@ class conv2d(bt._Operator):
         # WriteOut phase
         # --------------------
         state_write_out = fsm.current
+        fsm.goto_next()
 
         out_offsets = []
         for v in self.out_offset_values:
@@ -2673,7 +2676,6 @@ class conv2d(bt._Operator):
                     self.data_stationary == STATIONARY_INPUT)).goto_from(state_mode_select, b)
 
                 fsm.If(vg.Not(dma_out_mask)).goto_next()
-
                 bt.dma_write_block(self.maxi, fsm, out_rams_row, out_laddr,
                                    out_gaddr, next_out_write_size,
                                    self.out_write_block, port=1, use_async=True)

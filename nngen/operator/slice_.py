@@ -354,36 +354,36 @@ class slice_(bt._Operator):
         # ReadAct phase
         # --------------------
         state_read_act = fsm.current
-
-        act_gaddr = self.arg_objaddrs[0] + act_base_offset
-
-        bt.bus_lock(self.maxi, fsm)
-
-        act_laddr = act_page_dma_offset
-
-        begin_state_read = fsm.current
         fsm.goto_next()
 
+        act_gaddr = self.arg_objaddrs[0] + act_base_offset
+        act_laddr = act_page_dma_offset
+
+        bt.bus_lock(self.maxi, fsm)
         bt.dma_read(self.maxi, fsm, act_ram, act_laddr,
                     act_gaddr, self.act_read_size, port=1)
+        bt.bus_unlock(self.maxi, fsm)
 
-        end_state_read = fsm.current
+        state_read_act_end = fsm.current
+        fsm.If(skip_read_act).goto_from(state_read_act, state_read_act_end)
 
         # --------------------
         # Comp phase
         # --------------------
         state_comp = fsm.current
 
+        # waiting for previous DMA write completion
+        bt.dma_wait_write_idle(self.maxi, fsm)
+
+        state_comp_after_sync = fsm.current
+
         # Stream Control FSM
         comp_fsm = vg.FSM(self.m, self._name('comp_fsm'), self.clk, self.rst)
-
         comp_state_init = comp_fsm.current
-        comp_fsm.If(fsm.state == state_comp, vg.Not(skip_comp)).goto_next()
+        comp_fsm.If(fsm.state == state_comp_after_sync, vg.Not(skip_comp)).goto_next()
 
+        # when comp_fsm is available, go to the next phase
         fsm.If(comp_fsm.state == comp_state_init).goto_next()
-
-        # waiting for previous DMA write completion
-        bt.dma_wait_write_idle(self.maxi, comp_fsm)
 
         # local address
         comp_fsm(
@@ -443,7 +443,7 @@ class slice_(bt._Operator):
         comp_fsm.seq.If(fsm.state == state_init)(
             comp_count(0)
         )
-        comp_fsm.seq.If(self.stream.end_flag)(
+        comp_fsm.seq.If(self.stream.source_stop)(
             comp_count.inc()
         )
 
@@ -451,6 +451,7 @@ class slice_(bt._Operator):
         # WriteOut phase
         # --------------------
         state_write_out = fsm.current
+        fsm.goto_next()
 
         # sync with Comp control
         fsm.If(comp_count > out_count).goto_next()

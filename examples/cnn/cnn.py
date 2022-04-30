@@ -20,7 +20,7 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
         bias_dtype=ng.int32, scale_dtype=ng.int8,
         par_ich=2, par_och=2,
         chunk_size=64, axi_datawidth=32, silent=False,
-        weight_filename='cnn.npy',
+        weight_filename='cnn.npz',
         verilog_filename=None,
         sim_filename=None,
         # simtype='iverilog',
@@ -271,7 +271,7 @@ def run(act_dtype=ng.int8, weight_dtype=ng.int8,
     chunk_size = 64
 
     param_data = ng.export_ndarray([output_layer], chunk_size)
-    np.save(weight_filename, param_data)
+    np.savez_compressed(weight_filename, param_data)
 
 
     # --------------------

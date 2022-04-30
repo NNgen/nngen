@@ -862,15 +862,23 @@ class _Operator(_Numeric):
         addrwidth = int(math.ceil(math.log(length, 2)))
         self.control_param_index_reg = self.m.Reg(self._name('control_param_index'),
                                                   addrwidth, initval=0)
+        max_width = 0
+        for name in self.collect_all_control_param_names():
+            dst = getattr(self, name)
+            if isinstance(dst, (tuple, list)):
+                for d in dst:
+                    max_width = max(max_width, d.width)
+            else:
+                max_width = max(max_width, dst.width)
 
         pattern_dict = defaultdict(list)
         for i, values in enumerate(control_param_list):
             for name, value in values.items():
                 if isinstance(value, (tuple, list)):
-                    lst = [(self.control_param_index_reg == i, v) for v in value]
+                    lst = [(self.control_param_index_reg == i, vg.Int(v, width=max_width, base=16)) for v in value]
                     pattern_dict[name].append(lst)
                 else:
-                    pattern_dict[name].append((self.control_param_index_reg == i, value))
+                    pattern_dict[name].append((self.control_param_index_reg == i, vg.Int(value, width=max_width, base=16)))
 
         for name in self.collect_all_control_param_names():
             dst = getattr(self, name)
@@ -915,7 +923,7 @@ class _Operator(_Numeric):
 
                     for r, v in zip(reg, value):
                         width = (r.width if r.width is not None else 1)
-                        if v.bit_length() > width:
+                        if vg.get_width(v) > width:
                             raise ValueError(
                                 'control_param_value is too wide.')
 
@@ -925,7 +933,7 @@ class _Operator(_Numeric):
 
                 else:
                     width = (reg.width if reg.width is not None else 1)
-                    if value.bit_length() > width:
+                    if vg.get_width(value) > width:
                         raise ValueError('control_param_value is too large.')
 
                     cat_params.append(vg.Int(int(value), width, base=16))
@@ -1231,7 +1239,7 @@ class _StreamingOperator(_Operator):
                 vec_datawidth = datawidth * self.par
                 point = arg.get_op_point()
                 signed = arg.get_signed()
-                dup = strm.constant(datawidth=1, signed=False)
+                dup = strm.parameter(datawidth=1, signed=False)
                 vec_var = strm.source(datawidth=vec_datawidth, signed=False)
 
                 if self.par == 1:
@@ -1433,6 +1441,7 @@ class _StreamingOperator(_Operator):
         # Read phase
         # --------------------
         state_read = fsm.current
+        fsm.goto_next()
 
         # DMA read -> Stream run -> Stream wait -> DMA write
         for (ram, arg_objaddr,
@@ -1479,12 +1488,12 @@ class _StreamingOperator(_Operator):
 
         self.stream.source_join(fsm)
 
-        # set_source, set_constant (dup)
+        # set_source, set_parameter (dup)
         for (ram, source_name, dup_name,
              arg_page_comp_offset,
              arg_stride_zero, arg_omit_dma) in zip(self.input_rams,
                                                    self.stream.sources.keys(),
-                                                   self.stream.constants.keys(),
+                                                   self.stream.parameters.keys(),
                                                    arg_page_comp_offsets,
                                                    self.arg_stride_zeros, self.arg_omit_dmas):
 
@@ -1492,7 +1501,7 @@ class _StreamingOperator(_Operator):
             read_size = self.dma_size
             stride = vg.Mux(arg_stride_zero, 0, 1)
             dup = vg.Mux(arg_stride_zero, 1, 0)
-            self.stream.set_constant(fsm, dup_name, dup)
+            self.stream.set_parameter(fsm, dup_name, dup)
             fsm.set_index(fsm.current - 1)
             self.stream.set_source(fsm, source_name, ram,
                                    read_laddr, read_size, stride)
@@ -1527,6 +1536,7 @@ class _StreamingOperator(_Operator):
         # Write phase
         # --------------------
         state_write = fsm.current
+        fsm.goto_next()
 
         laddr = out_page_dma_offset
         gaddr = self.objaddr + out_gaddr
@@ -1721,7 +1731,7 @@ class _ReductionOperator(_StreamingOperator):
         return func
 
     def get_stream_reduce_output(self, strm, width, point, signed, values, omits, size):
-        carry_vars = [strm.constant(datawidth=width, point=point, signed=signed)
+        carry_vars = [strm.parameter(datawidth=width, point=point, signed=signed)
                       for carry_default_value in self.carry_default_values]
 
         data_list = [[] for carry_default_value in self.carry_default_values]
@@ -1756,7 +1766,7 @@ class _ReductionOperator(_StreamingOperator):
             vec_datawidth = datawidth * self.par
             point = arg.get_op_point()
             signed = arg.get_signed()
-            dup = strm.constant(datawidth=1, signed=False)
+            dup = strm.parameter(datawidth=1, signed=False)
             vec_var = strm.source(datawidth=vec_datawidth, signed=False)
 
             if self.par == 1:
@@ -1770,10 +1780,10 @@ class _ReductionOperator(_StreamingOperator):
         point = self.get_op_point()
         signed = self.get_signed()
 
-        size = strm.constant(datawidth=self.reduce_size.bit_length(),
-                             signed=False)
+        size = strm.parameter(datawidth=vg.get_width(self.reduce_size),
+                              signed=False)
 
-        omit_mask = strm.constant(datawidth=self.par, signed=False)
+        omit_mask = strm.parameter(datawidth=self.par, signed=False)
         omit_counter = strm.Counter(size=size)
         omits = [strm.Ands(b, omit_counter == size - 1)
                  for b in omit_mask]
@@ -2058,17 +2068,17 @@ class _ReductionOperator(_StreamingOperator):
             [carry_var(ram_value) for carry_var, ram_value in zip(carry_vars, ram_values)]
         )
 
-        # set_constant (carry)
+        # set_parameter (carry)
         for name, carry_var in zip(
-                list(self.stream.constants.keys())[len(self.stream.sources) + 2:], carry_vars):
-            self.stream.set_constant(fsm, name, carry_var)
+                list(self.stream.parameters.keys())[len(self.stream.sources) + 2:], carry_vars):
+            self.stream.set_parameter(fsm, name, carry_var)
 
-        # set_source, set_constant (dup)
+        # set_source, set_parameter (dup)
         for (ram, source_name, dup_name,
              arg_page_comp_offset,
              arg_stride_zero, arg_omit_dma) in zip(self.input_rams,
                                                    self.stream.sources.keys(),
-                                                   self.stream.constants.keys(),
+                                                   self.stream.parameters.keys(),
                                                    arg_page_comp_offsets,
                                                    self.arg_stride_zeros, self.arg_omit_dmas):
 
@@ -2076,7 +2086,7 @@ class _ReductionOperator(_StreamingOperator):
             read_size = self.reduce_size
             stride = vg.Mux(arg_stride_zero, 0, 1)
             dup = vg.Mux(arg_stride_zero, 1, 0)
-            self.stream.set_constant(fsm, dup_name, dup)
+            self.stream.set_parameter(fsm, dup_name, dup)
             fsm.set_index(fsm.current - 1)
             self.stream.set_source(fsm, source_name, ram,
                                    read_laddr, read_size, stride)
@@ -2090,18 +2100,18 @@ class _ReductionOperator(_StreamingOperator):
             self.stream.set_sink(fsm, name, ram, write_laddr, write_size)
             fsm.set_index(fsm.current - 1)
 
-        # set_constant (size)
-        name = list(self.stream.constants.keys())[len(self.stream.sources)]
-        self.stream.set_constant(fsm, name, self.reduce_size)
+        # set_parameter (size)
+        name = list(self.stream.parameters.keys())[len(self.stream.sources)]
+        self.stream.set_parameter(fsm, name, self.reduce_size)
 
-        # set_constant (omit_mask)
-        name = list(self.stream.constants.keys())[len(self.stream.sources) + 1]
-        self.stream.set_constant(fsm, name, self.stream_omit_mask)
+        # set_parameter (omit_mask)
+        name = list(self.stream.parameters.keys())[len(self.stream.sources) + 1]
+        self.stream.set_parameter(fsm, name, self.stream_omit_mask)
 
-        # set_constant (carry)
+        # set_parameter (carry)
         for name, carry_var in zip(
-                list(self.stream.constants.keys())[len(self.stream.sources) + 2:], carry_vars):
-            self.stream.set_constant(fsm, name, carry_var)
+                list(self.stream.parameters.keys())[len(self.stream.sources) + 2:], carry_vars):
+            self.stream.set_parameter(fsm, name, carry_var)
 
         fsm.goto_next()
 
@@ -2944,38 +2954,16 @@ def bus_unlock(maxi, fsm):
     pass
 
 
-def dma_len(ram, words):
-    if not isinstance(ram, vthread.MultibankRAM):
-        return words
-    shift = int(math.ceil(math.log(ram.numbanks, 2)))
-    if shift == 0:
-        return words
-    mask = vg.Repeat(vg.Int(1, 1), shift)
-    rest = vg.Mux(vg.And(words, mask) > 0, 1, 0)
-    return vg.Srl(words, shift) + rest
-
-
-def dma_laddr(ram, laddr):
-    if not isinstance(ram, vthread.MultibankRAM):
-        return laddr
-    shift = int(math.ceil(math.log(ram.numbanks, 2)))
-    return laddr >> shift
-
-
 def dma_read(maxi, fsm, ram, laddr, gaddr, size, port=1, use_async=False):
-    size = dma_len(ram, size)
-    laddr = dma_laddr(ram, laddr)
     if use_async:
-        return maxi.dma_read_async(fsm, ram, laddr, gaddr, size, port=1)
-    return maxi.dma_read(fsm, ram, laddr, gaddr, size, port=1)
+        return maxi.dma_read_packed_async(fsm, ram, laddr, gaddr, size, port=1)
+    return maxi.dma_read_packed(fsm, ram, laddr, gaddr, size, port=1)
 
 
 def dma_write(maxi, fsm, ram, laddr, gaddr, size, port=1, use_async=False):
-    size = dma_len(ram, size)
-    laddr = dma_laddr(ram, laddr)
     if use_async:
-        return maxi.dma_write_async(fsm, ram, laddr, gaddr, size, port=1)
-    return maxi.dma_write(fsm, ram, laddr, gaddr, size, port=1)
+        return maxi.dma_write_packed_async(fsm, ram, laddr, gaddr, size, port=1)
+    return maxi.dma_write_packed(fsm, ram, laddr, gaddr, size, port=1)
 
 
 def dma_read_block(maxi, fsm, rams, laddr, gaddr, size, block_size, port=1, use_async=False):
@@ -2990,16 +2978,9 @@ def dma_read_block(maxi, fsm, rams, laddr, gaddr, size, block_size, port=1, use_
     if len(rams) == 1 and not isinstance(ram, vthread.MultibankRAM):
         return dma_read(maxi, fsm, ram, laddr, gaddr, size, port=port, use_async=use_async)
 
-    size = dma_len(rams[0], size)
-    laddr = dma_laddr(rams[0], laddr)
-
-    if isinstance(rams[0], vthread.MultibankRAM):
-        pack_size = rams[0].numbanks
-        block_size = block_size >> int(math.ceil(math.log(pack_size, 2)))
-
     if use_async:
-        return ram.dma_read_block_async(fsm, maxi, laddr, gaddr, size, block_size, port=1)
-    return ram.dma_read_block(fsm, maxi, laddr, gaddr, size, block_size, port=1)
+        return maxi.dma_read_block_async(fsm, ram, laddr, gaddr, size, block_size, port=1)
+    return maxi.dma_read_block(fsm, ram, laddr, gaddr, size, block_size, port=1)
 
 
 def dma_write_block(maxi, fsm, rams, laddr, gaddr, size, block_size, port=1, use_async=False):
@@ -3014,16 +2995,9 @@ def dma_write_block(maxi, fsm, rams, laddr, gaddr, size, block_size, port=1, use
     if len(rams) == 1 and not isinstance(ram, vthwrite.MultibankRAM):
         return dma_write(maxi, fsm, ram, laddr, gaddr, size, port=port, use_async=use_async)
 
-    size = dma_len(rams[0], size)
-    laddr = dma_laddr(rams[0], laddr)
-
-    if isinstance(rams[0], vthread.MultibankRAM):
-        pack_size = rams[0].numbanks
-        block_size = block_size >> int(math.ceil(math.log(pack_size, 2)))
-
     if use_async:
-        return ram.dma_write_block_async(fsm, maxi, laddr, gaddr, size, block_size, port=1)
-    return ram.dma_write_block(fsm, maxi, laddr, gaddr, size, block_size, port=1)
+        return maxi.dma_write_block_async(fsm, ram, laddr, gaddr, size, block_size, port=1)
+    return maxi.dma_write_block(fsm, ram, laddr, gaddr, size, block_size, port=1)
 
 
 def dma_wait_read(maxi, fsm):
@@ -3145,7 +3119,7 @@ def get_maxi_addrwidth(obj):
 
 
 def out_rcast(strm, v, width, point, signed):
-    if v.bit_length() < width:
+    if vg.get_width(v) < width:
         v.width = width
 
     return strm.ReinterpretCast(v, width, point, signed)

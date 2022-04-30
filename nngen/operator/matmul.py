@@ -305,8 +305,8 @@ class matmul(conv2d.conv2d):
 
         kwargs['bias'] = bias
         kwargs['scale'] = scale
-        kwargs['transposed_a'] = self.transposed_a
-        kwargs['transposed_b'] = self.transposed_b
+        kwargs['transposed_a'] = False
+        kwargs['transposed_b'] = True
         kwargs['rshift_mul'] = rshift_mul
         kwargs['rshift_sum'] = rshift_sum
         kwargs['rshift_out'] = rshift_out

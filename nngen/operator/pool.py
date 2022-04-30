@@ -190,7 +190,7 @@ class _pool(bt._Operator):
             ksize_row = self.ksize[-3]
             len_act_rams = len(self.input_rams)
 
-            mask = strm.constant(datawidth=len_act_rams, signed=False)
+            mask = strm.parameter(datawidth=len_act_rams, signed=False)
 
             act_rams = self.input_rams
             out_ram = self.output_rams[0]
@@ -223,7 +223,7 @@ class _pool(bt._Operator):
 
                 act_vars_list.append(act_vars)
 
-            if len(vec_act_vars) > mask.bit_length():
+            if len(vec_act_vars) > mask.get_width():
                 raise ValueError('Not enough mask bits.')
 
             pad_value = self.get_pad_value(strm)
@@ -608,6 +608,7 @@ class _pool(bt._Operator):
         # ReadAct phase
         # --------------------
         state_read_act = fsm.current
+        fsm.goto_next()
 
         act_gaddrs = []
         for act_offset in act_offsets:
@@ -674,16 +675,18 @@ class _pool(bt._Operator):
         # --------------------
         state_comp = fsm.current
 
+        # waiting for previous DMA write completion
+        bt.dma_wait_write_idle(self.maxi, fsm)
+
+        state_comp_after_sync = fsm.current
+
         # Stream Control FSM
         comp_fsm = vg.FSM(self.m, self._name('comp_fsm'), self.clk, self.rst)
-
         comp_state_init = comp_fsm.current
-        comp_fsm.If(fsm.state == state_comp, vg.Not(skip_comp)).goto_next()
+        comp_fsm.If(fsm.state == state_comp_after_sync, vg.Not(skip_comp)).goto_next()
 
+        # when comp_fsm is available, go to the next phase
         fsm.If(comp_fsm.state == comp_state_init).goto_next()
-
-        # waiting for previous DMA write completion
-        bt.dma_wait_write_idle(self.maxi, comp_fsm)
 
         # local address
         stream_act_locals_2d = line_to_2d(stream_act_locals, ksize_col)
@@ -770,9 +773,9 @@ class _pool(bt._Operator):
 
         stream_masks = stream_pad_masks_reg
 
-        # set_constant
-        name = list(self.stream.constants.keys())[0]
-        self.stream.set_constant(comp_fsm, name, stream_masks)
+        # set_parameter
+        name = list(self.stream.parameters.keys())[0]
+        self.stream.set_parameter(comp_fsm, name, stream_masks)
         comp_fsm.set_index(comp_fsm.current - 1)
 
         # set_source
@@ -867,7 +870,7 @@ class _pool(bt._Operator):
         comp_fsm.seq.If(fsm.state == state_init)(
             comp_count(0)
         )
-        comp_fsm.seq.If(self.stream.end_flag)(
+        comp_fsm.seq.If(self.stream.source_stop)(
             comp_count.add(self.inc_out_laddr)
         )
 
@@ -875,6 +878,7 @@ class _pool(bt._Operator):
         # WriteOut phase
         # --------------------
         state_write_out = fsm.current
+        fsm.goto_next()
 
         # sync with Comp control
         fsm.If(comp_count >= out_count + self.out_write_size).goto_next()
@@ -1142,18 +1146,18 @@ class avg_pool(_pool):
                             self.sum_dtype.signed)
 
         if self.force_div or num_vars & (num_vars - 1) != 0:
-            addtree.to_constant('rshift', 0)
+            addtree.to_parameter('rshift', 0)
             div = strm.substream(self.substreams[self.par + index])
 
-            frac = num_vars//2
-            div.to_constant('frac', frac)
+            frac = num_vars // 2
+            div.to_parameter('frac', frac)
 
             div.to_source('x', sum)
-            div.to_constant('y', num_vars)
+            div.to_parameter('y', num_vars)
             return div.from_sink('z')
 
         rshift = int(math.log(num_vars, 2))
-        addtree.to_constant('rshift', rshift)
+        addtree.to_parameter('rshift', rshift)
 
         return sum
 

@@ -282,11 +282,11 @@ print('# IP-XACT was generated. Check the current directory.')
 # convert weight values to a memory image:
 # on a real FPGA platform, this image will be used as a part of the model definition.
 
-param_filename = 'hello_nngen.npy'
+param_filename = 'hello_nngen.npz'
 chunk_size = 64
 
 param_data = ng.export_ndarray([output_layer], chunk_size)
-np.save(param_filename, param_data)
+np.savez_compressed(param_filename, param_data)
 
 
 # --------------------

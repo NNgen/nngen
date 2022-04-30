@@ -64,21 +64,20 @@ Installation
 Requirements
 --------------------
 
-- Python3: 3.6 or later
+- Python3: 3.7.7 or later
+    - Python 3.9.5 (via pyenv) is recommended for macOS with Apple Silicon.
 - Icarus Verilog: 10.1 or later
 
 ```
 sudo apt install iverilog
 ```
 
-- Jinja2: 2.10 or later
-- Pyverilog: 1.2.1 or later
-- Veriloggen: 1.8.2 (earlier than 1.9.0)
-- NumPy: 1.17 or later
-- ONNX: 1.6.0
+- veriloggen: 2.1.0 or later
+- numpy: 1.17 or later
+- onnx: 1.9.0 or later
 
 ```
-pip3 install jinja2 pyverilog veriloggen numpy onnx
+pip3 install veriloggen numpy onnx
 ```
 
 Install
@@ -96,8 +95,8 @@ Optional requirements for testing
 These are required for automatic testing of **tests**.
 We recommend to install these testing library to verify experimental features.
 
-- pytest: 3.2 or later
-- pytest-pythonpath: 0.7 or later
+- pytest: 3.8.1 or later
+- pytest-pythonpath: 0.7.3 or later
 - PyTorch: 1.3.1 or later
 - torchvision: 0.4.2 or later
 
@@ -130,30 +129,6 @@ sudo apt install texlive-science texlive-fonts-recommended texlive-fonts-extra d
 
 ```
 pip3 install sphinx sphinx_rtd_theme
-```
-
-Another installation way
---------------------
-
-The current NNgen and Veriloggen are under the aggresive development.
-Instead of the standard installation, you can download (or git clone) and install the latest version of NNgen, Veriloggen, and other libraries from GitHub.
-
-### Download the latest NNgen, Veriloggen, and Pyverilog from GitHub
-
-```
-git clone https://github.com/NNgen/nngen.git
-git clone https://github.com/PyHDI/veriloggen.git
-git clone https://github.com/PyHDI/Pyverilog.git
-```
-
-### Create symbolic links to Veriloggen and the other libraries from NNgen
-
-Instead of the actual installations, please create symbolic links to the dependent libraries.
-
-```
-cd nngen
-ln -s ../veriloggen/veriloggen
-ln -s ../Pyverilog/pyverilog
 ```
 
 Docker
