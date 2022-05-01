@@ -5,6 +5,10 @@ from __future__ import division
 import math
 import numpy as np
 
+import nngen.storage as storage
+import nngen.operator as operator
+import nngen.dtype_list as dtype_list
+
 from . import util
 
 
@@ -51,8 +55,8 @@ def conv2d(visitor, node):
 
     # normalize filter vaules for each output channel
     if (scale is not None and scale.shape[-1] == node.shape[-1] and
-          scale.dtype.width >= filter.dtype.width * 4 and
-            (bias is None or bias.shape[-1] == node.shape[-1])):
+        scale.dtype.width >= filter.dtype.width * 4 and
+        (bias is None or bias.shape[-1] == node.shape[-1])):
 
         out_scale_value = np.abs(filter.value)
         for _ in range(len(filter.value.shape) - 1):
@@ -101,49 +105,65 @@ def conv2d(visitor, node):
         scale_scale_factor = 1.0
         q_scale_value = None
 
-    if ((rshift_mul is None or isinstance(rshift_mul, int)) and
-        (rshift_sum is None or isinstance(rshift_sum, int)) and
-            (rshift_out is None or isinstance(rshift_out, int))):
+    init_rshift_out = max(math.ceil(math.log(np.mean(np.abs(q_filter_value)) * 2.0, 2)), 0)
+    if scale is not None:
+        init_rshift_out += max(math.ceil(math.log(np.mean(np.abs(q_scale_value)) * 2.0, 2)), 0)
 
-        init_rshift_out = max(math.ceil(math.log(np.mean(np.abs(q_filter_value)) * 2.0, 2)), 0)
-        if scale is not None:
-            init_rshift_out += max(math.ceil(math.log(np.mean(np.abs(q_scale_value)) * 2.0, 2)), 0)
+    q_rshift_mul, q_rshift_sum, q_rshift_out = find_optimal_rshift(
+        visitor, node, q_filter_value, q_bias_value, q_scale_value,
+        init_rshift_mul=0,
+        init_rshift_sum=0,
+        init_rshift_out=init_rshift_out)
 
-        q_rshift_mul, q_rshift_sum, q_rshift_out = find_optimal_rshift(
-            visitor, node, q_filter_value, q_bias_value, q_scale_value,
-            init_rshift_mul=0,
-            init_rshift_sum=0,
-            init_rshift_out=init_rshift_out)
+    total_rshift = 0
 
-        total_rshift = 0
+    if node.has_vshamt_mul:
+        if isinstance(rshift_mul, storage.variable):
+            rshift_mul.set_value(rshift_mul.value + [q_rshift_mul])
+        else:
+            _name = '_'.join(['quantizer', node.name, 'vshamt_mul_offset'])
+            _width = rshift_mul.dtype.width
+            _dtype = dtype_list.dtype_int(_width, signed=False)
+            _shape = (1,)
+            _offset = storage.variable(dtype=_dtype, shape=_shape, name=_name)
+            _value = (q_rshift_mul,)
+            _offset.set_value(_value)
+            node.args[node.args_dict['vshamt_mul']] = operator.add(rshift_mul, _offset)
 
-        if node.cshamt_mul is not None:
-            node.cshamt_mul += q_rshift_mul
-            total_rshift += node.cshamt_mul
-        elif q_rshift_mul > 0:
-            node.cshamt_mul = q_rshift_mul
-            total_rshift += node.cshamt_mul
+        total_rshift += q_rshift_mul
 
-        if node.cshamt_sum is not None:
-            node.cshamt_sum += q_rshift_sum
-            total_rshift += node.cshamt_sum
-        elif q_rshift_sum > 0:
-            node.cshamt_sum = q_rshift_sum
-            total_rshift += node.cshamt_sum
+    if node.has_vshamt_sum:
+        if isinstance(rshift_sum, storage.variable):
+            rshift_sum.set_value(rshift_sum.value + [q_rshift_sum])
+        else:
+            _name = '_'.join(['quantizer', node.name, 'vshamt_sum_offset'])
+            _width = rshift_sum.dtype.width
+            _dtype = dtype_list.dtype_int(_width, signed=False)
+            _shape = (1,)
+            _offset = storage.variable(dtype=_dtype, shape=_shape, name=_name)
+            _value = (q_rshift_sum,)
+            _offset.set_value(_value)
+            node.args[node.args_dict['vshamt_sum']] = operator.add(rshift_sum, _offset)
 
-        if node.cshamt_out is not None:
-            node.cshamt_out += q_rshift_out
-            total_rshift += node.cshamt_out
-        elif q_rshift_out > 0:
-            node.cshamt_out = q_rshift_out
-            total_rshift += node.cshamt_out
+        total_rshift += q_rshift_sum
 
-        node.scale_factor = (input.scale_factor * filter_scale_factor *
-                             scale_scale_factor / (2 ** total_rshift))
+    if node.has_vshamt_out:
+        if isinstance(rshift_out, storage.variable):
+            rshift_out.set_value(rshift_out.value + [q_rshift_out])
+        else:
+            _name = '_'.join(['quantizer', node.name, 'vshamt_out_offset'])
+            _width = rshift_out.dtype.width
+            _dtype = dtype_list.dtype_int(_width, signed=False)
+            _shape = (1,)
+            _offset = storage.variable(dtype=_dtype, shape=_shape, name=_name)
+            _value = (q_rshift_out,)
+            _offset.set_value(_value)
+            node.args[node.args_dict['vshamt_out']] = operator.add(rshift_out, _offset)
 
-    else:
-        node.scale_factor = (input.scale_factor * filter_scale_factor *
-                             scale_scale_factor)
+        total_rshift += q_rshift_out
+
+    node.scale_factor = (input.scale_factor * filter_scale_factor *
+                         scale_scale_factor / (2 ** total_rshift))
 
 
 def find_optimal_rshift(visitor, node, filter, bias, scale,

@@ -88,7 +88,9 @@ class _OperatorVisitor(object):
                  onnx_filter_layout=('O', 'I', 'H', 'W'),
                  nngen_input_layout=('N', 'H', 'W', 'C'),
                  nngen_filter_layout=('O', 'H', 'W', 'I'),
-                 disable_fusion=False, verbose=False):
+                 disable_fusion=False,
+                 use_vshamt=True,
+                 verbose=False):
 
         self.model = model
 
@@ -116,6 +118,7 @@ class _OperatorVisitor(object):
         self.nngen_filter_layout = nngen_filter_layout
 
         self.disable_fusion = disable_fusion
+        self.use_vshamt = use_vshamt
 
         self.verbose = verbose
 

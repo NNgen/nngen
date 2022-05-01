@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
+import math
 import collections
 
 import nngen.storage as storage
@@ -70,6 +71,16 @@ def Gemm(visitor, node,
 
     name = util.get_name(node)
 
+    if name in visitor.value_dtypes:
+        dtype = visitor.value_dtypes[name]
+    else:
+        dtype = visitor.default_operator_dtype
+
+    if dtype.width >= 16:
+        sum_dtype = dtype_list.dtype_int(dtype.width * 4)
+    else:
+        sum_dtype = dtype_list.int32
+
     scale_name = '_'.join(['onnx', name, 'gemm.scale'])
     scale_dtype = visitor.default_scale_dtype
     scale_shape = batchnorm_scale.shape if batchnorm_scale is not None else (1,)
@@ -95,23 +106,20 @@ def Gemm(visitor, node,
     elif bias is not None:
         bias.dtype = visitor.default_bias_dtype
 
-    # rshift_out_name = '_'.join(['onnx, name, 'gemm.rshift_out'])
-    #rshift_out_width = filter.dtype.width
-    #rshift_out_dtype = dtype_list.dtype_int(rshift_out_width, signed=False)
-    #rshift_out_shape = (1,)
-    #rshift_out = storage.variable(dtype=scale_dtype, shape=scale_shape, name=rshift_out_name)
-    #visitor.variables[rshift_out_name] = rshift_out
-    rshift_out = 0
-
-    if name in visitor.value_dtypes:
-        dtype = visitor.value_dtypes[name]
+    if visitor.use_vshamt:
+        rshift_out_name = '_'.join(['onnx', name, 'gemm.rshift_out'])
+        sum_width = sum_dtype.width
+        rshift_out_width = int(2 ** math.ceil(math.log(math.log(sum_width, 2), 2)))
+        rshift_out_dtype = dtype_list.dtype_int(rshift_out_width, signed=False)
+        rshift_out_shape = (filter.shape[0],)
+        rshift_out = storage.variable(
+            dtype=rshift_out_dtype, shape=rshift_out_shape, name=rshift_out_name)
+        rshift_out_value = [0 for _ in range(filter.shape[0])]
+        rshift_out.set_value(rshift_out_value)
+        visitor.variables[rshift_out_name] = rshift_out
     else:
-        dtype = visitor.default_operator_dtype
-
-    if dtype.width >= 16:
-        sum_dtype = dtype_list.dtype_int(dtype.width * 4)
-    else:
-        sum_dtype = dtype_list.int32
+        # rshift_out value is determined in the quantizer later
+        rshift_out = 0
 
     args = [input, filter]
 
