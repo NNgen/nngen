@@ -83,7 +83,7 @@ def abs(x, dtype=None, name=None, par=1,
 
 def zeros_imm(shape, dtype=None, name=None, par=1):
 
-    out_point = x_point if dtype is None else dtype.point
+    out_point = 0 if dtype is None else dtype.point
     out_shift = out_point
 
     out_op = ((lambda x: x << out_shift) if out_shift >= 0 else
@@ -101,7 +101,7 @@ def zeros_imm_like(x, dtype=None, name=None, par=1):
 
 def ones_imm(shape, dtype=None, name=None, par=1):
 
-    out_point = x_point if dtype is None else dtype.point
+    out_point = 0 if dtype is None else dtype.point
     out_shift = out_point
 
     out_op = ((lambda x: x << out_shift) if out_shift >= 0 else
@@ -119,7 +119,7 @@ def ones_imm_like(x, dtype=None, name=None, par=1):
 
 def full_imm(shape, fill_value, dtype=None, name=None, par=1):
 
-    out_point = x_point if dtype is None else dtype.point
+    out_point = 0 if dtype is None else dtype.point
     out_shift = out_point
 
     out_op = ((lambda x: x << out_shift) if out_shift >= 0 else
