@@ -522,7 +522,7 @@ def reduce_sum(input_tensor,
     if axis is None:
         input_tensor = input_tensor.reshape([-1])
 
-    ret = np.sum(input_tensor, axis)
+    ret = np.sum(input_tensor, axis, keepdims=keep_dims)
 
     if not isinstance(ret, np.ndarray):
         ret = np.array([ret])
@@ -546,7 +546,7 @@ def reduce_max(input_tensor,
     if axis is None:
         input_tensor = input_tensor.reshape([-1])
 
-    ret = np.max(input_tensor, axis=axis)
+    ret = np.max(input_tensor, axis=axis, keepdims=keep_dims)
 
     if not isinstance(ret, np.ndarray):
         ret = np.array([ret])
@@ -570,7 +570,7 @@ def reduce_min(input_tensor,
     if axis is None:
         input_tensor = input_tensor.reshape([-1])
 
-    ret = np.min(input_tensor, axis=axis)
+    ret = np.min(input_tensor, axis=axis, keepdims=keep_dims)
 
     if not isinstance(ret, np.ndarray):
         ret = np.array([ret])
@@ -600,7 +600,7 @@ def argmax(input_tensor,
     if axis is None:
         input_tensor = input_tensor.reshape([-1])
 
-    ret = np.argmax(input_tensor, axis=axis)
+    ret = np.argmax(input_tensor, axis=axis, keepdims=keep_dims)
 
     if not isinstance(ret, np.ndarray):
         ret = np.array([ret])
@@ -630,7 +630,7 @@ def argmin(input_tensor,
     if axis is None:
         input_tensor = input_tensor.reshape([-1])
 
-    ret = np.argmin(input_tensor, axis=axis)
+    ret = np.argmin(input_tensor, axis=axis, keepdims=keep_dims)
 
     if not isinstance(ret, np.ndarray):
         ret = np.array([ret])
