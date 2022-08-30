@@ -870,7 +870,7 @@ class _pool(bt._Operator):
         comp_fsm.seq.If(fsm.state == state_init)(
             comp_count(0)
         )
-        comp_fsm.seq.If(self.stream.source_stop)(
+        comp_fsm.seq.If(self.stream.sink_stop)(
             comp_count.add(self.inc_out_laddr)
         )
 

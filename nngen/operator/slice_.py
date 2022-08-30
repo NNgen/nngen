@@ -443,7 +443,7 @@ class slice_(bt._Operator):
         comp_fsm.seq.If(fsm.state == state_init)(
             comp_count(0)
         )
-        comp_fsm.seq.If(self.stream.source_stop)(
+        comp_fsm.seq.If(self.stream.sink_stop)(
             comp_count.inc()
         )
 
