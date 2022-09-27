@@ -220,8 +220,9 @@ class upsampling2d(bt._ElementwiseOperator):
             fsm.goto_next()
 
             # stride-0
+            lsize = vg.Int(1)
             bt.bus_lock(self.maxi, fsm)
-            bt.dma_read(self.maxi, fsm, ram, laddr, gaddr, 1)
+            bt.dma_read(self.maxi, fsm, ram, laddr, gaddr, lsize)
             bt.bus_unlock(self.maxi, fsm)
             fsm.goto_next()
 

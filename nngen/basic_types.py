@@ -1466,8 +1466,9 @@ class _StreamingOperator(_Operator):
             fsm.goto_next()
 
             # stride-0
+            lsize = vg.Int(1)
             bus_lock(self.maxi, fsm)
-            dma_read(self.maxi, fsm, ram, laddr, gaddr, 1)
+            dma_read(self.maxi, fsm, ram, laddr, gaddr, lsize)
             bus_unlock(self.maxi, fsm)
             fsm.goto_next()
 
@@ -2036,8 +2037,9 @@ class _ReductionOperator(_StreamingOperator):
             fsm.goto_next()
 
             # stride-0
+            lsize = vg.Int(1)
             bus_lock(self.maxi, fsm)
-            dma_read(self.maxi, fsm, ram, laddr, gaddr, 1)
+            dma_read(self.maxi, fsm, ram, laddr, gaddr, lsize)
             bus_unlock(self.maxi, fsm)
             fsm.goto_next()
 
@@ -3038,17 +3040,16 @@ def read_modify_write(m, fsm, maxi,
                         (type(src_ram), type(dst_ram)))
 
     # (read)
-    if ((isinstance(src_ram, vthread.MultibankRAM) and
-         src_ram.orig_datawidth == maxi.datawidth) or
-        (not isinstance(src_ram, vthread.MultibankRAM) and
-            src_ram.datawidth == maxi.datawidth)):
+    if src_ram.datawidth == maxi.datawidth:
+        src_lsize = vg.Int(1)
         bus_lock(maxi, fsm)
-        maxi.dma_write(fsm, src_ram, laddr, gaddr, 1, port=1)
+        maxi.dma_write(fsm, src_ram, laddr, gaddr, src_lsize, port=1)
         bus_unlock(maxi, fsm)
         return
 
+    dst_lsize = vg.Int(1)
     bus_lock(maxi, fsm)
-    maxi.dma_read(fsm, dst_ram, 0, gaddr, 1, port=1)
+    maxi.dma_read(fsm, dst_ram, 0, gaddr, dst_lsize, port=1)
     bus_unlock(maxi, fsm)
 
     # (modify)
@@ -3056,10 +3057,7 @@ def read_modify_write(m, fsm, maxi,
 
     # (write)
     mem_width = int(math.log(to_byte(maxi.datawidth), 2))
-    if isinstance(dst_ram, vthread.MultibankRAM):
-        ram_width = int(math.log(to_byte(dst_ram.orig_datawidth), 2))
-    else:
-        ram_width = int(math.log(to_byte(dst_ram.datawidth), 2))
+    ram_width = int(math.log(to_byte(dst_ram.datawidth), 2))
     pos_width = mem_width - ram_width
     if pos_width < 1:
         pos = 0
@@ -3069,8 +3067,9 @@ def read_modify_write(m, fsm, maxi,
 
     dst_ram.write(fsm, pos, write_value)
 
+    dst_lsize = vg.Int(1)
     bus_lock(maxi, fsm)
-    maxi.dma_write(fsm, dst_ram, 0, gaddr, 1, port=1)
+    maxi.dma_write(fsm, dst_ram, 0, gaddr, dst_lsize, port=1)
     bus_unlock(maxi, fsm)
 
 
@@ -3078,8 +3077,9 @@ def read_modify_write_single_bank(m, fsm, maxi, src_ram, dst_ram, laddr, gaddr):
 
     # (read)
     if maxi.datawidth != src_ram.datawidth:
+        dst_lsize = vg.Int(1)
         bus_lock(maxi, fsm)
-        dma_read(maxi, fsm, dst_ram, 0, gaddr, 1, port=1)
+        dma_read(maxi, fsm, dst_ram, 0, gaddr, dst_lsize, port=1)
         bus_unlock(maxi, fsm)
 
     # (modify)
@@ -3105,8 +3105,9 @@ def read_modify_write_single_bank(m, fsm, maxi, src_ram, dst_ram, laddr, gaddr):
     # (write)
     dst_ram.write(fsm, 0, write_value)
 
+    dst_lsize = vg.Int(1)
     bus_lock(maxi, fsm)
-    dma_write(maxi, fsm, dst_ram, 0, gaddr, 1, port=1)
+    dma_write(maxi, fsm, dst_ram, 0, gaddr, dst_lsize, port=1)
     bus_unlock(maxi, fsm)
 
 
