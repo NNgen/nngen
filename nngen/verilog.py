@@ -455,8 +455,6 @@ def allocate(config, m, clk, rst, maxi, saxi, objs, schedule_table):
         global_addr_map, local_addr_map,
         global_map_ram, local_map_ram)
 
-    disable_unused_ram_ports(ram_dict)
-
     return (ram_dict, substrm_dict, ram_set_cache, stream_cache, control_cache,
             main_fsm, global_map_info, global_mem_map)
 
@@ -1441,10 +1439,7 @@ def make_controls(config, m, clk, rst, maxi, saxi,
             )
         )
 
-    if config['use_map_ram']:
-        global_map_ram.disable_write(0)
-        local_map_ram.disable_write(0)
-    else:
+    if not config['use_map_ram']:
         map_regs = saxi.register[num_header_regs + num_control_regs:]
 
     offset_reg = saxi.register[control_reg_global_offset]
@@ -1620,21 +1615,6 @@ def make_controls(config, m, clk, rst, maxi, saxi,
     main_fsm.goto_init()
 
     return control_cache, main_fsm
-
-
-def disable_unused_ram_ports(ram_dict):
-
-    for key, rams in ram_dict.items():
-        for ram in rams:
-            if isinstance(ram, vthread.MultibankRAM):
-                for bank in ram.rams:
-                    for i, interface in enumerate(bank.interfaces):
-                        if len(interface.wenable.subst) == 0:
-                            bank.disable_write(i)
-            else:
-                for i, interface in enumerate(ram.interfaces):
-                    if len(interface.wenable.subst) == 0:
-                        ram.disable_write(i)
 
 
 def make_reg_map(config, global_map_info, header_info):
