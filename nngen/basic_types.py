@@ -197,7 +197,11 @@ class _Numeric(_Node):
         self.saxi = saxi
 
     def collect_numerics(self):
-        return [self]
+        ret = self._collect_numerics()
+        return sorted(list(ret), key=lambda x:x.object_id)
+
+    def _collect_numerics(self):
+        return set([self])
 
     def collect_sources(self):
         return ()
@@ -473,25 +477,27 @@ class _Operator(_Numeric):
 
         raise ValueError('no such object %s' % str(obj))
 
-    def collect_numerics(self):
-        ret = []
-        ret.append(self)
+    def _collect_numerics(self):
+        ret = set()
+        ret.add(self)
 
         for arg in self.args:
-            ret.extend(arg.collect_numerics())
+            if arg not in ret:
+                ret.update(arg._collect_numerics())
 
-        ret = sorted(set(ret), key=ret.index)
         return ret
 
     def collect_arg_numerics(self):
-        ret = []
+        ret = self._collect_arg_numerics()
+        return sorted(list(ret), key=lambda x:x.object_id)
 
+    def _collect_arg_numerics(self):
+        ret = set()
         for arg in self.args:
-            if are_chainable_operators(self, arg):
-                ret.append(arg)
-                ret.extend(arg.collect_arg_numerics())
+            if arg not in ret and are_chainable_operators(self, arg):
+                ret.add(arg)
+                ret.update(arg._collect_arg_numerics())
 
-        ret = sorted(set(ret), key=ret.index)
         return ret
 
     def collect_sources(self):
