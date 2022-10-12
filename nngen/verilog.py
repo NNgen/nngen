@@ -244,12 +244,12 @@ def set_output(objs):
 
 
 def collect_numerics(objs):
-    new_objs = []
+    ret = set()
     for obj in objs:
-        new_objs.extend(obj.collect_numerics())
+        if obj not in ret:
+            ret.update(obj._collect_numerics())
 
-    ret = sorted(set(new_objs), key=new_objs.index)
-    ret.sort(key=lambda x: x.object_id)
+    ret = sorted(list(ret), key=lambda x:x.object_id)
     return ret
 
 
