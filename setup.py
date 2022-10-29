@@ -19,7 +19,7 @@ setup(name='nngen',
       url='https://github.com/NNgen/nngen',
       packages=find_packages(),
       package_data={'nngen': ['VERSION'], },
-      install_requires=['veriloggen>=2.1.0',
+      install_requires=['veriloggen>=2.1.1',
                         'numpy>=1.17',
                         'onnx>=1.9.0'],
       extras_require={
