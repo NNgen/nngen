@@ -14,7 +14,8 @@ addons:
     - verilator
 
 install:
-  - pip install pytest pytest-pythonpath jinja2 pyverilog veriloggen numpy onnx torch torchvison
+  - pip install -U importlib_metadata
+  - pip install pytest pytest-pythonpath jinja2 pyverilog veriloggen numpy onnx torch torchvision
 
 script:
   - python -m pytest --sim=verilator tests
