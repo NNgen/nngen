@@ -83,7 +83,7 @@ def abs(x, dtype=None, name=None, par=1,
 
 def zeros_imm(shape, dtype=None, name=None, par=1):
 
-    out_point = x_point if dtype is None else dtype.point
+    out_point = 0 if dtype is None else dtype.point
     out_shift = out_point
 
     out_op = ((lambda x: x << out_shift) if out_shift >= 0 else
@@ -101,7 +101,7 @@ def zeros_imm_like(x, dtype=None, name=None, par=1):
 
 def ones_imm(shape, dtype=None, name=None, par=1):
 
-    out_point = x_point if dtype is None else dtype.point
+    out_point = 0 if dtype is None else dtype.point
     out_shift = out_point
 
     out_op = ((lambda x: x << out_shift) if out_shift >= 0 else
@@ -119,7 +119,7 @@ def ones_imm_like(x, dtype=None, name=None, par=1):
 
 def full_imm(shape, fill_value, dtype=None, name=None, par=1):
 
-    out_point = x_point if dtype is None else dtype.point
+    out_point = 0 if dtype is None else dtype.point
     out_shift = out_point
 
     out_op = ((lambda x: x << out_shift) if out_shift >= 0 else
@@ -522,7 +522,7 @@ def reduce_sum(input_tensor,
     if axis is None:
         input_tensor = input_tensor.reshape([-1])
 
-    ret = np.sum(input_tensor, axis)
+    ret = np.sum(input_tensor, axis, keepdims=keep_dims)
 
     if not isinstance(ret, np.ndarray):
         ret = np.array([ret])
@@ -546,7 +546,7 @@ def reduce_max(input_tensor,
     if axis is None:
         input_tensor = input_tensor.reshape([-1])
 
-    ret = np.max(input_tensor, axis=axis)
+    ret = np.max(input_tensor, axis=axis, keepdims=keep_dims)
 
     if not isinstance(ret, np.ndarray):
         ret = np.array([ret])
@@ -570,7 +570,7 @@ def reduce_min(input_tensor,
     if axis is None:
         input_tensor = input_tensor.reshape([-1])
 
-    ret = np.min(input_tensor, axis=axis)
+    ret = np.min(input_tensor, axis=axis, keepdims=keep_dims)
 
     if not isinstance(ret, np.ndarray):
         ret = np.array([ret])
@@ -600,7 +600,7 @@ def argmax(input_tensor,
     if axis is None:
         input_tensor = input_tensor.reshape([-1])
 
-    ret = np.argmax(input_tensor, axis=axis)
+    ret = np.argmax(input_tensor, axis=axis, keepdims=keep_dims)
 
     if not isinstance(ret, np.ndarray):
         ret = np.array([ret])
@@ -630,7 +630,7 @@ def argmin(input_tensor,
     if axis is None:
         input_tensor = input_tensor.reshape([-1])
 
-    ret = np.argmin(input_tensor, axis=axis)
+    ret = np.argmin(input_tensor, axis=axis, keepdims=keep_dims)
 
     if not isinstance(ret, np.ndarray):
         ret = np.array([ret])
