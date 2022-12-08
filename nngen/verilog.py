@@ -467,9 +467,6 @@ def set_storage_name(objs):
             obj.name = 'input_%d' % tmp_input
             tmp_input += 1
         elif obj.is_output and obj.name is None:
-            while bt.is_view(obj) or bt.is_removable_reshape(obj):
-                obj = obj.args[0]
-
             obj.name = 'output_%s_%d' % (obj.__class__.__name__, tmp_output)
             tmp_output += 1
 
@@ -1099,6 +1096,7 @@ def make_addr_map(config, objs, saxi):
     for obj in sorted(objs, key=lambda x: x.object_id):
         if obj.is_output and obj.global_index is None:
 
+            orig_obj = obj
             while bt.is_view(obj) or bt.is_removable_reshape(obj):
                 obj = obj.args[0]
 
@@ -1116,16 +1114,16 @@ def make_addr_map(config, objs, saxi):
                   "(size: %s, dtype: %s, shape: %s, "
                   "alignment: %d words (%d bytes)), "
                   "aligned shape: %s") %
-                 (obj.__class__.__name__,
-                  "'%s'" % obj.name if obj.name is not None else 'None',
+                 (orig_obj.__class__.__name__,
+                  "'%s'" % orig_obj.name if orig_obj.name is not None else 'None',
                   size_str(space_size),
-                  obj.dtype.to_str() if obj.dtype is not None else 'None',
-                  (str(obj.shape)
-                   if isinstance(obj.shape, (tuple, list)) else '()'),
-                  obj.get_word_alignment(),
-                  bt.to_byte(obj.get_word_alignment() * obj.get_ram_width()),
-                  (str(tuple(obj.get_aligned_shape()))
-                   if isinstance(obj.shape, (tuple, list)) else '()')))
+                  orig_obj.dtype.to_str() if orig_obj.dtype is not None else 'None',
+                  (str(orig_obj.shape)
+                   if isinstance(orig_obj.shape, (tuple, list)) else '()'),
+                  orig_obj.get_word_alignment(),
+                  bt.to_byte(orig_obj.get_word_alignment() * orig_obj.get_ram_width()),
+                  (str(tuple(orig_obj.get_aligned_shape()))
+                   if isinstance(orig_obj.shape, (tuple, list)) else '()')))
 
             global_mem_map[(default_global_addr,
                             default_global_addr + space_size - 1)] = i
