@@ -3049,13 +3049,13 @@ def read_modify_write(m, fsm, maxi,
     if src_ram.datawidth == maxi.datawidth:
         src_lsize = vg.Int(1)
         bus_lock(maxi, fsm)
-        maxi.dma_write(fsm, src_ram, laddr, gaddr, src_lsize, port=1)
+        dma_write(maxi, fsm, src_ram, laddr, gaddr, src_lsize, port=1)
         bus_unlock(maxi, fsm)
         return
 
     dst_lsize = vg.Int(1)
     bus_lock(maxi, fsm)
-    maxi.dma_read(fsm, dst_ram, 0, gaddr, dst_lsize, port=1)
+    dma_read(maxi, fsm, dst_ram, 0, gaddr, dst_lsize, port=1)
     bus_unlock(maxi, fsm)
 
     # (modify)
@@ -3075,7 +3075,7 @@ def read_modify_write(m, fsm, maxi,
 
     dst_lsize = vg.Int(1)
     bus_lock(maxi, fsm)
-    maxi.dma_write(fsm, dst_ram, 0, gaddr, dst_lsize, port=1)
+    dma_write(maxi, fsm, dst_ram, 0, gaddr, dst_lsize, port=1)
     bus_unlock(maxi, fsm)
 
 
