@@ -53,6 +53,7 @@ func_map = {
     'Relu': act_func.Relu,
     'LeakyRelu': act_func.LeakyRelu,
     'Sigmoid': act_func.Sigmoid,
+    'Tanh': act_func.Tanh,
     'BatchNormalization': batchnormalization.BatchNormalization,
     'Shape': shape.Shape,
     'Reshape': reshape.Reshape,

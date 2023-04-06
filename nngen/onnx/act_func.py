@@ -67,3 +67,6 @@ def LeakyRelu(visitor, node):
 
 def Sigmoid(visitor, node):
     return _act_func(operator.sigmoid, visitor, node)
+
+def Tanh(visitor, node):
+    return _act_func(operator.tanh, visitor, node)
