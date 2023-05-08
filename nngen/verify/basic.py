@@ -7,6 +7,20 @@ import numpy as np
 import nngen.util as util
 
 
+def logical_not(x, dtype=None, name=None, par=1, x_dtype=None):
+    return np.logical_not(x)
+
+
+def logical_and(x, y, dtype=None, name=None, par=1,
+        x_dtype=None, y_dtype=None):
+    return np.logical_and(x, y)
+
+
+def logical_or(x, y, dtype=None, name=None, par=1,
+        x_dtype=None, y_dtype=None):
+    return np.logical_or(x, y)
+
+
 def add(x, y, dtype=None, name=None, par=1,
         x_dtype=None, y_dtype=None):
 
