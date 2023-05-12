@@ -22,21 +22,24 @@ def Gemm(visitor, node,
     for i, src in enumerate(node.input):
         src_node = util.search_node_from_model(visitor.model, src)
 
-        if (i == 0 and src_node.op_type == 'Flatten' and
-                len(visitor.consumers[src]) == 1):
+        if src_node is None:
+            pass
+        else:
+            if (i == 0 and src_node.op_type == 'Flatten' and
+                    len(visitor.consumers[src]) == 1):
 
-            src_obj = flatten.Flatten(visitor, src_node, no_transpose=True)
-            srcs.append(src_obj)
-            continue
-
-        if (i == 0 and src_node.op_type == 'Reshape' and
-                len(visitor.consumers[src]) == 1):
-
-            shape = visitor.visit(src_node.input[1])
-            if len(shape) == 2:
-                src_obj = reshape.Reshape(visitor, src_node, no_transpose=True)
+                src_obj = flatten.Flatten(visitor, src_node, no_transpose=True)
                 srcs.append(src_obj)
                 continue
+
+            if (i == 0 and src_node.op_type == 'Reshape' and
+                    len(visitor.consumers[src]) == 1):
+
+                shape = visitor.visit(src_node.input[1])
+                if len(shape) == 2:
+                    src_obj = reshape.Reshape(visitor, src_node, no_transpose=True)
+                    srcs.append(src_obj)
+                    continue
 
         src_obj = visitor.visit(src)
         srcs.append(src_obj)
