@@ -77,7 +77,8 @@ def run(a_shape=(7, 15), b_shape=(7, 15),
     # (2) Assign quantized weights to the NNgen operators
     # --------------------
 
-    input_scale_factors = {'a': 10.0, 'b': 15.0}
+    input_ranges = {'a': 10.0, 'b': 15.0}
+    input_scale_factors = {'a': 1/input_ranges['a'] * 2**(a_dtype.width-1), 'b': 1/ input_ranges['b'] * 2**(b_dtype.width - 1)}
 
     ng.quantize(outputs, input_scale_factors)
 
@@ -98,8 +99,8 @@ def run(a_shape=(7, 15), b_shape=(7, 15),
     c = outputs['c']
 
     # verification data
-    input_a = np.arange(a.length, dtype=np.int64).reshape(a.shape) % [17]
-    input_b = (np.arange(b.length, dtype=np.int64).reshape(b.shape) + [100]) % [13]
+    input_a = np.arange(a.length, dtype=np.int64).reshape(a.shape) % input_ranges['a']
+    input_b = (np.arange(b.length, dtype=np.int64).reshape(b.shape) + [100]) % input_ranges['b']
 
     # execution on pytorch
     model_a = input_a.astype(np.float32)
