@@ -81,11 +81,10 @@ def avg_pool(value, ksize, stride, padding='SAME',
 
     num_vars = ksize_col * ksize_row
 
-
     def divider(vx):
         return np.array(
-                list(map(lambda x: Decimal(str(x/num_vars)).quantize(Decimal('0'),
-                    rounding=ROUND_HALF_UP), vx))).astype(np.int64)
+            list(map(lambda x: Decimal(str(x / num_vars)).quantize(Decimal('0'),
+                                                                   rounding=ROUND_HALF_UP), vx))).astype(np.int64)
 
     for bat in range(value.shape[0]):
 

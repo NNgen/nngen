@@ -18,8 +18,8 @@ def leaky_relu(features, slope, rshift, dtype=None, name=None, par=1,
     out_shift = out_point - features_point
 
     features_shape = features.shape
-    negs = np.array(list(map(lambda x: Decimal(str(x*slope/(2**rshift))).quantize(Decimal('0'),
-                rounding=ROUND_HALF_UP), features.flatten()))).astype(np.int64).reshape(features_shape)
+    negs = np.array(list(map(lambda x: Decimal(str(x * slope / (2**rshift))).quantize(Decimal('0'),
+                                                                                      rounding=ROUND_HALF_UP), features.flatten()))).astype(np.int64).reshape(features_shape)
 
     comp = features >= 0
 

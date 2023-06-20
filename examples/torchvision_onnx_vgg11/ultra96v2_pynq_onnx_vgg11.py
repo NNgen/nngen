@@ -115,9 +115,8 @@ import json
 class_index = json.load(open('imagenet_class_index.json', 'r'))
 labels = {int(key): value for (key, value) in class_index.items()}
 
-output = buf[output_offset:output_offset+output_size].view(np.int8)
+output = buf[output_offset:output_offset + output_size].view(np.int8)
 top10_index = np.argsort(output)[::-1][:10]
 
 for index in top10_index:
     print(index, labels[index], 'score:', output[index])
-

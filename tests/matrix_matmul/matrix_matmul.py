@@ -32,7 +32,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
         out_ram_size=None,
         axi_datawidth=32, silent=False,
         filename=None, simtype='iverilog', outputfile=None,
-        transposed_a = False, transposed_b = True
+        transposed_a=False, transposed_b=True
         ):
 
     # create target hardware
@@ -48,7 +48,6 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
         scale = ng.placeholder(scale_dtype, scale_shape, name='scale')
     else:
         scale = None
-
 
     c = ng.matmul(a, b,
                   bias, scale,
@@ -216,9 +215,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
     # run simulation
     sim = simulation.Simulator(m, sim=simtype)
     rslt = sim.run(outputfile=outputfile)
-    lines = rslt.splitlines()
-    if simtype == 'verilator' and lines[-1].startswith('-'):
-        rslt = '\n'.join(lines[:-1])
+
     return rslt
 
 

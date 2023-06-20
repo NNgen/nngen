@@ -78,7 +78,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
 
     memimg_name = 'memimg_' + outputfile
 
-    #memory = axi.AxiMemoryModel(m, 'memory', clk, rst,
+    # memory = axi.AxiMemoryModel(m, 'memory', clk, rst,
     #                            datawidth=axi_datawidth,
     #                            memimg=mem, memimg_name=memimg_name,
     #                            memimg_datawidth=memimg_datawidth)
@@ -89,7 +89,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
     for name, port in ports.items():
         w_name = 'w_' + port.name
         if (name.startswith('maxi_aw') or
-            name.startswith('maxi_w') or name.startswith('maxi_b')):
+                name.startswith('maxi_w') or name.startswith('maxi_b')):
             if isinstance(port, Reg):
                 w_port = m.RegLike(port, name=w_name)
                 port.connect(w_port)
@@ -201,9 +201,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15),
     # run simulation
     sim = simulation.Simulator(m, sim=simtype)
     rslt = sim.run(outputfile=outputfile)
-    lines = rslt.splitlines()
-    if simtype == 'verilator' and lines[-1].startswith('-'):
-        rslt = '\n'.join(lines[:-1])
+
     return rslt
 
 

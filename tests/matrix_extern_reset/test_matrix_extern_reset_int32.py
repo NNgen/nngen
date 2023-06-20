@@ -31,19 +31,19 @@ def test(request, silent=True):
     simtype = request.config.getoption('--sim')
 
     rslt = matrix_extern_reset.run(a_shape, b_shape,
-                             a_dtype, b_dtype, c_dtype,
-                             par, axi_datawidth, silent,
-                             filename=None, simtype=simtype,
-                             outputfile=os.path.splitext(os.path.basename(__file__))[0] + '.out')
+                                   a_dtype, b_dtype, c_dtype,
+                                   par, axi_datawidth, silent,
+                                   filename=None, simtype=simtype,
+                                   outputfile=os.path.splitext(os.path.basename(__file__))[0] + '.out')
 
-    verify_rslt = rslt.splitlines()[-1]
+    verify_rslt = [line for line in rslt.splitlines() if line.startswith('# verify:')][0]
     assert(verify_rslt == '# verify: PASSED')
 
 
 if __name__ == '__main__':
     rslt = matrix_extern_reset.run(a_shape, b_shape,
-                             a_dtype, b_dtype, c_dtype,
-                             par, axi_datawidth, silent=False,
-                             filename='tmp.v',
-                             outputfile=os.path.splitext(os.path.basename(__file__))[0] + '.out')
+                                   a_dtype, b_dtype, c_dtype,
+                                   par, axi_datawidth, silent=False,
+                                   filename='tmp.v',
+                                   outputfile=os.path.splitext(os.path.basename(__file__))[0] + '.out')
     print(rslt)

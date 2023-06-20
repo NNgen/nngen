@@ -183,9 +183,9 @@ def matmul(a, b,
     sum = np.right_shift(sum, rshift_sum)
     sum = np.add(sum, shifted_bias)
     sum = np.multiply(sum, shifted_scale)
-    frac = np.where(rshift_out!=0, np.where(sum>=0, rshift_out_round, rshift_out_round - 1),
-            np.zeros_like(rshift_out, dtype=np.int64))
-    sum = np.add(sum,frac)
+    frac = np.where(rshift_out != 0, np.where(sum >= 0, rshift_out_round, rshift_out_round - 1),
+                    np.zeros_like(rshift_out, dtype=np.int64))
+    sum = np.add(sum, frac)
     sum = np.right_shift(sum, rshift_out)
     sum = np.where(sum > p_th, p_th, np.where(sum < n_th, n_th, sum))
 

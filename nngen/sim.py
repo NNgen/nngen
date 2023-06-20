@@ -92,6 +92,7 @@ def wait(fsm, saxi, wordsize=4):
     fsm.If(v != 0).goto(b)
     fsm.If(v == 0).goto_next()
 
+
 def sw_rst(fsm, saxi, wordsize=4):
     awaddr = verilog.control_reg_reset * wordsize
     saxi.write(fsm, awaddr, 1)

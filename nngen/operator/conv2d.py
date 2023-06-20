@@ -1035,9 +1035,9 @@ class conv2d(bt._Operator):
             size = strm.parameter(datawidth=vg.get_width(self.stream_reduce_size),
                                   signed=False)
             col_select = strm.parameter(datawidth=bt.log_width(src_num_col),
-                                       signed=False)
+                                        signed=False)
             row_select = strm.parameter(datawidth=bt.log_width(src_num_row),
-                                       signed=False)
+                                        signed=False)
             mask = strm.parameter(datawidth=num_srcs, signed=False)
 
             omit_mask = strm.parameter(datawidth=self.par_ich, signed=False)
@@ -1059,7 +1059,6 @@ class conv2d(bt._Operator):
             split_bias = strm.Split(vec_bias, datawidth, point, signed, reverse=True)
             bias_list = [strm.Mux(dup_bias, split_bias[0], value) for value in split_bias]
             self.__set_latency(bias_list, 0)
-
 
             # scale
             datawidth = (arg_scale.get_op_width()
@@ -1120,11 +1119,11 @@ class conv2d(bt._Operator):
 
             # cshamt
             cshamt_mul = strm.parameter(datawidth=vg.get_width(self.cshamt_mul_value),
-                                       signed=False)
+                                        signed=False)
             cshamt_sum = strm.parameter(datawidth=vg.get_width(self.cshamt_sum_value),
-                                       signed=False)
+                                        signed=False)
             cshamt_out = strm.parameter(datawidth=vg.get_width(self.cshamt_out_value),
-                                       signed=False)
+                                        signed=False)
 
             act_func_index_width = max(len(self.shared_attrs['act_func']).bit_length(), 1)
             act_func_index = strm.parameter(datawidth=act_func_index_width, signed=False)
@@ -1285,7 +1284,7 @@ class conv2d(bt._Operator):
                                     self.substreams[
                                         num_weights *
                                         (pos_row * self.par_col * self.par_och * self.par_ich +
-                                           pos_col * self.par_och * self.par_ich +
+                                         pos_col * self.par_och * self.par_ich +
                                          oc * self.par_ich + ic):],
                                     masked_used_act_vars, filter_vars):
 
@@ -1560,7 +1559,7 @@ class conv2d(bt._Operator):
             math.ceil(aligned_filter_num_ich / self.par_ich))
         filter_read_step = (int(math.ceil(aligned_filter_num_ich / self.par_ich)) *
                             min(int(math.ceil(filter_num_och / self.par_och)),
-                                  concur_och // self.par_och))
+                                concur_och // self.par_och))
 
         aligned_out_num_ch = bt.align_word(out_num_ch,
                                            self.get_word_alignment())
