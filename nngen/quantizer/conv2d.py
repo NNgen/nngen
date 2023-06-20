@@ -51,7 +51,7 @@ def conv2d(visitor, node):
 
     # normalize filter vaules for each output channel
     if (scale is not None and scale.shape[-1] == node.shape[-1] and
-          scale.dtype.width >= filter.dtype.width * 4 and
+        scale.dtype.width >= filter.dtype.width * 4 and
             (bias is None or bias.shape[-1] == node.shape[-1])):
 
         out_scale_value = np.abs(filter.value)

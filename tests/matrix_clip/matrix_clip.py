@@ -38,8 +38,8 @@ def run(a_shape=(15, 15),
 
     # verification data
     va = np.arange(a.length, dtype=np.int32)
-    va = va*2 - a.length
-    va = va * [(2**(a_dtype.width-1)-1), ]
+    va = va * 2 - a.length
+    va = va * [(2**(a_dtype.width - 1) - 1), ]
     va = va // a.length
     va = va.reshape(a.shape)
 
@@ -159,9 +159,7 @@ def run(a_shape=(15, 15),
     # run simulation
     sim = simulation.Simulator(m, sim=simtype)
     rslt = sim.run(outputfile=outputfile)
-    lines = rslt.splitlines()
-    if simtype == 'verilator' and lines[-1].startswith('-'):
-        rslt = '\n'.join(lines[:-1])
+
     return rslt
 
 

@@ -61,11 +61,11 @@ def test(request, silent=True):
                              out_ram_size,
                              axi_datawidth, silent,
                              filename=None, simtype=simtype,
-                             transposed_a = False,
-                             transposed_b = False,
+                             transposed_a=False,
+                             transposed_b=False,
                              outputfile=os.path.splitext(os.path.basename(__file__))[0] + '.out')
 
-    verify_rslt = rslt.splitlines()[-1]
+    verify_rslt = [line for line in rslt.splitlines() if line.startswith('# verify:')][0]
     assert(verify_rslt == '# verify: PASSED')
 
 
@@ -84,7 +84,7 @@ if __name__ == '__main__':
                              out_ram_size,
                              axi_datawidth, silent=False,
                              filename='tmp.v',
-                             transposed_a = False,
-                             transposed_b = False,
+                             transposed_a=False,
+                             transposed_b=False,
                              outputfile=os.path.splitext(os.path.basename(__file__))[0] + '.out')
     print(rslt)

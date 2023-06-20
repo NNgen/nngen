@@ -136,7 +136,7 @@ def _collect_numerics(objs):
         if obj not in ret:
             ret.update(obj._collect_numerics())
 
-    ret = sorted(list(ret), key=lambda x:x.object_id)
+    ret = sorted(list(ret), key=lambda x: x.object_id)
     return ret
 
 

@@ -198,7 +198,7 @@ class _Numeric(_Node):
 
     def collect_numerics(self):
         ret = self._collect_numerics()
-        return sorted(list(ret), key=lambda x:x.object_id)
+        return sorted(list(ret), key=lambda x: x.object_id)
 
     def _collect_numerics(self):
         return set([self])
@@ -489,7 +489,7 @@ class _Operator(_Numeric):
 
     def collect_arg_numerics(self):
         ret = self._collect_arg_numerics()
-        return sorted(list(ret), key=lambda x:x.object_id)
+        return sorted(list(ret), key=lambda x: x.object_id)
 
     def _collect_arg_numerics(self):
         ret = set()
@@ -881,10 +881,12 @@ class _Operator(_Numeric):
         for i, values in enumerate(control_param_list):
             for name, value in values.items():
                 if isinstance(value, (tuple, list)):
-                    lst = [(self.control_param_index_reg == i, vg.Int(v, width=max_width, base=16)) for v in value]
+                    lst = [(self.control_param_index_reg == i, vg.Int(
+                        v, width=max_width, base=16)) for v in value]
                     pattern_dict[name].append(lst)
                 else:
-                    pattern_dict[name].append((self.control_param_index_reg == i, vg.Int(value, width=max_width, base=16)))
+                    pattern_dict[name].append(
+                        (self.control_param_index_reg == i, vg.Int(value, width=max_width, base=16)))
 
         for name in self.collect_all_control_param_names():
             dst = getattr(self, name)

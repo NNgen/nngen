@@ -46,7 +46,8 @@ def run(a_shape=(15, 15), b_shape=(15, 15), c_shape=(15, 15),
     vd = eval_outs[0]
 
     # to memory image
-    size_max = int(math.ceil(max(a.memory_size, b.memory_size, c.memory_size, d.memory_size) / 4096)) * 4096
+    size_max = int(math.ceil(max(a.memory_size, b.memory_size,
+                   c.memory_size, d.memory_size) / 4096)) * 4096
     check_addr = max(a.addr, b.addr, c.addr, d.addr) + size_max
     size_check = size_max
     tmp_addr = check_addr + size_check
@@ -162,9 +163,7 @@ def run(a_shape=(15, 15), b_shape=(15, 15), c_shape=(15, 15),
     # run simulation
     sim = simulation.Simulator(m, sim=simtype)
     rslt = sim.run(outputfile=outputfile)
-    lines = rslt.splitlines()
-    if simtype == 'verilator' and lines[-1].startswith('-'):
-        rslt = '\n'.join(lines[:-1])
+
     return rslt
 
 

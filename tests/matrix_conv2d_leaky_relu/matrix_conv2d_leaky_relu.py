@@ -235,9 +235,7 @@ def run(act_shape=(1, 7, 7, 7), weight_shape=(3, 3, 3, 7),
     # run simulation
     sim = simulation.Simulator(m, sim=simtype)
     rslt = sim.run(outputfile=outputfile)
-    lines = rslt.splitlines()
-    if simtype == 'verilator' and lines[-1].startswith('-'):
-        rslt = '\n'.join(lines[:-1])
+
     return rslt
 
 

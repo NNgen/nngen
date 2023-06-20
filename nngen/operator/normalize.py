@@ -187,7 +187,8 @@ class scaled_concat(concat):
                                          signed=False)
             sra = strm.Sra(mul, shamt)
 
-            p_th, n_th = util.clip_threshold(self.dtype.width, self.dtype.signed, self.asymmetric_clip)
+            p_th, n_th = util.clip_threshold(
+                self.dtype.width, self.dtype.signed, self.asymmetric_clip)
             p = strm.Mux(sra > p_th, p_th, sra)
             n = strm.Mux(sra < n_th, n_th, sra)
             dst = strm.Mux(sra >= 0, p, n)

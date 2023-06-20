@@ -80,7 +80,6 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
     ng.quantize([output_layer], input_scale_factors, input_means, input_stds)
 
-
     # --------------------
     # (3) Assign hardware attributes
     # --------------------
@@ -101,7 +100,6 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
 
     # a0.attribute(cshamt_out=weight_dtype.width + 1)
     # output_layer.attribute(cshamt_out=weight_dtype.width + 1)
-
 
     # --------------------
     # (4) Verify the DNN model behavior by executing the NNgen dataflow as a software
@@ -140,13 +138,11 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     # rtl = ng.to_verilog([output_layer], 'mlp', silent=silent,
     #                    config={'maxi_datawidth': axi_datawidth})
 
-
     # --------------------
     # (6) Save the quantized weights
     # --------------------
     param_data = ng.export_ndarray([output_layer], chunk_size)
     np.savez_compressed(weight_filename, param_data)
-
 
     # --------------------
     # (7) Simulate the generated hardware by Veriloggen and Verilog simulator
@@ -276,9 +272,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int16,
     # run simulation
     sim = simulation.Simulator(m, sim=simtype)
     rslt = sim.run(outputfile=sim_filename)
-    lines = rslt.splitlines()
-    if simtype == 'verilator' and lines[-1].startswith('-'):
-        rslt = '\n'.join(lines[:-1])
+
     return rslt
 
 
