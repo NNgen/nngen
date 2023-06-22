@@ -72,7 +72,7 @@ Requirements
 sudo apt install iverilog
 ```
 
-- veriloggen: 2.1.1 or later
+- veriloggen: 2.3.0 or later
 - numpy: 1.17 or later
 - onnx: 1.9.0 or later
 
