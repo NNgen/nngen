@@ -39,6 +39,7 @@ default_config = {
     'maxi_addrwidth': 32,
     'saxi_datawidth': 32,
     'saxi_addrwidth': 32,
+    'req_fifo_addrwidth': 3,
 
     # address map
     'default_global_addr_offset': 0,
@@ -244,12 +245,12 @@ def set_output(objs):
 
 
 def collect_numerics(objs):
-    new_objs = []
+    ret = set()
     for obj in objs:
-        new_objs.extend(obj.collect_numerics())
+        if obj not in ret:
+            ret.update(obj._collect_numerics())
 
-    ret = sorted(set(new_objs), key=new_objs.index)
-    ret.sort(key=lambda x: x.object_id)
+    ret = sorted(list(ret), key=lambda x: x.object_id)
     return ret
 
 
@@ -339,6 +340,7 @@ def make_module(config, name, objs, num_storages, num_input_storages, num_output
                         waddr_prot_mode=prot_mode, raddr_prot_mode=prot_mode,
                         waddr_user_mode=user_mode, raddr_user_mode=user_mode,
                         use_global_base_addr=True,
+                        req_fifo_addrwidth=config['req_fifo_addrwidth'],
                         fsm_as_module=config['fsm_as_module'])
 
     datawidth = config['saxi_datawidth']
@@ -455,8 +457,6 @@ def allocate(config, m, clk, rst, maxi, saxi, objs, schedule_table):
         global_addr_map, local_addr_map,
         global_map_ram, local_map_ram)
 
-    disable_unused_ram_ports(ram_dict)
-
     return (ram_dict, substrm_dict, ram_set_cache, stream_cache, control_cache,
             main_fsm, global_map_info, global_mem_map)
 
@@ -469,9 +469,6 @@ def set_storage_name(objs):
             obj.name = 'input_%d' % tmp_input
             tmp_input += 1
         elif obj.is_output and obj.name is None:
-            while bt.is_view(obj) or bt.is_removable_reshape(obj):
-                obj = obj.args[0]
-
             obj.name = 'output_%s_%d' % (obj.__class__.__name__, tmp_output)
             tmp_output += 1
 
@@ -1101,6 +1098,7 @@ def make_addr_map(config, objs, saxi):
     for obj in sorted(objs, key=lambda x: x.object_id):
         if obj.is_output and obj.global_index is None:
 
+            orig_obj = obj
             while bt.is_view(obj) or bt.is_removable_reshape(obj):
                 obj = obj.args[0]
 
@@ -1118,16 +1116,16 @@ def make_addr_map(config, objs, saxi):
                   "(size: %s, dtype: %s, shape: %s, "
                   "alignment: %d words (%d bytes)), "
                   "aligned shape: %s") %
-                 (obj.__class__.__name__,
-                  "'%s'" % obj.name if obj.name is not None else 'None',
+                 (orig_obj.__class__.__name__,
+                  "'%s'" % orig_obj.name if orig_obj.name is not None else 'None',
                   size_str(space_size),
-                  obj.dtype.to_str() if obj.dtype is not None else 'None',
-                  (str(obj.shape)
-                   if isinstance(obj.shape, (tuple, list)) else '()'),
-                  obj.get_word_alignment(),
-                  bt.to_byte(obj.get_word_alignment() * obj.get_ram_width()),
-                  (str(tuple(obj.get_aligned_shape()))
-                   if isinstance(obj.shape, (tuple, list)) else '()')))
+                  orig_obj.dtype.to_str() if orig_obj.dtype is not None else 'None',
+                  (str(orig_obj.shape)
+                   if isinstance(orig_obj.shape, (tuple, list)) else '()'),
+                  orig_obj.get_word_alignment(),
+                  bt.to_byte(orig_obj.get_word_alignment() * orig_obj.get_ram_width()),
+                  (str(tuple(orig_obj.get_aligned_shape()))
+                   if isinstance(orig_obj.shape, (tuple, list)) else '()')))
 
             global_mem_map[(default_global_addr,
                             default_global_addr + space_size - 1)] = i
@@ -1441,10 +1439,7 @@ def make_controls(config, m, clk, rst, maxi, saxi,
             )
         )
 
-    if config['use_map_ram']:
-        global_map_ram.disable_write(0)
-        local_map_ram.disable_write(0)
-    else:
+    if not config['use_map_ram']:
         map_regs = saxi.register[num_header_regs + num_control_regs:]
 
     offset_reg = saxi.register[control_reg_global_offset]
@@ -1620,21 +1615,6 @@ def make_controls(config, m, clk, rst, maxi, saxi,
     main_fsm.goto_init()
 
     return control_cache, main_fsm
-
-
-def disable_unused_ram_ports(ram_dict):
-
-    for key, rams in ram_dict.items():
-        for ram in rams:
-            if isinstance(ram, vthread.MultibankRAM):
-                for bank in ram.rams:
-                    for i, interface in enumerate(bank.interfaces):
-                        if len(interface.wenable.subst) == 0:
-                            bank.disable_write(i)
-            else:
-                for i, interface in enumerate(ram.interfaces):
-                    if len(interface.wenable.subst) == 0:
-                        ram.disable_write(i)
 
 
 def make_reg_map(config, global_map_info, header_info):

@@ -34,7 +34,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int8,
         pool_par=1, elem_par=1,
         chunk_size=64, axi_datawidth=32, silent=False,
 
-        onnx_filename = 'yolov3-tiny.onnx',
+        onnx_filename='yolov3-tiny.onnx',
         weight_filename='yolov3-tiny.npz',
         verilog_filename=None,
         sim_filename=None,
@@ -402,9 +402,7 @@ def run(act_dtype=ng.int16, weight_dtype=ng.int8,
     # run simulation
     sim = simulation.Simulator(m, sim=simtype)
     rslt = sim.run(outputfile=sim_filename)
-    lines = rslt.splitlines()
-    if simtype == 'verilator' and lines[-1].startswith('-'):
-        rslt = '\n'.join(lines[:-1])
+
     return rslt
 
 

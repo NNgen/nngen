@@ -64,14 +64,14 @@ NNgenは統合テストにpytestフレームワークを使います。 プル�
 --------------------
 
 - Python3: 3.7.7 or later
-    - Apple Silicon上でのmacOS環境では、Python 3.9.5 (pyenvでインストール) を推奨します。
+    - Apple Silicon上でのmacOS環境では、Python 3.10.6 (pyenvでインストール) を推奨します。
 - Icarus Verilog: 10.1 or later
 
 ```
 sudo apt install iverilog
 ```
 
-- veriloggen: 2.1.0 or later
+- veriloggen: 2.3.0 or later
 - numpy: 1.17 or later
 - onnx: 1.9.0 or later
 

@@ -65,14 +65,14 @@ Requirements
 --------------------
 
 - Python3: 3.7.7 or later
-    - Python 3.9.5 (via pyenv) is recommended for macOS with Apple Silicon.
+    - Python 3.10.6 (via pyenv) is recommended for macOS with Apple Silicon.
 - Icarus Verilog: 10.1 or later
 
 ```
 sudo apt install iverilog
 ```
 
-- veriloggen: 2.1.0 or later
+- veriloggen: 2.3.0 or later
 - numpy: 1.17 or later
 - onnx: 1.9.0 or later
 

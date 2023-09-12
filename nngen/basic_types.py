@@ -197,7 +197,11 @@ class _Numeric(_Node):
         self.saxi = saxi
 
     def collect_numerics(self):
-        return [self]
+        ret = self._collect_numerics()
+        return sorted(list(ret), key=lambda x: x.object_id)
+
+    def _collect_numerics(self):
+        return set([self])
 
     def collect_sources(self):
         return ()
@@ -473,25 +477,27 @@ class _Operator(_Numeric):
 
         raise ValueError('no such object %s' % str(obj))
 
-    def collect_numerics(self):
-        ret = []
-        ret.append(self)
+    def _collect_numerics(self):
+        ret = set()
+        ret.add(self)
 
         for arg in self.args:
-            ret.extend(arg.collect_numerics())
+            if arg not in ret:
+                ret.update(arg._collect_numerics())
 
-        ret = sorted(set(ret), key=ret.index)
         return ret
 
     def collect_arg_numerics(self):
-        ret = []
+        ret = self._collect_arg_numerics()
+        return sorted(list(ret), key=lambda x: x.object_id)
 
+    def _collect_arg_numerics(self):
+        ret = set()
         for arg in self.args:
-            if are_chainable_operators(self, arg):
-                ret.append(arg)
-                ret.extend(arg.collect_arg_numerics())
+            if arg not in ret and are_chainable_operators(self, arg):
+                ret.add(arg)
+                ret.update(arg._collect_arg_numerics())
 
-        ret = sorted(set(ret), key=ret.index)
         return ret
 
     def collect_sources(self):
@@ -875,10 +881,12 @@ class _Operator(_Numeric):
         for i, values in enumerate(control_param_list):
             for name, value in values.items():
                 if isinstance(value, (tuple, list)):
-                    lst = [(self.control_param_index_reg == i, vg.Int(v, width=max_width, base=16)) for v in value]
+                    lst = [(self.control_param_index_reg == i, vg.Int(
+                        v, width=max_width, base=16)) for v in value]
                     pattern_dict[name].append(lst)
                 else:
-                    pattern_dict[name].append((self.control_param_index_reg == i, vg.Int(value, width=max_width, base=16)))
+                    pattern_dict[name].append(
+                        (self.control_param_index_reg == i, vg.Int(value, width=max_width, base=16)))
 
         for name in self.collect_all_control_param_names():
             dst = getattr(self, name)
@@ -1466,8 +1474,9 @@ class _StreamingOperator(_Operator):
             fsm.goto_next()
 
             # stride-0
+            lsize = vg.Int(1)
             bus_lock(self.maxi, fsm)
-            dma_read(self.maxi, fsm, ram, laddr, gaddr, 1)
+            dma_read(self.maxi, fsm, ram, laddr, gaddr, lsize)
             bus_unlock(self.maxi, fsm)
             fsm.goto_next()
 
@@ -2036,8 +2045,9 @@ class _ReductionOperator(_StreamingOperator):
             fsm.goto_next()
 
             # stride-0
+            lsize = vg.Int(1)
             bus_lock(self.maxi, fsm)
-            dma_read(self.maxi, fsm, ram, laddr, gaddr, 1)
+            dma_read(self.maxi, fsm, ram, laddr, gaddr, lsize)
             bus_unlock(self.maxi, fsm)
             fsm.goto_next()
 
@@ -3038,17 +3048,16 @@ def read_modify_write(m, fsm, maxi,
                         (type(src_ram), type(dst_ram)))
 
     # (read)
-    if ((isinstance(src_ram, vthread.MultibankRAM) and
-         src_ram.orig_datawidth == maxi.datawidth) or
-        (not isinstance(src_ram, vthread.MultibankRAM) and
-            src_ram.datawidth == maxi.datawidth)):
+    if src_ram.datawidth == maxi.datawidth:
+        src_lsize = vg.Int(1)
         bus_lock(maxi, fsm)
-        maxi.dma_write(fsm, src_ram, laddr, gaddr, 1, port=1)
+        dma_write(maxi, fsm, src_ram, laddr, gaddr, src_lsize, port=1)
         bus_unlock(maxi, fsm)
         return
 
+    dst_lsize = vg.Int(1)
     bus_lock(maxi, fsm)
-    maxi.dma_read(fsm, dst_ram, 0, gaddr, 1, port=1)
+    dma_read(maxi, fsm, dst_ram, 0, gaddr, dst_lsize, port=1)
     bus_unlock(maxi, fsm)
 
     # (modify)
@@ -3056,10 +3065,7 @@ def read_modify_write(m, fsm, maxi,
 
     # (write)
     mem_width = int(math.log(to_byte(maxi.datawidth), 2))
-    if isinstance(dst_ram, vthread.MultibankRAM):
-        ram_width = int(math.log(to_byte(dst_ram.orig_datawidth), 2))
-    else:
-        ram_width = int(math.log(to_byte(dst_ram.datawidth), 2))
+    ram_width = int(math.log(to_byte(dst_ram.datawidth), 2))
     pos_width = mem_width - ram_width
     if pos_width < 1:
         pos = 0
@@ -3069,8 +3075,9 @@ def read_modify_write(m, fsm, maxi,
 
     dst_ram.write(fsm, pos, write_value)
 
+    dst_lsize = vg.Int(1)
     bus_lock(maxi, fsm)
-    maxi.dma_write(fsm, dst_ram, 0, gaddr, 1, port=1)
+    dma_write(maxi, fsm, dst_ram, 0, gaddr, dst_lsize, port=1)
     bus_unlock(maxi, fsm)
 
 
@@ -3078,8 +3085,9 @@ def read_modify_write_single_bank(m, fsm, maxi, src_ram, dst_ram, laddr, gaddr):
 
     # (read)
     if maxi.datawidth != src_ram.datawidth:
+        dst_lsize = vg.Int(1)
         bus_lock(maxi, fsm)
-        dma_read(maxi, fsm, dst_ram, 0, gaddr, 1, port=1)
+        dma_read(maxi, fsm, dst_ram, 0, gaddr, dst_lsize, port=1)
         bus_unlock(maxi, fsm)
 
     # (modify)
@@ -3105,8 +3113,9 @@ def read_modify_write_single_bank(m, fsm, maxi, src_ram, dst_ram, laddr, gaddr):
     # (write)
     dst_ram.write(fsm, 0, write_value)
 
+    dst_lsize = vg.Int(1)
     bus_lock(maxi, fsm)
-    dma_write(maxi, fsm, dst_ram, 0, gaddr, 1, port=1)
+    dma_write(maxi, fsm, dst_ram, 0, gaddr, dst_lsize, port=1)
     bus_unlock(maxi, fsm)
 
 
