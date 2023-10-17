@@ -404,16 +404,26 @@ def rshift_round(x, y, dtype=None, name=None, par=1,
     out_point = xy_point if dtype is None else dtype.point
     out_shift = -xy_shift if dtype is None else dtype.point - xy_point - xy_shift
 
-    x = x << (out_point - x_point)
-    y = y << (out_point - y_point)
+    x = np.left_shift(x, out_point - x_point)
+    y = np.left_shift(y, out_point - y_point)
 
     out_op = ((lambda x: x << out_shift) if out_shift >= 0 else
               (lambda x: x >> -out_shift))
 
-    shifted = x >> y
-    last_bit = (x >> (y - 1)) & 0x1
+    rshift_out_pow = np.where(y > np.zeros_like(y, dtype=np.int64),
+                              y - 1,
+                              np.zeros_like(y))
+    rshift_out_round = np.where(y > np.zeros_like(y, dtype=np.int64),
+                                np.power(np.ones_like(y, dtype=np.int64) * 2,
+                                         rshift_out_pow),
+                                np.zeros_like(y, dtype=np.int64))
 
-    ret = out_op(np.where(y == 0, x, shifted + last_bit))
+    frac = np.where(y!=0, np.where(x>=0, rshift_out_round, rshift_out_round - 1),
+                        np.zeros_like(y, dtype=np.int64))
+
+    add_frac = np.add(x, frac)
+    right_shift_out = np.right_shift(add_frac, y)
+    ret = out_op(np.where(y == 0, x, right_shift_out))
 
     return ret
 
