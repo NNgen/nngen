@@ -12,6 +12,7 @@ from . import conv2d
 from . import matmul
 from . import normalize
 from . import sigmoid
+from . import tanh
 from . import exp
 from . import reduce
 
@@ -26,6 +27,7 @@ func_map = {
     'scaled_multiply': normalize.scaled_multiply,
     'scaled_div': normalize.scaled_div,
     'sigmoid': sigmoid.sigmoid,
+    'tanh': tanh.tanh,
     'exp': exp.exp,
     'argmax': reduce.argmax,
     'argmin': reduce.argmin,
