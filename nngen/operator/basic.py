@@ -12,6 +12,62 @@ import nngen.basic_types as bt
 import nngen.util as util
 
 
+class logical_not(bt._ElementwiseOperator):
+    input_chainable = True
+    output_chainable = True
+
+    @staticmethod
+    def op(strm, *args, **kwargs):
+        return strm.Not(*args)
+
+    def __init__(self, x, dtype=None, name=None, par=1):
+        shape = None
+        bt._ElementwiseOperator.__init__(self, x,
+                                         dtype=dtype, shape=shape, name=name, par=par)
+
+    def eval(self, memo, input_dict, **kwargs):
+        kwargs['x_dtype'] = self.args[0].dtype
+        return bt._ElementwiseOperator.eval(self, memo, input_dict, **kwargs)
+
+
+class logical_and(bt._ElementwiseOperator):
+    input_chainable = True
+    output_chainable = True
+
+    @staticmethod
+    def op(strm, *args, **kwargs):
+        return strm.Land(*args)
+
+    def __init__(self, x, y, dtype=None, name=None, par=1):
+        shape = None
+        bt._ElementwiseOperator.__init__(self, x, y,
+                                         dtype=dtype, shape=shape, name=name, par=par)
+
+    def eval(self, memo, input_dict, **kwargs):
+        kwargs['x_dtype'] = self.args[0].dtype
+        kwargs['y_dtype'] = self.args[1].dtype
+        return bt._ElementwiseOperator.eval(self, memo, input_dict, **kwargs)
+
+
+class logical_or(bt._ElementwiseOperator):
+    input_chainable = True
+    output_chainable = True
+
+    @staticmethod
+    def op(strm, *args, **kwargs):
+        return strm.Lor(*args)
+
+    def __init__(self, x, y, dtype=None, name=None, par=1):
+        shape = None
+        bt._ElementwiseOperator.__init__(self, x, y,
+                                         dtype=dtype, shape=shape, name=name, par=par)
+
+    def eval(self, memo, input_dict, **kwargs):
+        kwargs['x_dtype'] = self.args[0].dtype
+        kwargs['y_dtype'] = self.args[1].dtype
+        return bt._ElementwiseOperator.eval(self, memo, input_dict, **kwargs)
+
+
 class add(bt._ElementwiseOperator):
     """
     Returns :math:`x + y` element-wise.
