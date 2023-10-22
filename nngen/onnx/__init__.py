@@ -13,6 +13,7 @@ from . import exp
 from . import reduce
 from . import conv
 from . import gemm
+from . import matmul
 from . import pool
 from . import pad
 from . import act_func
@@ -46,6 +47,7 @@ func_map = {
     'ArgMin': reduce.ArgMin,
     'Conv': conv.Conv,
     'Gemm': gemm.Gemm,
+    'MatMul': matmul.MatMul,
     'AveragePool': pool.AveragePool,
     'GlobalAveragePool': pool.GlobalAveragePool,
     'MaxPool': pool.MaxPool,

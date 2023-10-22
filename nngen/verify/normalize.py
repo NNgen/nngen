@@ -6,11 +6,11 @@ from . import basic
 from . import concat
 
 
-def normalize(x, y, z, shamt,
+def normalize(x, y, z, shamt, asymmetric_clip=False,
               dtype=None, sum_dtype=None, name=None, par=1,
               x_dtype=None, y_dtype=None, z_dtype=None, shamt_dtype=None):
 
-    return basic.multiply_add_rshift_clip(x, y, z, shamt,
+    return basic.multiply_add_rshift_clip(x, y, z, shamt, asymmetric_clip,
                                           dtype, sum_dtype, name, par,
                                           x_dtype, y_dtype, z_dtype, shamt_dtype)
 
